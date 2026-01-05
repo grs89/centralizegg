@@ -49,6 +49,15 @@ Este proyecto está completamente Dockerizado para un despliegue fácil.
 - Docker y Docker Compose
 - Acceso al socket de KVM/Libvirt en la máquina host.
 
+### 🔌 Conectando a KVM (Importante)
+Por defecto, el contenedor espera encontrar el socket de Libvirt en `/var/run/libvirt/libvirt-sock`.
+El `docker-compose.yml` ya está preconfigurado para montar este socket desde tu máquina anfitriona:
+```yaml
+volumes:
+  - /var/run/libvirt/libvirt-sock:/var/run/libvirt/libvirt-sock
+```
+**Nota de Permisos**: Asegúrate de que el usuario que ejecuta Docker tenga permisos de lectura/escritura sobre este socket, o ejecuta el contenedor en modo privilegiado (no recomendado para producción, pero útil para pruebas). Si tienes problemas de permisos `permission denied`, puedes necesitar ajustar los permisos del socket en el host (`chmod 666 /var/run/libvirt/libvirt-sock`) o ejecutar `docker-compose` con `sudo`.
+
 ### Inicio Rápido
 
 1.  **Clonar el repositorio**:
@@ -126,6 +135,15 @@ This project is fully Dockerized for easy deployment.
 ### Prerequisites
 - Docker & Docker Compose
 - Access to the KVM/Libvirt socket on the host machine.
+
+### 🔌 Connecting to KVM (Important)
+By default, the container expects to find the Libvirt socket at `/var/run/libvirt/libvirt-sock`.
+The `docker-compose.yml` is pre-configured to mount this socket from your host machine:
+```yaml
+volumes:
+  - /var/run/libvirt/libvirt-sock:/var/run/libvirt/libvirt-sock
+```
+**Permissions Note**: Ensure the user running Docker has read/write permissions on this socket. If you encounter `permission denied` errors, you might need to adjust the socket permissions on the host (`chmod 666 /var/run/libvirt/libvirt-sock`) or run `docker-compose` with `sudo`.
 
 ### Quick Start
 
