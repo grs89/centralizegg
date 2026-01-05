@@ -11,15 +11,53 @@ async function fetchHosts() {
         if (!response.ok) throw new Error('Failed to fetch hosts');
         const hosts = await response.json();
 
-        if (hosts && hosts.length > 0) {
-            const host = hosts[0];
-            document.getElementById('host-name').textContent = host.hostname || 'Localhost';
-            document.getElementById('host-mem').textContent = (host.total_memory / (1024 * 1024 * 1024)).toFixed(2) + " GB";
-            document.getElementById('host-cores').textContent = host.cpu_cores;
-            document.getElementById('host-cpu').textContent = host.cpu_model;
+        const container = document.getElementById('host-nodes-container');
+        if (!container) return;
+
+        if (!hosts || hosts.length === 0) {
+            container.innerHTML = '<div class="loading-state">No hosts monitored yet...</div>';
+            return;
         }
+
+        container.innerHTML = hosts.map(host => {
+            const memGB = (host.total_memory / (1024 * 1024 * 1024)).toFixed(2);
+            return `
+            <div class="host-node-card glass-panel">
+                <div class="host-node-header">
+                    <div class="host-node-titles">
+                        <div class="host-node-main-title">${host.server_name}</div>
+                        <div class="host-node-sub-title"> ${host.hostname} | ${host.ip_address}</div>
+                    </div>
+                </div>
+                <div class="host-stats">
+                    <div class="stat-card">
+                        <div class="icon"><i class="fa-solid fa-memory"></i></div>
+                        <div class="info">
+                            <span class="label">Memory</span>
+                            <span class="value">${memGB} GB</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="icon"><i class="fa-solid fa-layer-group"></i></div>
+                        <div class="info">
+                            <span class="label">Cores</span>
+                            <span class="value">${host.cpu_cores}</span>
+                        </div>
+                    </div>
+                    <div class="stat-card wide" style="grid-column: span 2;">
+                        <div class="icon"><i class="fa-solid fa-fingerprint"></i></div>
+                        <div class="info">
+                            <span class="label">CPU Model</span>
+                            <span class="value" style="font-size: 0.8rem;">${host.cpu_model}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            `;
+        }).join('');
     } catch (e) {
         console.error(e);
+        document.getElementById('host-nodes-container').innerHTML = '<div class="loading-state" style="color:var(--danger)">Failed to load hosts</div>';
     }
 }
 
@@ -263,7 +301,11 @@ fetchHosts();
 fetchVMs();
 
 // Auto-refresh
-setInterval(fetchVMs, 5000);
+function refreshAll() {
+    fetchHosts();
+    fetchVMs();
+}
+setInterval(refreshAll, 5000);
 
 function formatBytes(bytes, decimals = 2) {
     if (bytes === 0) return '0 Bytes';

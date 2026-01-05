@@ -153,51 +153,54 @@ header {
 
 /* Host Section */
 .host-section {
-    padding: 2rem;
+    padding: 0;
     margin-bottom: 3rem;
 }
 
-.host-section h2 i {
-    margin-right: 10px;
+.host-nodes-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 1.5rem;
 }
 
-.section-header {
+.host-node-card {
+    padding: 1.5rem;
+    transition: transform 0.2s;
+}
+
+.host-node-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 1.5rem;
+    border-bottom: 1px solid var(--glass-border);
+    padding-bottom: 1rem;
 }
 
-.section-header h2 {
-    font-size: 1.5rem;
-    font-weight: 500;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.host-badge {
-    background: rgba(255, 255, 255, 0.05);
-    padding: 4px 12px;
-    border-radius: 8px;
-    font-size: 0.9rem;
+.host-node-main-title {
+    font-size: 1.2rem;
+    font-weight: 700;
     color: var(--accent-color);
-    margin-left: 10px;
+}
+
+.host-node-sub-title {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
 }
 
 .host-stats {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1.5rem;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
 }
 
 .stat-card {
     background: rgba(15, 23, 42, 0.4);
-    padding: 1.25rem;
+    padding: 0.75rem 1rem;
     border-radius: 12px;
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: 0.75rem;
     border: 1px solid var(--glass-border);
     transition: transform 0.2s;
 }
@@ -207,20 +210,16 @@ header {
     border-color: var(--accent-color);
 }
 
-.stat-card.wide {
-    grid-column: span 2;
-}
-
 .stat-card .icon {
-    width: 48px;
-    height: 48px;
+    width: 36px;
+    height: 36px;
     background: rgba(56, 189, 248, 0.1);
-    border-radius: 10px;
+    border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
     color: var(--accent-color);
-    font-size: 1.2rem;
+    font-size: 1rem;
 }
 
 .stat-card .info {
@@ -229,12 +228,12 @@ header {
 }
 
 .stat-card .label {
-    font-size: 0.85rem;
+    font-size: 0.75rem;
     color: var(--text-secondary);
 }
 
 .stat-card .value {
-    font-size: 1.1rem;
+    font-size: 0.95rem;
     font-weight: 600;
     color: var(--text-primary);
 }

@@ -33,6 +33,8 @@ type Host struct {
 	ID          int64  `json:"id"`
 	ServerID    int64  `json:"server_id"`
 	Hostname    string `json:"hostname"`
+	ServerName  string `json:"server_name"`
+	IPAddress   string `json:"ip_address"`
 	CPUModel    string `json:"cpu_model"`
 	CPUCores    int    `json:"cpu_cores"`
 	TotalMemory uint64 `json:"total_memory"`
@@ -191,7 +193,10 @@ func (d *DB) DeleteServer(id int64) error {
 }
 
 func (d *DB) GetHosts() ([]Host, error) {
-	rows, err := d.Conn.Query("SELECT id, server_id, hostname, cpu_model, cpu_cores, total_memory FROM hosts")
+	rows, err := d.Conn.Query(`
+		SELECT h.id, h.server_id, h.hostname, s.name, s.ip_address, h.cpu_model, h.cpu_cores, h.total_memory 
+		FROM hosts h
+		JOIN kvm_servers s ON h.server_id = s.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +205,7 @@ func (d *DB) GetHosts() ([]Host, error) {
 	var hosts []Host
 	for rows.Next() {
 		var h Host
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.CPUModel, &h.CPUCores, &h.TotalMemory); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory); err != nil {
 			return nil, err
 		}
 		hosts = append(hosts, h)
