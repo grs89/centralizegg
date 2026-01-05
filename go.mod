@@ -1,4 +1,4 @@
-module github.com/grs/centralize
+module github.com/grs/centralizegg
 
 go 1.23.2
 

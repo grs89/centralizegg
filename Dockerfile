@@ -9,7 +9,7 @@ RUN go mod download
 COPY . .
 
 # Build statically
-RUN CGO_ENABLED=0 GOOS=linux go build -o centralize ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -o centralizegg ./cmd/server
 
 # Run Stage
 FROM alpine:latest
@@ -17,7 +17,7 @@ FROM alpine:latest
 WORKDIR /root/
 
 # Copy binary
-COPY --from=builder /app/centralize .
+COPY --from=builder /app/centralizegg .
 
 # Copy static files
 COPY --from=builder /app/web/static ./web/static
@@ -26,4 +26,4 @@ COPY --from=builder /app/web/static ./web/static
 EXPOSE 8080
 
 # Run
-CMD ["./centralize"]
+CMD ["./centralizegg"]

@@ -9,7 +9,7 @@ import (
 
 	"github.com/beevik/etree"
 	"github.com/digitalocean/go-libvirt"
-	"github.com/grs/centralize/internal/storage"
+	"github.com/grs/centralizegg/internal/storage"
 	"golang.org/x/crypto/ssh"
 )
 

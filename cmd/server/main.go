@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/grs/centralize/internal/collector"
-	"github.com/grs/centralize/internal/storage"
+	"github.com/grs/centralizegg/internal/collector"
+	"github.com/grs/centralizegg/internal/storage"
 )
 
 func main() {
