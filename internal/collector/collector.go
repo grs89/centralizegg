@@ -30,7 +30,10 @@ func (mc *MultiCollector) CollectAll() {
 	for _, s := range servers {
 		if err := mc.collectOne(s); err != nil {
 			log.Printf("Failed to collect from %s (%s): %v", s.Name, s.IPAddress, err)
+			mc.DB.SetServerStatus(s.ID, "offline")
+			continue
 		}
+		mc.DB.SetServerStatus(s.ID, "online")
 	}
 }
 
@@ -128,7 +131,7 @@ func (mc *MultiCollector) collectOne(s storage.KVMServer) error {
 	}
 
 	for _, dom := range domains {
-		state, maxMem, memory, _, cpuTime, err := l.DomainGetInfo(dom)
+		state, maxMem, memory, vcpu, cpuTime, err := l.DomainGetInfo(dom)
 		if err != nil {
 			continue
 		}
@@ -154,6 +157,7 @@ func (mc *MultiCollector) collectOne(s storage.KVMServer) error {
 		vm := storage.VM{
 			Name:        dom.Name,
 			State:       stateStr,
+			VCPU:        int(vcpu),
 			CPUTime:     cpuTime,
 			MemoryUsage: memory * 1024,
 			MaxMemory:   maxMem * 1024,
