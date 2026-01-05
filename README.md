@@ -30,8 +30,9 @@ El sistema ha evolucionado para soportar múltiples nodos remotos mediante SSH:
     - `vms`: Estado y métricas de cada máquina virtual.
 
 ### 3. Dashboard y Configuración (Frontend)
-- **Visualización**: Muestra el estado de todos los servidores monitoreados.
-- **Configuración**: Nuevo menú de ajustes (tuerca ⚙️) para agregar o eliminar servidores KVM dinámicamente sin reiniciar el contenedor.
+- **Visualización**: Muestra el estado de todos los servidores monitoreados con indicadores de conexión (🟢 Online / 🔴 Offline).
+- **Métricas de VM**: Visualiza CPU configurada, memoria total, uso de memoria, I/O de disco (Lectura/Escritura) e I/O de red (RX/TX) en tiempo real.
+- **Configuración**: Nuevo menú de ajustes (tuerca ⚙️) para agregar o eliminar servidores KVM dinámicamente, con soporte para puertos SSH personalizados.
 
 ---
 
@@ -39,7 +40,7 @@ El sistema ha evolucionado para soportar múltiples nodos remotos mediante SSH:
 
 ### Prerrequisitos
 - Docker y Docker Compose
-- Acceso SSH a los servidores KVM remotos (usando claves públicas/privadas).
+- Acceso SSH a los servidores KVM remotos (usando claves públicas/privadas o contraseña).
 
 ### Configuración de Claves SSH
 Para que Centralize se conecte a tus servidores, necesita tu clave privada SSH.
@@ -63,7 +64,7 @@ volumes:
 
 3.  **Agregar Servidores**:
     - Haz clic en el icono de configuración (⚙️).
-    - Ingresas el **Nombre**, **IP**, y **Usuario** (ej. `root`).
+    - Ingresa el **Nombre**, **IP**, **Puerto SSH** y **Usuario**.
     - Selecciona el tipo de autenticación: **Llave SSH** o **Contraseña**.
     - El sistema comenzará a monitorear automáticamente.
 
@@ -71,7 +72,12 @@ volumes:
 
 ## 🎨 Características
 - **Multi-Server**: Monitorea N servidores KVM desde un solo lugar.
-- **UI Moderna**: Modo oscuro "Glassmorphism" con animaciones.
+- **Estado de Conexión**: Indicadores visuales en tiempo real del estado del servidor.
+- **Métricas Detalladas**:
+    - vCPU y Memoria configurada por VM.
+    - I/O de Disco (Lectura/Escritura).
+    - I/O de Red (Entrante/Saliente).
+- **UI Moderna**: Modo oscuro "Glassmorphism" con animaciones y estética premium.
 - **Configuración Web**: Gestiona tus conexiones desde el navegador.
 - **Seguro**: Todas las conexiones son encriptadas vía SSH.
 
@@ -92,20 +98,21 @@ The system supports multiple remote nodes via SSH tunnels:
 - **Action**: Iterates over a list of servers configured in the database.
 - **Workflow**:
     1.  Reads server configuration from PostgreSQL.
-    2.  Establishes a secure SSH tunnel to each remote server using SSH keys (`/root/.ssh/id_rsa`).
+    2.  Establishes a secure SSH tunnel to each remote server using SSH keys or Passwords.
     3.  Connects to the remote Libvirt socket through this tunnel.
     4.  Collects metrics from the Host and all its VMs.
-    5.  Persists date to the central database.
+    5.  Persists data to the central database.
 
 ### 2. Database (PostgreSQL)
 - **Tables**:
-    - `kvm_servers`: Connection details (IP, Username, Key Path).
+    - `kvm_servers`: Connection details (IP, Port, Username, Auth details, Status).
     - `hosts`: Physical node metrics.
-    - `vms`: Virtual Machine state and metrics.
+    - `vms`: Virtual Machine state, configured resources, and I/O metrics.
 
 ### 3. Dashboard & Config (Frontend)
-- **Visualization**: Displays status for all monitored servers.
-- **Configuration**: New Settings menu (gear icon ⚙️) to dynamically add or remove KVM servers without restarting the container.
+- **Visualization**: Displays status for all monitored servers with connection indicators (🟢 Online / 🔴 Offline).
+- **VM Metrics**: Visualizes configured vCPU, Total Memory, Usage, Disk I/O (Read/Write), and Network I/O (RX/TX).
+- **Configuration**: Settings menu (gear icon ⚙️) to dynamically add or remove KVM servers, supporting custom SSH ports.
 
 ---
 
@@ -113,7 +120,7 @@ The system supports multiple remote nodes via SSH tunnels:
 
 ### Prerequisites
 - Docker & Docker Compose
-- SSH access to remote KVM servers (using public/private keys).
+- SSH access to remote KVM servers (using public/private keys or password).
 
 ### SSH Key Configuration
 For Centralize to connect to your servers, it needs your private SSH key.
@@ -137,7 +144,7 @@ volumes:
 
 3.  **Add Servers**:
     - Click the Settings icon (⚙️).
-    - Enter the **Name**, **IP**, and **Username** (e.g., `root`).
+    - Enter the **Name**, **IP**, **SSH Port**, and **Username**.
     - Select Authentication Type: **SSH Key** or **Password**.
     - The system will start monitoring automatically.
 
@@ -145,6 +152,14 @@ volumes:
 
 ## 🎨 Features
 - **Multi-Server**: Monitor N KVM servers from one place.
-- **Modern UI**: Dark mode with "Glassmorphism" aesthetics.
+- **Connection Status**: Real-time visual indicators of server health.
+- **Detailed Metrics**:
+    - vCPU and Configured Memory per VM.
+    - Disk I/O (Read/Write).
+    - Network I/O (RX/TX).
+- **Modern UI**: Dark mode with "Glassmorphism" aesthetics and premium feel.
 - **Web Config**: Manage connections directly from the browser.
 - **Secure**: All connections are encrypted via SSH.
+
+## 📄 License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

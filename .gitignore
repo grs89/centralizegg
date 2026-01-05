@@ -1,0 +1,24 @@
+# Binaries
+bin/
+centralize
+server
+
+# Tools
+.vscode/
+.idea/
+
+# Environment
+.env
+
+# Docker data
+postgres_data/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Go
+vendor/
+*.exe
+*.test
+*.prof

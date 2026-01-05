@@ -10,7 +10,7 @@ services:
       POSTGRES_DB: centralize_db
     volumes:
       - ./deploy/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
-      - postgres_data:/var/lib/postgresql/data
+      - ./postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U centralize -d centralize_db" ]
       interval: 5s
@@ -23,9 +23,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      # CRITICAL: Mount the Libvirt socket from the host
       - /var/run/libvirt/libvirt-sock:/var/run/libvirt/libvirt-sock
-      # Mount SSH keys for remote connections
       - ~/.ssh:/root/.ssh:ro
     environment:
       DB_HOST: db
@@ -37,6 +35,3 @@ services:
     depends_on:
       db:
         condition: service_healthy
-
-volumes:
-  postgres_data:
