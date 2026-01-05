@@ -61,7 +61,7 @@ func (mc *MultiCollector) collectOne(s storage.KVMServer) error {
 		User:            s.Username,
 		Auth:            authMethods,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // TODO: Use proper known_hosts for prod
-		Timeout:         5 * time.Second,
+		Timeout:         10 * time.Second,
 	}
 
 	// Address like "192.168.1.100:22"
