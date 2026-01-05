@@ -71,8 +71,20 @@ async function fetchVMs() {
                             <span>${cpuSeconds}s</span>
                         </div>
                         <div class="progress-bar">
-                            <!-- Visual placeholder for CPU activity -->
-                             <div class="progress-fill" style="background: var(--accent-color); width: 100%; opacity: 0.3;"></div>
+                            <div class="progress-fill" style="background: var(--accent-color); width: 100%; opacity: 0.3;"></div>
+                        </div>
+                    </div>
+
+                    <div class="vm-io-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; font-size:0.8rem; color:var(--text-secondary);">
+                        <div class="io-item">
+                            <div style="font-weight:bold; color:var(--text-primary); margin-bottom:4px;"><i class="fa-solid fa-hard-drive"></i> Disk I/O</div>
+                            <div>R: ${formatBytes(vm.disk_read)}</div>
+                            <div>W: ${formatBytes(vm.disk_write)}</div>
+                        </div>
+                        <div class="io-item">
+                            <div style="font-weight:bold; color:var(--text-primary); margin-bottom:4px;"><i class="fa-solid fa-network-wired"></i> Network</div>
+                            <div>RX: ${formatBytes(vm.net_rx)}</div>
+                            <div>TX: ${formatBytes(vm.net_tx)}</div>
                         </div>
                     </div>
                 </div>
@@ -252,3 +264,12 @@ fetchVMs();
 
 // Auto-refresh
 setInterval(fetchVMs, 5000);
+
+function formatBytes(bytes, decimals = 2) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}

@@ -21,6 +21,10 @@ type VM struct {
 	CPUTime     uint64    `json:"cpu_time"`
 	MemoryUsage uint64    `json:"memory_usage"`
 	MaxMemory   uint64    `json:"max_memory"`
+	DiskRead    uint64    `json:"disk_read"`
+	DiskWrite   uint64    `json:"disk_write"`
+	NetRX       uint64    `json:"net_rx"`
+	NetTX       uint64    `json:"net_tx"`
 	HostID      int64     `json:"host_id"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
@@ -81,21 +85,21 @@ func (d *DB) UpsertVM(vm VM) error {
 
 	if err == sql.ErrNoRows {
 		_, err = d.Conn.Exec(`
-			INSERT INTO vms (name, state, vcpu, cpu_time, memory_usage, max_memory, host_id, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
-			vm.Name, vm.State, vm.VCPU, vm.CPUTime, vm.MemoryUsage, vm.MaxMemory, vm.HostID)
+			INSERT INTO vms (name, state, vcpu, cpu_time, memory_usage, max_memory, disk_read, disk_write, net_rx, net_tx, host_id, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())`,
+			vm.Name, vm.State, vm.VCPU, vm.CPUTime, vm.MemoryUsage, vm.MaxMemory, vm.DiskRead, vm.DiskWrite, vm.NetRX, vm.NetTX, vm.HostID)
 	} else if err == nil {
 		_, err = d.Conn.Exec(`
 			UPDATE vms 
-			SET state=$1, vcpu=$2, cpu_time=$3, memory_usage=$4, max_memory=$5, updated_at=NOW()
-			WHERE id=$6`,
-			vm.State, vm.VCPU, vm.CPUTime, vm.MemoryUsage, vm.MaxMemory, id)
+			SET state=$1, vcpu=$2, cpu_time=$3, memory_usage=$4, max_memory=$5, disk_read=$6, disk_write=$7, net_rx=$8, net_tx=$9, updated_at=NOW()
+			WHERE id=$10`,
+			vm.State, vm.VCPU, vm.CPUTime, vm.MemoryUsage, vm.MaxMemory, vm.DiskRead, vm.DiskWrite, vm.NetRX, vm.NetTX, id)
 	}
 	return err
 }
 
 func (d *DB) GetAllVMs() ([]VM, error) {
-	rows, err := d.Conn.Query("SELECT id, name, state, vcpu, cpu_time, memory_usage, max_memory, host_id, updated_at FROM vms")
+	rows, err := d.Conn.Query("SELECT id, name, state, vcpu, cpu_time, memory_usage, max_memory, disk_read, disk_write, net_rx, net_tx, host_id, updated_at FROM vms")
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +108,7 @@ func (d *DB) GetAllVMs() ([]VM, error) {
 	var vms []VM
 	for rows.Next() {
 		var vm VM
-		if err := rows.Scan(&vm.ID, &vm.Name, &vm.State, &vm.VCPU, &vm.CPUTime, &vm.MemoryUsage, &vm.MaxMemory, &vm.HostID, &vm.UpdatedAt); err != nil {
+		if err := rows.Scan(&vm.ID, &vm.Name, &vm.State, &vm.VCPU, &vm.CPUTime, &vm.MemoryUsage, &vm.MaxMemory, &vm.DiskRead, &vm.DiskWrite, &vm.NetRX, &vm.NetTX, &vm.HostID, &vm.UpdatedAt); err != nil {
 			return nil, err
 		}
 		vms = append(vms, vm)

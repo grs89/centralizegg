@@ -29,6 +29,10 @@ CREATE TABLE IF NOT EXISTS vms (
     cpu_time BIGINT,
     memory_usage BIGINT,
     max_memory BIGINT,
+    disk_read BIGINT DEFAULT 0,
+    disk_write BIGINT DEFAULT 0,
+    net_rx BIGINT DEFAULT 0,
+    net_tx BIGINT DEFAULT 0,
     host_id INT,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_host FOREIGN KEY(host_id) REFERENCES hosts(id) ON DELETE CASCADE

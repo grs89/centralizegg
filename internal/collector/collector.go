@@ -7,6 +7,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/beevik/etree"
 	"github.com/digitalocean/go-libvirt"
 	"github.com/grs/centralize/internal/storage"
 	"golang.org/x/crypto/ssh"
@@ -154,6 +155,39 @@ func (mc *MultiCollector) collectOne(s storage.KVMServer) error {
 			stateStr = "Suspended"
 		}
 
+		// 4. Get I/O Stats (Disk & Network)
+		var diskRead, diskWrite, netRX, netTX uint64
+
+		// Get XML Desc to find device names
+		xmlData, err := l.DomainGetXMLDesc(dom, 0)
+		if err == nil {
+			doc := etree.NewDocument()
+			if err := doc.ReadFromString(xmlData); err == nil {
+				// Sum Disk stats
+				for _, disk := range doc.FindElements("//devices/disk/target") {
+					dev := disk.SelectAttrValue("dev", "")
+					if dev != "" {
+						_, dr, _, dw, _, err := l.DomainBlockStats(dom, dev)
+						if err == nil {
+							diskRead += uint64(dr)
+							diskWrite += uint64(dw)
+						}
+					}
+				}
+				// Sum Network stats
+				for _, iface := range doc.FindElements("//devices/interface/target") {
+					dev := iface.SelectAttrValue("dev", "")
+					if dev != "" {
+						rxB, _, _, _, txB, _, _, _, err := l.DomainInterfaceStats(dom, dev)
+						if err == nil {
+							netRX += uint64(rxB)
+							netTX += uint64(txB)
+						}
+					}
+				}
+			}
+		}
+
 		vm := storage.VM{
 			Name:        dom.Name,
 			State:       stateStr,
@@ -161,6 +195,10 @@ func (mc *MultiCollector) collectOne(s storage.KVMServer) error {
 			CPUTime:     cpuTime,
 			MemoryUsage: memory * 1024,
 			MaxMemory:   maxMem * 1024,
+			DiskRead:    diskRead,
+			DiskWrite:   diskWrite,
+			NetRX:       netRX,
+			NetTX:       netTX,
 			HostID:      hostID,
 		}
 

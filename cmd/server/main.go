@@ -49,8 +49,11 @@ func main() {
 
 	// API Handlers
 	r.HandleFunc("/api/hosts", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s", r.Method, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
 		hosts, err := db.GetHosts()
 		if err != nil {
+			log.Printf("Error GetHosts: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -58,8 +61,11 @@ func main() {
 	}).Methods("GET")
 
 	r.HandleFunc("/api/vms", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s", r.Method, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
 		vms, err := db.GetAllVMs()
 		if err != nil {
+			log.Printf("Error GetAllVMs: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -77,6 +83,8 @@ func main() {
 	}).Methods("GET")
 
 	r.HandleFunc("/api/config/servers", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s", r.Method, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
 		var s storage.KVMServer
 		if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -88,6 +96,7 @@ func main() {
 		}
 		id, err := db.AddServer(s)
 		if err != nil {
+			log.Printf("Error AddServer: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
