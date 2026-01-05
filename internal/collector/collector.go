@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net"
 	"time"
 
 	"github.com/digitalocean/go-libvirt"
@@ -61,11 +62,17 @@ func (mc *MultiCollector) collectOne(s storage.KVMServer) error {
 	}
 
 	// Address like "192.168.1.100:22"
+	// Sanitize IP if it contains a port (user error)
+	ip := s.IPAddress
+	if host, _, err := net.SplitHostPort(ip); err == nil {
+		ip = host
+	}
+
 	port := s.SSHPort
 	if port == 0 {
 		port = 22
 	}
-	addr := fmt.Sprintf("%s:%d", s.IPAddress, port)
+	addr := fmt.Sprintf("%s:%d", ip, port)
 	sshClient, err := ssh.Dial("tcp", addr, config)
 	if err != nil {
 		return fmt.Errorf("ssh dial: %w", err)
