@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS kvm_servers (
     ip_address VARCHAR(255) NOT NULL,
     ssh_port INT DEFAULT 22,
     username VARCHAR(255) NOT NULL,
+    status VARCHAR(50) DEFAULT 'unknown',
     password VARCHAR(255), -- Optional if using SSH Key
     ssh_key_path VARCHAR(255) DEFAULT '/root/.ssh/id_rsa',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -24,6 +25,7 @@ CREATE TABLE IF NOT EXISTS vms (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     state VARCHAR(50),
+    vcpu INT,
     cpu_time BIGINT,
     memory_usage BIGINT,
     max_memory BIGINT,

@@ -3,6 +3,7 @@ package storage
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -16,6 +17,7 @@ type VM struct {
 	ID          int64     `json:"id"`
 	Name        string    `json:"name"`
 	State       string    `json:"state"`
+	VCPU        int       `json:"vcpu"`
 	CPUTime     uint64    `json:"cpu_time"`
 	MemoryUsage uint64    `json:"memory_usage"`
 	MaxMemory   uint64    `json:"max_memory"`
@@ -40,6 +42,7 @@ type KVMServer struct {
 	Username   string `json:"username"`
 	Password   string `json:"password"`
 	SSHKeyPath string `json:"ssh_key_path"`
+	Status     string `json:"status"` // online, offline, unknown
 }
 
 func NewPostgresDB(connStr string) (*DB, error) {
@@ -78,21 +81,21 @@ func (d *DB) UpsertVM(vm VM) error {
 
 	if err == sql.ErrNoRows {
 		_, err = d.Conn.Exec(`
-			INSERT INTO vms (name, state, cpu_time, memory_usage, max_memory, host_id, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-			vm.Name, vm.State, vm.CPUTime, vm.MemoryUsage, vm.MaxMemory, vm.HostID)
+			INSERT INTO vms (name, state, vcpu, cpu_time, memory_usage, max_memory, host_id, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+			vm.Name, vm.State, vm.VCPU, vm.CPUTime, vm.MemoryUsage, vm.MaxMemory, vm.HostID)
 	} else if err == nil {
 		_, err = d.Conn.Exec(`
 			UPDATE vms 
-			SET state=$1, cpu_time=$2, memory_usage=$3, max_memory=$4, updated_at=NOW()
-			WHERE id=$5`,
-			vm.State, vm.CPUTime, vm.MemoryUsage, vm.MaxMemory, id)
+			SET state=$1, vcpu=$2, cpu_time=$3, memory_usage=$4, max_memory=$5, updated_at=NOW()
+			WHERE id=$6`,
+			vm.State, vm.VCPU, vm.CPUTime, vm.MemoryUsage, vm.MaxMemory, id)
 	}
 	return err
 }
 
 func (d *DB) GetAllVMs() ([]VM, error) {
-	rows, err := d.Conn.Query("SELECT id, name, state, cpu_time, memory_usage, max_memory, host_id, updated_at FROM vms")
+	rows, err := d.Conn.Query("SELECT id, name, state, vcpu, cpu_time, memory_usage, max_memory, host_id, updated_at FROM vms")
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +104,7 @@ func (d *DB) GetAllVMs() ([]VM, error) {
 	var vms []VM
 	for rows.Next() {
 		var vm VM
-		if err := rows.Scan(&vm.ID, &vm.Name, &vm.State, &vm.CPUTime, &vm.MemoryUsage, &vm.MaxMemory, &vm.HostID, &vm.UpdatedAt); err != nil {
+		if err := rows.Scan(&vm.ID, &vm.Name, &vm.State, &vm.VCPU, &vm.CPUTime, &vm.MemoryUsage, &vm.MaxMemory, &vm.HostID, &vm.UpdatedAt); err != nil {
 			return nil, err
 		}
 		vms = append(vms, vm)
@@ -110,16 +113,20 @@ func (d *DB) GetAllVMs() ([]VM, error) {
 }
 
 func (d *DB) AddServer(s KVMServer) (int64, error) {
+	log.Printf("DEBUG: AddServer called with Name=%s IP=%s Port=%d", s.Name, s.IPAddress, s.SSHPort)
 	var id int64
+	if s.SSHPort == 0 {
+		s.SSHPort = 22
+	}
 	err := d.Conn.QueryRow(`
-		INSERT INTO kvm_servers (name, ip_address, username, password, ssh_key_path)
-		VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-		s.Name, s.IPAddress, s.Username, s.Password, s.SSHKeyPath).Scan(&id)
+		INSERT INTO kvm_servers (name, ip_address, ssh_port, username, password, ssh_key_path)
+		VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+		s.Name, s.IPAddress, s.SSHPort, s.Username, s.Password, s.SSHKeyPath).Scan(&id)
 	return id, err
 }
 
 func (d *DB) GetServers() ([]KVMServer, error) {
-	rows, err := d.Conn.Query("SELECT id, name, ip_address, username, password, ssh_key_path FROM kvm_servers")
+	rows, err := d.Conn.Query("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, status FROM kvm_servers")
 	if err != nil {
 		return nil, err
 	}
@@ -128,21 +135,20 @@ func (d *DB) GetServers() ([]KVMServer, error) {
 	var servers []KVMServer
 	for rows.Next() {
 		var s KVMServer
-		// password can be null in DB (sql.NullString), but we simplified schema to varchar.
-		// If using lib/pq with scanning into string, NULL might error if not careful.
-		// However, we didn't set NOT NULL on password, so it can be null.
-		// To be safe, let's scan into sql.NullString or just assume empty string if we handle it in Insert.
-		// Actually, let's look at init.sql: `password VARCHAR(255)`.
-		// If we insert empty string, it's empty string. If we insert NULL, scan might fail on string.
-		// Let's use a pointer or NullString? For simplicity, let's scan into a nullable type helper or just use sql.NullString then convert.
 		var pwd sql.NullString
-		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.Username, &pwd, &s.SSHKeyPath); err != nil {
+		// Validating scan args count: 8 cols
+		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.Status); err != nil {
 			return nil, err
 		}
 		s.Password = pwd.String
 		servers = append(servers, s)
 	}
 	return servers, nil
+}
+
+func (d *DB) SetServerStatus(id int64, status string) error {
+	_, err := d.Conn.Exec("UPDATE kvm_servers SET status=$1 WHERE id=$2", status, id)
+	return err
 }
 
 func (d *DB) UpdateServer(s KVMServer) error {

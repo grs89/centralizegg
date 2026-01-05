@@ -48,13 +48,16 @@ async function fetchVMs() {
                     <div class="vm-name"><i class="fa-solid fa-server"></i> ${vm.name}</div>
                     <div class="vm-state">${vm.state}</div>
                 </div>
-                <!-- Small Host ID Badge -->
-                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:10px;">Host ID: ${vm.host_id}</div>
+                <!-- Details Badge -->
+                <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:15px; display:flex; gap:10px;">
+                     <span style="background:rgba(255,255,255,0.05); padding:2px 6px; border-radius:4px;"><i class="fa-solid fa-microchip"></i> ${vm.vcpu || '?'} vCPU</span>
+                     <span style="background:rgba(255,255,255,0.05); padding:2px 6px; border-radius:4px;"><i class="fa-solid fa-memory"></i> ${memGB} GB RAM</span>
+                </div>
                 
                 <div class="vm-metrics">
                     <div class="metric">
                         <div class="metric-header">
-                            <span>Memory</span>
+                            <span>Memory Usage</span>
                             <span>${memUsedGB} / ${memGB} GB</span>
                         </div>
                         <div class="progress-bar">
@@ -64,11 +67,12 @@ async function fetchVMs() {
                     
                     <div class="metric">
                         <div class="metric-header">
-                            <span>CPU Time</span>
+                            <span>CPU Time (Cumulative)</span>
                             <span>${cpuSeconds}s</span>
                         </div>
                         <div class="progress-bar">
-                            <div class="progress-fill" style="background: var(--text-secondary); width: 100%"></div>
+                            <!-- Visual placeholder for CPU activity -->
+                             <div class="progress-fill" style="background: var(--accent-color); width: 100%; opacity: 0.3;"></div>
                         </div>
                     </div>
                 </div>
@@ -107,9 +111,16 @@ async function loadServers() {
         list.innerHTML = '';
         if (servers) {
             servers.forEach(s => {
+                let statusColor = '#ccc';
+                if (s.status === 'online') statusColor = 'var(--success)';
+                if (s.status === 'offline') statusColor = 'var(--danger)';
+
                 list.innerHTML += `
                 <li>
-                    <span>${s.name} (${s.ip_address}:${s.ssh_port || 22})</span>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${statusColor};" title="${s.status}"></span>
+                        <span>${s.name} (${s.ip_address}:${s.ssh_port || 22})</span>
+                    </div>
                     <div class="actions">
                         <button class="edit-btn icon-btn" onclick="startEdit(${s.id})" style="color:var(--accent-color); margin-right:10px;"><i class="fa-solid fa-pen"></i></button>
                         <button class="delete-btn icon-btn" onclick="deleteServer(${s.id})" style="color:var(--danger);"><i class="fa-solid fa-trash"></i></button>
@@ -156,6 +167,7 @@ function resetForm() {
     document.getElementById('srv-id').value = '';
     document.getElementById('srv-name').value = '';
     document.getElementById('srv-ip').value = '';
+    document.getElementById('srv-port').value = '';
     document.getElementById('srv-user').value = '';
     document.getElementById('srv-pass').value = '';
     document.getElementById('srv-key').value = '';
@@ -191,6 +203,7 @@ document.getElementById('add-server-btn').onclick = async () => {
     const id = document.getElementById('srv-id').value;
     const name = document.getElementById('srv-name').value;
     const ip = document.getElementById('srv-ip').value;
+    const port = document.getElementById('srv-port').value || 22;
     const user = document.getElementById('srv-user').value;
 
     // Auth fields
@@ -208,6 +221,7 @@ document.getElementById('add-server-btn').onclick = async () => {
         const payload = {
             name,
             ip_address: ip,
+            ssh_port: parseInt(port),
             username: user,
             password: password,
             ssh_key_path: sshKeyPath // Empty string will imply "keep current" or "default" based on backend logic
