@@ -21,12 +21,59 @@
     <div class="container">
         <header>
             <div class="logo">
-                <i class="fa-solid fa-server"></i> Centralize
+                <img src="logo.png" alt="Centralize Logo" style="height: 50px; margin-right: 10px;"> Centralize
             </div>
-            <div class="status-indicator">
-                <span class="status-dot"></span> Live Monitoring
+            <div class="controls" style="display:flex; gap:15px; align-items:center;">
+                <div class="status-indicator">
+                    <span class="status-dot"></span> Live Monitoring
+                </div>
+                <button id="config-btn" class="icon-btn"><i class="fa-solid fa-gear"></i></button>
             </div>
         </header>
+
+        <!-- Config Modal -->
+        <div id="config-modal" class="modal">
+            <div class="modal-content glass-panel">
+                <div class="modal-header">
+                    <h2>Server Configuration</h2>
+                    <span class="close-modal">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div class="add-server-form">
+                        <h3 id="form-title">Add New Server</h3>
+                        <input type="hidden" id="srv-id"> <!-- Hidden ID for Editing -->
+                        <input type="text" id="srv-name" placeholder="Friendly Name (e.g. Prod-1)">
+                        <div style="display:flex; gap:10px;">
+                            <input type="text" id="srv-ip" placeholder="IP Address (e.g. 192.168.1.50)" style="flex:2;">
+                            <input type="number" id="srv-port" placeholder="Port (22)" style="flex:1;">
+                        </div>
+                        <input type="text" id="srv-user" placeholder="SSH Username (e.g. root)">
+
+                        <div class="auth-type-selector"
+                            style="display:flex; gap:15px; margin: 10px 0; color:var(--text-secondary); font-size:0.9rem;">
+                            <label><input type="radio" name="authType" value="key" checked> SSH Key</label>
+                            <label><input type="radio" name="authType" value="password"> Password</label>
+                        </div>
+
+                        <input type="password" id="srv-pass" placeholder="Password (Leave empty to keep current)"
+                            style="display:none;">
+                        <input type="text" id="srv-key" placeholder="Key Path (default: /root/.ssh/id_rsa)">
+
+                        <div class="form-actions" style="display:flex; gap:10px;">
+                            <button id="add-server-btn" class="primary-btn">Add Server</button>
+                            <button id="cancel-edit-btn" class="secondary-btn"
+                                style="display:none; background:transparent; border:1px solid var(--text-secondary); color:var(--text-secondary); padding:10px 20px; border-radius:8px; cursor:pointer;">Cancel</button>
+                        </div>
+                    </div>
+                    <div class="server-list">
+                        <h3>Managed Servers</h3>
+                        <ul id="server-list-ul">
+                            <!-- Injected via JS -->
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <main>
             <!-- Host Section -->

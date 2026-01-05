@@ -25,6 +25,8 @@ services:
     volumes:
       # CRITICAL: Mount the Libvirt socket from the host
       - /var/run/libvirt/libvirt-sock:/var/run/libvirt/libvirt-sock
+      # Mount SSH keys for remote connections
+      - ~/.ssh:/root/.ssh:ro
     environment:
       DB_HOST: db
       DB_PORT: 5432

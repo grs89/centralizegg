@@ -1,23 +1,37 @@
+CREATE TABLE IF NOT EXISTS kvm_servers (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    ip_address VARCHAR(255) NOT NULL,
+    ssh_port INT DEFAULT 22,
+    username VARCHAR(255) NOT NULL,
+    password VARCHAR(255), -- Optional if using SSH Key
+    ssh_key_path VARCHAR(255) DEFAULT '/root/.ssh/id_rsa',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS hosts (
     id SERIAL PRIMARY KEY,
+    server_id INT, -- Link to kvm_servers
     hostname VARCHAR(255) NOT NULL,
     cpu_model VARCHAR(255),
     cpu_cores INT,
     total_memory BIGINT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_server FOREIGN KEY(server_id) REFERENCES kvm_servers(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS vms (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     state VARCHAR(50),
-    cpu_time BIGINT, -- accummulated cpu time in nanoseconds
-    memory_usage BIGINT, -- current memory usage in bytes
+    cpu_time BIGINT,
+    memory_usage BIGINT,
     max_memory BIGINT,
-    host_id INT, -- primitive relation if we have multiple hosts (for now just one local)
+    host_id INT,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_host FOREIGN KEY(host_id) REFERENCES hosts(id)
+    CONSTRAINT fk_host FOREIGN KEY(host_id) REFERENCES hosts(id) ON DELETE CASCADE
 );
 
--- Index for faster lookups
+-- Indexes
 CREATE INDEX IF NOT EXISTS idx_vms_name ON vms(name);
+CREATE INDEX IF NOT EXISTS idx_hosts_server ON hosts(server_id);

@@ -1,92 +1,79 @@
 # Centralize
 
-[🇪🇸 Español](#español) | [🇺🇸 English](#english)
+[🇨🇴 Español](#español) | [🇺🇸 English](#english)
 
 ---
 
 <a name="español"></a>
-# 🇪🇸 Centralize
+# 🇨🇴 Centralize
 
-**Centralize** es una solución de monitoreo ligera y containerizada para máquinas virtuales basadas en KVM. Proporciona un dashboard premium en tiempo real para visualizar los recursos del host y el estado de las máquinas virtuales (VMs).
+**Centralize** es una solución de monitoreo ligera y containerizada para múltiples servidores KVM. Proporciona un dashboard premium en tiempo real para visualizar los recursos de tus hosts y el estado de las máquinas virtuales (VMs) de forma centralizada.
 
 ## 🚀 Arquitectura y Flujo de Trabajo
 
-El sistema está compuesto por tres capas principales que trabajan juntas para ofrecer monitoreo en tiempo real:
+El sistema ha evolucionado para soportar múltiples nodos remotos mediante SSH:
 
-### 1. El Colector (Backend)
-- **Tecnología**: Go (Golang)
-- **Acción**: Al iniciarse, se conecta al socket KVM del host (`/var/run/libvirt/libvirt-sock`).
+### 1. El Colector Multi-Server (Backend)
+- **Tecnología**: Go (Golang) + SSH
+- **Acción**: Itera sobre una lista de servidores configurados en la base de datos.
 - **Flujo**:
-    1.  Establece una conexión con Libvirt usando la librería `digitalocean/go-libvirt`.
-    2.  Ejecuta un bucle de recolección (cada 5 segundos).
-    3.  Obtiene estadísticas del Nodo Host (Modelo de CPU, Núcleos, Memoria).
-    4.  Itera a través de todos los Dominios (VMs) Activos e Inactivos para recopilar su estado y uso de recursos.
-    5.  "Upserts" (Inserta o Actualiza) estos datos en la base de datos PostgreSQL.
+    1.  Lee la configuración de servidores desde PostgreSQL.
+    2.  Establece un túnel SSH seguro con cada servidor remoto usando claves SSH (`/root/.ssh/id_rsa`).
+    3.  Se conecta al socket de Libvirt remoto a través de este túnel.
+    4.  Recolecta métricas del Host y de todas sus VMs.
+    5.  Guarda los datos en la base de datos central.
 
-### 2. La Capa de Persistencia (Base de Datos)
-- **Tecnología**: PostgreSQL
-- **Acción**: Almacena la última instantánea de la infraestructura.
-- **Flujo**:
-    - Recibe datos del Colector.
-    - Mantiene dos tablas principales: `hosts` y `vms`.
-    - Sirve como la única fuente de verdad para la API.
+### 2. Base de Datos (PostgreSQL)
+- **Tablas**:
+    - `kvm_servers`: Configuración de conexión (IP, Usuario, Ruta de llave).
+    - `hosts`: Métricas de cada nodo físico.
+    - `vms`: Estado y métricas de cada máquina virtual.
 
-### 3. El Dashboard (Frontend)
-- **Tecnología**: HTML/CSS/JS Vanilla (Diseño Glassmorphism)
-- **Acción**: Visualiza los datos para el usuario.
-- **Flujo**:
-    - El navegador carga los activos web estáticos.
-    - `app.js` consulta la API REST interna (`/api/host` y `/api/vms`).
-    - La interfaz actualiza dinámicamente el DOM para reflejar cambios en el estado de las VMs (Ejecutando, Pausada, Apagada) sin recargar la página.
+### 3. Dashboard y Configuración (Frontend)
+- **Visualización**: Muestra el estado de todos los servidores monitoreados.
+- **Configuración**: Nuevo menú de ajustes (tuerca ⚙️) para agregar o eliminar servidores KVM dinámicamente sin reiniciar el contenedor.
 
 ---
 
 ## 🛠️ Instalación y Uso
 
-Este proyecto está completamente Dockerizado para un despliegue fácil.
-
 ### Prerrequisitos
 - Docker y Docker Compose
-- Acceso al socket de KVM/Libvirt en la máquina host.
+- Acceso SSH a los servidores KVM remotos (usando claves públicas/privadas).
 
-### 🔌 Conectando a KVM (Importante)
-Por defecto, el contenedor espera encontrar el socket de Libvirt en `/var/run/libvirt/libvirt-sock`.
-El `docker-compose.yml` ya está preconfigurado para montar este socket desde tu máquina anfitriona:
+### Configuración de Claves SSH
+Para que Centralize se conecte a tus servidores, necesita tu clave privada SSH.
+El `docker-compose.yml` monta tu carpeta local `~/.ssh` en el contenedor:
+
 ```yaml
 volumes:
-  - /var/run/libvirt/libvirt-sock:/var/run/libvirt/libvirt-sock
+  - ~/.ssh:/root/.ssh:ro
 ```
-**Nota de Permisos**: Asegúrate de que el usuario que ejecuta Docker tenga permisos de lectura/escritura sobre este socket, o ejecuta el contenedor en modo privilegiado (no recomendado para producción, pero útil para pruebas). Si tienes problemas de permisos `permission denied`, puedes necesitar ajustar los permisos del socket en el host (`chmod 666 /var/run/libvirt/libvirt-sock`) o ejecutar `docker-compose` con `sudo`.
+*Asegúrate de que tu clave pública (`id_rsa.pub`) esté autorizada en los servidores remotos (`~/.ssh/authorized_keys`).*
 
 ### Inicio Rápido
 
-1.  **Clonar el repositorio**:
-    ```bash
-    git clone https://github.com/grs89/centralize-kvm.git
-    cd centralize-kvm
-    ```
-
-2.  **Iniciar el stack**:
+1.  **Iniciar el stack**:
     ```bash
     docker-compose up -d --build
     ```
 
-3.  **Acceder al Dashboard**:
-    Abre [http://localhost:8080](http://localhost:8080) en tu navegador web.
+2.  **Acceder al Dashboard**:
+    Abre [http://localhost:8080](http://localhost:8080).
 
-### Configuración
-Puedes modificar las variables de entorno en `docker-compose.yml`:
-- `LIBVIRT_SOCK`: Ruta al socket KVM (Por defecto: `/var/run/libvirt/libvirt-sock`)
-- `DB_USER` / `DB_PASS`: Credenciales de la base de datos.
-- `DB_NAME`: Nombre de la base de datos.
+3.  **Agregar Servidores**:
+    - Haz clic en el icono de configuración (⚙️).
+    - Ingresas el **Nombre**, **IP**, y **Usuario** (ej. `root`).
+    - Selecciona el tipo de autenticación: **Llave SSH** o **Contraseña**.
+    - El sistema comenzará a monitorear automáticamente.
 
 ---
 
 ## 🎨 Características
-- **UI Moderna**: Modo oscuro con estética "Glassmorphism" y fondos animados.
-- **Tiempo Real**: Actualización automática de datos.
-- **Cero Dependencias**: El binario se compila estáticamente; el contenedor no necesita nada más que acceso al socket.
-- **Resiliente**: Se reconecta automáticamente a la base de datos y maneja interrupciones de Libvirt con elegancia.
+- **Multi-Server**: Monitorea N servidores KVM desde un solo lugar.
+- **UI Moderna**: Modo oscuro "Glassmorphism" con animaciones.
+- **Configuración Web**: Gestiona tus conexiones desde el navegador.
+- **Seguro**: Todas las conexiones son encriptadas vía SSH.
 
 ---
 ---
@@ -94,83 +81,70 @@ Puedes modificar las variables de entorno en `docker-compose.yml`:
 <a name="english"></a>
 # 🇺🇸 Centralize
 
-**Centralize** is a lightweight, containerized monitoring solution for KVM-based virtual machines. It provides a premium, real-time dashboard to visualize host resources and VM states.
+**Centralize** is a lightweight, containerized monitoring solution for multiple KVM servers. It provides a premium, real-time dashboard to visualize host resources and VM states from a centralized location.
 
 ## 🚀 Architecture & Workflow
 
-The system is composed of three main layers that work together to deliver real-time monitoring:
+The system supports multiple remote nodes via SSH tunnels:
 
-### 1. The Collector (Backend)
-- **Technology**: Go (Golang)
-- **Action**: On startup, it connects to the host's KVM socket (`/var/run/libvirt/libvirt-sock`).
+### 1. Multi-Server Collector (Backend)
+- **Technology**: Go (Golang) + SSH
+- **Action**: Iterates over a list of servers configured in the database.
 - **Workflow**:
-    1.  Establishes a connection to Libvirt using the `digitalocean/go-libvirt` library.
-    2.  Runs a ticker loop (every 5 seconds).
-    3.  Fetches Host Node statistics (CPU Model, Cores, Memory).
-    4.  Iterates through all Active and Inactive Domains (VMs) to gather their state and resource usage.
-    5.  "Upserts" (Insert or Update) this data into the PostgreSQL database.
+    1.  Reads server configuration from PostgreSQL.
+    2.  Establishes a secure SSH tunnel to each remote server using SSH keys (`/root/.ssh/id_rsa`).
+    3.  Connects to the remote Libvirt socket through this tunnel.
+    4.  Collects metrics from the Host and all its VMs.
+    5.  Persists date to the central database.
 
-### 2. The Persistence Layer (Database)
-- **Technology**: PostgreSQL
-- **Action**: Stores the latest snapshot of the infrastructure.
-- **Workflow**:
-    - Receives data from the Collector.
-    - Maintains two main tables: `hosts` and `vms`.
-    - Serves as the single source of truth for the API.
+### 2. Database (PostgreSQL)
+- **Tables**:
+    - `kvm_servers`: Connection details (IP, Username, Key Path).
+    - `hosts`: Physical node metrics.
+    - `vms`: Virtual Machine state and metrics.
 
-### 3. The Dashboard (Frontend)
-- **Technology**: Vanilla HTML/CSS/JS (Glassmorphism Design)
-- **Action**: Visualizes the data for the user.
-- **Workflow**:
-    - The browser loads the static web assets.
-    - `app.js` polls the internal REST API (`/api/host` and `/api/vms`).
-    - The UI dynamically updates the DOM to reflect changes in VM state (Running, Paused, Shutdown) without page reloads.
+### 3. Dashboard & Config (Frontend)
+- **Visualization**: Displays status for all monitored servers.
+- **Configuration**: New Settings menu (gear icon ⚙️) to dynamically add or remove KVM servers without restarting the container.
 
 ---
 
 ## 🛠️ Installation & Usage
 
-This project is fully Dockerized for easy deployment.
-
 ### Prerequisites
 - Docker & Docker Compose
-- Access to the KVM/Libvirt socket on the host machine.
+- SSH access to remote KVM servers (using public/private keys).
 
-### 🔌 Connecting to KVM (Important)
-By default, the container expects to find the Libvirt socket at `/var/run/libvirt/libvirt-sock`.
-The `docker-compose.yml` is pre-configured to mount this socket from your host machine:
+### SSH Key Configuration
+For Centralize to connect to your servers, it needs your private SSH key.
+The `docker-compose.yml` mounts your local `~/.ssh` folder into the container:
+
 ```yaml
 volumes:
-  - /var/run/libvirt/libvirt-sock:/var/run/libvirt/libvirt-sock
+  - ~/.ssh:/root/.ssh:ro
 ```
-**Permissions Note**: Ensure the user running Docker has read/write permissions on this socket. If you encounter `permission denied` errors, you might need to adjust the socket permissions on the host (`chmod 666 /var/run/libvirt/libvirt-sock`) or run `docker-compose` with `sudo`.
+*Ensure your public key (`id_rsa.pub`) is authorized on the remote servers (`~/.ssh/authorized_keys`).*
 
 ### Quick Start
 
-1.  **Clone the repository**:
-    ```bash
-    git clone https://github.com/grs89/centralize-kvm.git
-    cd centralize-kvm
-    ```
-
-2.  **Start the stack**:
+1.  **Start the stack**:
     ```bash
     docker-compose up -d --build
     ```
 
-3.  **Access the Dashboard**:
-    Open [http://localhost:8080](http://localhost:8080) in your web browser.
+2.  **Access Dashboard**:
+    Open [http://localhost:8080](http://localhost:8080).
 
-### Configuration
-You can modify environment variables in `docker-compose.yml`:
-- `LIBVIRT_SOCK`: Path to the KVM socket (Default: `/var/run/libvirt/libvirt-sock`)
-- `DB_USER` / `DB_PASS`: Database credentials.
-- `DB_NAME`: Database name.
+3.  **Add Servers**:
+    - Click the Settings icon (⚙️).
+    - Enter the **Name**, **IP**, and **Username** (e.g., `root`).
+    - Select Authentication Type: **SSH Key** or **Password**.
+    - The system will start monitoring automatically.
 
 ---
 
 ## 🎨 Features
-- **Modern UI**: Dark mode with "Glassmorphism" aesthetics and animated backgrounds.
-- **Real-Time**: Automatic refreshing of data.
-- **Zero-Dependency**: The binary is statically compiled; the container needs nothing but the socket access.
-- **Resilient**: Auto-reconnects to Database and handles Libvirt interruptions gracefully.
+- **Multi-Server**: Monitor N KVM servers from one place.
+- **Modern UI**: Dark mode with "Glassmorphism" aesthetics.
+- **Web Config**: Manage connections directly from the browser.
+- **Secure**: All connections are encrypted via SSH.

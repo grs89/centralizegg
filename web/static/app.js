@@ -1,13 +1,18 @@
-const API_HOST = '/api/host';
+const API_HOSTS = '/api/hosts';
 const API_VMS = '/api/vms';
+const API_CONFIG_SERVERS = '/api/config/servers';
 
-async function fetchHost() {
+// Global server list to access data easily
+let currentServers = [];
+
+async function fetchHosts() {
     try {
-        const response = await fetch(API_HOST);
-        if (!response.ok) throw new Error('Failed to fetch host');
-        const host = await response.json();
-        
-        if (host) {
+        const response = await fetch(API_HOSTS);
+        if (!response.ok) throw new Error('Failed to fetch hosts');
+        const hosts = await response.json();
+
+        if (hosts && hosts.length > 0) {
+            const host = hosts[0];
             document.getElementById('host-name').textContent = host.hostname || 'Localhost';
             document.getElementById('host-mem').textContent = (host.total_memory / (1024 * 1024 * 1024)).toFixed(2) + " GB";
             document.getElementById('host-cores').textContent = host.cpu_cores;
@@ -23,29 +28,18 @@ async function fetchVMs() {
         const response = await fetch(API_VMS);
         if (!response.ok) throw new Error('Failed to fetch VMs');
         const vms = await response.json();
-        
+
         const grid = document.getElementById('vm-grid');
-        
+
         if (!vms || vms.length === 0) {
             grid.innerHTML = '<div class="loading-state">No VMs found or collector is initializing...</div>';
             return;
         }
 
-        // Render VMs
-        // Ideally we diff the DOM, but for simplicity we re-render neatly using current state
-        // To prevent flickering, we could update existing elements, but for this demo a wipe-and-redraw or a smart mapping is needed.
-        // Let's do a simple wipe for now, the browser handles it fast enough for a small number of VMs, or better: map IDs.
-        
-        // Simple Render
         grid.innerHTML = vms.map(vm => {
             const memGB = (vm.max_memory / (1024 * 1024 * 1024)).toFixed(1);
             const memUsedGB = (vm.memory_usage / (1024 * 1024 * 1024)).toFixed(1);
             const memPercent = vm.max_memory > 0 ? (vm.memory_usage / vm.max_memory) * 100 : 0;
-            
-            // Generate a random-ish CPU usage for visualization if we don't have historical delta calculation in frontend yet
-            // The backend sends accumulated cpu time, so to show % we need 2 points in time. 
-            // For this version 1.0, we will just show the accumulated time as a raw stat or a "Active" indicator.
-            // Let's simple show CPU Time in seconds.
             const cpuSeconds = (vm.cpu_time / 1e9).toFixed(1);
 
             return `
@@ -54,6 +48,9 @@ async function fetchVMs() {
                     <div class="vm-name"><i class="fa-solid fa-server"></i> ${vm.name}</div>
                     <div class="vm-state">${vm.state}</div>
                 </div>
+                <!-- Small Host ID Badge -->
+                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:10px;">Host ID: ${vm.host_id}</div>
+                
                 <div class="vm-metrics">
                     <div class="metric">
                         <div class="metric-header">
@@ -79,7 +76,6 @@ async function fetchVMs() {
             `;
         }).join('');
 
-        // Update timestamp
         const now = new Date();
         document.getElementById('last-updated').textContent = now.toLocaleTimeString();
 
@@ -89,8 +85,155 @@ async function fetchVMs() {
     }
 }
 
+// Config Modal Logic
+const modal = document.getElementById('config-modal');
+const btn = document.getElementById('config-btn');
+const close = document.getElementsByClassName('close-modal')[0];
+
+btn.onclick = () => {
+    modal.style.display = 'block';
+    loadServers();
+    resetForm();
+}
+close.onclick = () => modal.style.display = 'none';
+window.onclick = (e) => { if (e.target == modal) modal.style.display = 'none'; }
+
+async function loadServers() {
+    const res = await fetch(API_CONFIG_SERVERS);
+    if (res.ok) {
+        const servers = await res.json();
+        currentServers = servers || [];
+        const list = document.getElementById('server-list-ul');
+        list.innerHTML = '';
+        if (servers) {
+            servers.forEach(s => {
+                list.innerHTML += `
+                <li>
+                    <span>${s.name} (${s.ip_address}:${s.ssh_port || 22})</span>
+                    <div class="actions">
+                        <button class="edit-btn icon-btn" onclick="startEdit(${s.id})" style="color:var(--accent-color); margin-right:10px;"><i class="fa-solid fa-pen"></i></button>
+                        <button class="delete-btn icon-btn" onclick="deleteServer(${s.id})" style="color:var(--danger);"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                </li>`;
+            });
+        }
+    }
+}
+
+async function deleteServer(id) {
+    if (confirm('Delete this server?')) {
+        await fetch(API_CONFIG_SERVERS + '/' + id, { method: 'DELETE' });
+        loadServers();
+        resetForm(); // if we were editing it
+    }
+}
+
+// Edit Logic
+window.startEdit = (id) => {
+    const s = currentServers.find(srv => srv.id === id);
+    if (!s) return;
+
+    document.getElementById('srv-id').value = s.id;
+    document.getElementById('srv-name').value = s.name;
+    document.getElementById('srv-ip').value = s.ip_address;
+    document.getElementById('srv-user').value = s.username;
+
+    // Auth type check. If we have key path but no password -> Key. 
+    // Actually API does not return password. But usually key path is always there or default.
+    // Let's assume Key by default unless user sets password? 
+    // Or just default to Key and user can switch.
+    document.querySelector('input[name="authType"][value="key"]').click();
+    document.getElementById('srv-key').value = s.ssh_key_path;
+
+    // UI Updates
+    document.getElementById('form-title').textContent = "Edit Server";
+    document.getElementById('add-server-btn').textContent = "Update Server";
+    document.getElementById('cancel-edit-btn').style.display = 'block';
+    document.getElementById('srv-pass').placeholder = "Password (Leave empty to keep current)";
+}
+
+function resetForm() {
+    document.getElementById('srv-id').value = '';
+    document.getElementById('srv-name').value = '';
+    document.getElementById('srv-ip').value = '';
+    document.getElementById('srv-user').value = '';
+    document.getElementById('srv-pass').value = '';
+    document.getElementById('srv-key').value = '';
+
+    document.getElementById('form-title').textContent = "Add New Server";
+    document.getElementById('add-server-btn').textContent = "Add Server";
+    document.getElementById('cancel-edit-btn').style.display = 'none';
+    document.getElementById('srv-pass').placeholder = "Password";
+
+    document.querySelector('input[name="authType"][value="key"]').click();
+}
+
+document.getElementById('cancel-edit-btn').onclick = resetForm;
+
+// Auth Toggle Logic
+const authRadios = document.getElementsByName('authType');
+const passInput = document.getElementById('srv-pass');
+const keyInput = document.getElementById('srv-key');
+
+authRadios.forEach(radio => {
+    radio.onchange = (e) => {
+        if (e.target.value === 'password') {
+            passInput.style.display = 'block';
+            keyInput.style.display = 'none';
+        } else {
+            passInput.style.display = 'none';
+            keyInput.style.display = 'block';
+        }
+    }
+});
+
+document.getElementById('add-server-btn').onclick = async () => {
+    const id = document.getElementById('srv-id').value;
+    const name = document.getElementById('srv-name').value;
+    const ip = document.getElementById('srv-ip').value;
+    const user = document.getElementById('srv-user').value;
+
+    // Auth fields
+    const authType = document.querySelector('input[name="authType"]:checked').value;
+    let password = "";
+    let sshKeyPath = "";
+
+    if (authType === 'password') {
+        password = passInput.value;
+    } else {
+        sshKeyPath = keyInput.value;
+    }
+
+    if (name && ip && user) {
+        const payload = {
+            name,
+            ip_address: ip,
+            username: user,
+            password: password,
+            ssh_key_path: sshKeyPath // Empty string will imply "keep current" or "default" based on backend logic
+        };
+
+        if (id) {
+            // Update
+            await fetch(API_CONFIG_SERVERS + '/' + id, {
+                method: 'PUT',
+                body: JSON.stringify(payload)
+            });
+        } else {
+            // Create
+            await fetch(API_CONFIG_SERVERS, {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+        }
+
+        resetForm();
+        loadServers();
+    }
+}
+
 // Init
-fetchHost();
+fetchHosts();
 fetchVMs();
 
 // Auto-refresh

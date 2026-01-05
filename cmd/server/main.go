@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -20,10 +21,6 @@ func main() {
 	dbUser := os.Getenv("DB_USER")
 	dbPass := os.Getenv("DB_PASS")
 	dbName := os.Getenv("DB_NAME")
-	libvirtSock := os.Getenv("LIBVIRT_SOCK")
-	if libvirtSock == "" {
-		libvirtSock = "/var/run/libvirt/libvirt-sock"
-	}
 
 	connStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", dbUser, dbPass, dbHost, dbPort, dbName)
 
@@ -43,26 +40,21 @@ func main() {
 	}
 	log.Println("Connected to Database")
 
-	// Initialize Collector
-	col, err := collector.NewCollector(libvirtSock, db)
-	if err != nil {
-		log.Printf("Warning: Could not connect to Libvirt: %v. Running in View-Only mode.", err)
-	} else {
-		log.Println("Connected to Libvirt, starting collector...")
-		go col.Start(5 * time.Second)
-	}
+	// Initialize Multi-Collector
+	col := collector.NewMultiCollector(db)
+	go col.Start(10 * time.Second) // Check every 10 seconds
 
 	// Router
 	r := mux.NewRouter()
 
 	// API Handlers
-	r.HandleFunc("/api/host", func(w http.ResponseWriter, r *http.Request) {
-		host, err := db.GetHost()
+	r.HandleFunc("/api/hosts", func(w http.ResponseWriter, r *http.Request) {
+		hosts, err := db.GetHosts()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		json.NewEncoder(w).Encode(host)
+		json.NewEncoder(w).Encode(hosts)
 	}).Methods("GET")
 
 	r.HandleFunc("/api/vms", func(w http.ResponseWriter, r *http.Request) {
@@ -73,6 +65,77 @@ func main() {
 		}
 		json.NewEncoder(w).Encode(vms)
 	}).Methods("GET")
+
+	// Config API
+	r.HandleFunc("/api/config/servers", func(w http.ResponseWriter, r *http.Request) {
+		servers, err := db.GetServers()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(servers)
+	}).Methods("GET")
+
+	r.HandleFunc("/api/config/servers", func(w http.ResponseWriter, r *http.Request) {
+		var s storage.KVMServer
+		if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		// Default Key Path if empty
+		if s.SSHKeyPath == "" {
+			s.SSHKeyPath = "/root/.ssh/id_rsa"
+		}
+		id, err := db.AddServer(s)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		s.ID = id
+		json.NewEncoder(w).Encode(s)
+	}).Methods("POST")
+
+	r.HandleFunc("/api/config/servers/{id}", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		id, err := strconv.ParseInt(vars["id"], 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid ID", http.StatusBadRequest)
+			return
+		}
+		var s storage.KVMServer
+		if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		s.ID = id
+
+		// If SSHKeyPath is empty, set default, unless we want to keep existing?
+		// The UI should probably send the default if it renders it.
+		// Let's stick to simple logic: if empty, default.
+		if s.SSHKeyPath == "" {
+			s.SSHKeyPath = "/root/.ssh/id_rsa"
+		}
+
+		if err := db.UpdateServer(s); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}).Methods("PUT")
+
+	r.HandleFunc("/api/config/servers/{id}", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		id, err := strconv.ParseInt(vars["id"], 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid ID", http.StatusBadRequest)
+			return
+		}
+		if err := db.DeleteServer(id); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}).Methods("DELETE")
 
 	// Static Files
 	r.PathPrefix("/").Handler(http.FileServer(http.Dir("./web/static/")))
