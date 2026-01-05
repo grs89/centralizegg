@@ -4,6 +4,11 @@
   <img src="web/static/logo.png" alt="Centralizegg Logo" width="120">
 </div>
 
+<div align="center">
+  <img src="image/1.png" alt="Centralizegg Dashboard" width="800">
+</div>
+
+
  [🇨🇴 Español](#español) | [🇺🇸 English](#english)
 
 <a name="español"></a>
