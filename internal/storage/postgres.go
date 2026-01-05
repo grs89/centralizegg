@@ -3,7 +3,6 @@ package storage
 import (
 	"database/sql"
 	"fmt"
-	"log"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -55,11 +54,11 @@ func (d *DB) UpsertHost(h Host) (int64, error) {
 		SET cpu_model = EXCLUDED.cpu_model, cpu_cores = EXCLUDED.cpu_cores, total_memory = EXCLUDED.total_memory
 		RETURNING id`,
 		h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory).Scan(&id)
-	
-	// Since we don't have a unique constraint on hostname in the simple schema (my bad, I should have added UNIQUE(hostname)), 
+
+	// Since we don't have a unique constraint on hostname in the simple schema (my bad, I should have added UNIQUE(hostname)),
 	// for now let's just check if it exists or insert.
 	// Actually, let's fix the logic: check first.
-	
+
 	err = d.Conn.QueryRow("SELECT id FROM hosts WHERE hostname = $1", h.Hostname).Scan(&id)
 	if err == sql.ErrNoRows {
 		err = d.Conn.QueryRow(`
@@ -71,7 +70,7 @@ func (d *DB) UpsertHost(h Host) (int64, error) {
 		_, err = d.Conn.Exec(`UPDATE hosts SET cpu_model=$1, cpu_cores=$2, total_memory=$3 WHERE id=$4`,
 			h.CPUModel, h.CPUCores, h.TotalMemory, id)
 	}
-	
+
 	return id, err
 }
 
@@ -79,7 +78,7 @@ func (d *DB) UpsertVM(vm VM) error {
 	// Check if VM exists by Name and HostID
 	var id int64
 	err := d.Conn.QueryRow("SELECT id FROM vms WHERE name = $1 AND host_id = $2", vm.Name, vm.HostID).Scan(&id)
-	
+
 	if err == sql.ErrNoRows {
 		_, err = d.Conn.Exec(`
 			INSERT INTO vms (name, state, cpu_time, memory_usage, max_memory, host_id, updated_at)

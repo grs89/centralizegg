@@ -50,7 +50,7 @@ func (c *Collector) CollectAndSave() error {
 		// Save Host
 		h := storage.Host{
 			Hostname:    c.Hostname,
-			CPUModel:    string(model[:]), // Simple char array conversion might need trim
+			CPUModel:    int8ToString(model[:]), // Simple char array conversion
 			CPUCores:    int(cpus),
 			TotalMemory: uint64(memory) * 1024, // kB to bytes
 		}
@@ -70,14 +70,14 @@ func (c *Collector) CollectAndSave() error {
 		for _, dom := range domains {
 			// Get Stats
 			// Using DomainGetInfo for basic stats. For more detailed bulk stats, DomainListGetStats is better but sticking to simple for now.
-			info, err := c.LibvirtConn.DomainGetInfo(dom)
+			state, maxMem, memory, _, cpuTime, err := c.LibvirtConn.DomainGetInfo(dom)
 			if err != nil {
 				log.Printf("Failed to get info for domain %s: %v", dom.Name, err)
 				continue
 			}
 
 			stateStr := "Unknown"
-			switch info.State {
+			switch libvirt.DomainState(state) {
 			case libvirt.DomainRunning:
 				stateStr = "Running"
 			case libvirt.DomainBlocked:
@@ -97,9 +97,9 @@ func (c *Collector) CollectAndSave() error {
 			vm := storage.VM{
 				Name:        dom.Name,
 				State:       stateStr,
-				CPUTime:     info.CpuTime,
-				MemoryUsage: info.Memory * 1024, // kB to bytes
-				MaxMemory:   info.MaxMem * 1024,
+				CPUTime:     cpuTime,
+				MemoryUsage: memory * 1024, // kB to bytes
+				MaxMemory:   maxMem * 1024,
 				HostID:      hostID,
 			}
 
@@ -125,4 +125,15 @@ func (c *Collector) Start(interval time.Duration) {
 			log.Printf("Collection failed: %v", err)
 		}
 	}
+}
+
+func int8ToString(bs []int8) string {
+	b := make([]byte, len(bs))
+	for i, v := range bs {
+		if v == 0 {
+			return string(b[:i])
+		}
+		b[i] = byte(v)
+	}
+	return string(b)
 }
