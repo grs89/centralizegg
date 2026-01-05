@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: centralize
+      POSTGRES_PASSWORD: centralize_secret
+      POSTGRES_DB: centralize_db
+    volumes:
+      - ./deploy/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U centralize" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    restart: always
+    ports:
+      - "8080:8080"
+    volumes:
+      # CRITICAL: Mount the Libvirt socket from the host
+      - /var/run/libvirt/libvirt-sock:/var/run/libvirt/libvirt-sock
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: centralize
+      DB_PASS: centralize_secret
+      DB_NAME: centralize_db
+      LIBVIRT_SOCK: /var/run/libvirt/libvirt-sock
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
