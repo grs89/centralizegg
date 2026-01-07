@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: centralizegg_secret
       POSTGRES_DB: centralizegg_db
     volumes:
-      - ./deploy/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./deploy_centralizegg/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
       - ./postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U centralizegg -d centralizegg_db" ]

@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/grs/centralizegg/internal/storage"
-	"github.com/grs/centralizegg/internal/virtualization"
+	"github.com/grs/centralizegg/backend_internal_centralizegg/data_centralizegg"
+	"github.com/grs/centralizegg/backend_internal_centralizegg/virtualization"
 )
 
 func main() {
@@ -25,10 +25,10 @@ func main() {
 	connStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", dbUser, dbPass, dbHost, dbPort, dbName)
 
 	// Wait for DB to be ready (naive retry)
-	var db *storage.DB
+	var db *data_centralizegg.DB
 	var err error
 	for i := 0; i < 10; i++ {
-		db, err = storage.NewPostgresDB(connStr)
+		db, err = data_centralizegg.NewPostgresDB(connStr)
 		if err == nil {
 			break
 		}
@@ -85,7 +85,7 @@ func main() {
 	r.HandleFunc("/api/config/servers", func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("%s %s", r.Method, r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
-		var s storage.KVMServer
+		var s data_centralizegg.KVMServer
 		if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -111,7 +111,7 @@ func main() {
 			http.Error(w, "Invalid ID", http.StatusBadRequest)
 			return
 		}
-		var s storage.KVMServer
+		var s data_centralizegg.KVMServer
 		if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -147,7 +147,7 @@ func main() {
 	}).Methods("DELETE")
 
 	// Static Files
-	r.PathPrefix("/").Handler(http.FileServer(http.Dir("./web/static/")))
+	r.PathPrefix("/").Handler(http.FileServer(http.Dir("./web_centralizegg/static/")))
 
 	// Start Server
 	log.Println("Server running on :8080")

@@ -9,15 +9,15 @@ import (
 
 	"github.com/beevik/etree"
 	"github.com/digitalocean/go-libvirt"
-	"github.com/grs/centralizegg/internal/storage"
+	"github.com/grs/centralizegg/backend_internal_centralizegg/data_centralizegg"
 	"golang.org/x/crypto/ssh"
 )
 
 type MultiCollector struct {
-	DB *storage.DB
+	DB *data_centralizegg.DB
 }
 
-func NewMultiCollector(db *storage.DB) *MultiCollector {
+func NewMultiCollector(db *data_centralizegg.DB) *MultiCollector {
 	return &MultiCollector{DB: db}
 }
 
@@ -38,7 +38,8 @@ func (mc *MultiCollector) CollectAll() {
 	}
 }
 
-func (mc *MultiCollector) collectOne(s storage.KVMServer) error {
+func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
+
 	var authMethods []ssh.AuthMethod
 
 	if s.Password != "" {
@@ -102,7 +103,7 @@ func (mc *MultiCollector) collectOne(s storage.KVMServer) error {
 		return fmt.Errorf("node info: %w", err)
 	}
 
-	h := storage.Host{
+	h := data_centralizegg.Host{
 		ServerID:    s.ID,
 		Hostname:    hostName,
 		CPUModel:    int8ToString(model[:]),
@@ -174,7 +175,7 @@ func (mc *MultiCollector) collectOne(s storage.KVMServer) error {
 			}
 		}
 
-		vm := storage.VM{
+		vm := data_centralizegg.VM{
 			Name:        dom.Name,
 			State:       stateStr,
 			VCPU:        int(vcpu),

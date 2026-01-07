@@ -1,4 +1,4 @@
-package storage
+package data_centralizegg
 
 import (
 	"database/sql"

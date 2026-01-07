@@ -1,11 +1,11 @@
 # Centralizegg
 
 <div align="center">
-  <img src="web/static/logo.png" alt="Centralizegg Logo" width="120">
+  <img src="web_centralizegg/static/logo.png" alt="Centralizegg Logo" width="120">
 </div>
 
 <div align="center">
-  <img src="image/1.png" alt="Centralizegg Dashboard" width="800">
+  <img src="web_centralizegg/static/image/1.png" alt="Centralizegg Dashboard" width="800">
 </div>
 
 
