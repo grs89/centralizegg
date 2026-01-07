@@ -20,9 +20,10 @@
 
     <div class="container">
         <header>
-            <div class="logo">
+            <div class="logo" onclick="window.goHome()" style="cursor: pointer;">
                 <img src="logo.png" alt="Centralizegg Logo" style="height: 50px; margin-right: 10px;"> Centralizegg
             </div>
+
 
 
             <div class="controls" style="display:flex; gap:15px; align-items:center;">
@@ -60,9 +61,9 @@
                             style="font-size: 0.8rem; margin-left: 5px;"></i>
                     </button>
                     <div class="dropdown-content glass-panel">
-                        <a href="javascript:void(0)" onclick="switchTool('kvm')"><i class="fa-solid fa-microchip"></i>
-                            KVM</a>
-                        <a href="javascript:void(0)" onclick="switchTool('proxmox')"><i class="fa-solid fa-server"></i>
+                        <a href="javascript:void(0)" data-tool="kvm"><i class="fa-solid fa-microchip"></i> KVM</a>
+
+                        <a href="javascript:void(0)" data-tool="proxmox"><i class="fa-solid fa-server"></i>
                             Proxmox</a>
                     </div>
                 </div>
@@ -74,8 +75,8 @@
                             style="font-size: 0.8rem; margin-left: 5px;"></i>
                     </button>
                     <div class="dropdown-content glass-panel">
-                        <a href="javascript:void(0)" onclick="switchTool('nas')"><i class="fa-solid fa-hdd"></i> NAS</a>
-                        <a href="javascript:void(0)" onclick="switchTool('ceph')"><i class="fa-solid fa-cubes"></i>
+                        <a href="javascript:void(0)" data-tool="nas"><i class="fa-solid fa-hdd"></i> NAS</a>
+                        <a href="javascript:void(0)" data-tool="ceph"><i class="fa-solid fa-cubes"></i>
                             Ceph</a>
                     </div>
                 </div>
@@ -88,10 +89,10 @@
                             style="font-size: 0.8rem; margin-left: 5px;"></i>
                     </button>
                     <div class="dropdown-content glass-panel">
-                        <a href="javascript:void(0)" onclick="switchTool('docker')"><i class="fa-brands fa-docker"></i>
+                        <a href="javascript:void(0)" data-tool="docker"><i class="fa-brands fa-docker"></i>
                             Docker</a>
-                        <a href="javascript:void(0)" onclick="switchTool('podman')"><i
-                                class="fa-solid fa-box-archive"></i> Podman</a>
+                        <a href="javascript:void(0)" data-tool="podman"><i class="fa-solid fa-box-archive"></i>
+                            Podman</a>
                     </div>
                 </div>
 
@@ -102,11 +103,11 @@
                             style="font-size: 0.8rem; margin-left: 5px;"></i>
                     </button>
                     <div class="dropdown-content glass-panel">
-                        <a href="javascript:void(0)" onclick="switchTool('web_services')"><i
-                                class="fa-solid fa-globe"></i> Servicios
+                        <a href="javascript:void(0)" data-tool="web_services"><i class="fa-solid fa-globe"></i>
+                            Servicios
                             web</a>
-                        <a href="javascript:void(0)" onclick="switchTool('db_services')"><i
-                                class="fa-solid fa-database"></i> Servicios
+                        <a href="javascript:void(0)" data-tool="db_services"><i class="fa-solid fa-database"></i>
+                            Servicios
                             de DB</a>
                     </div>
                 </div>
@@ -118,7 +119,7 @@
                             style="font-size: 0.8rem; margin-left: 5px;"></i>
                     </button>
                     <div class="dropdown-content glass-panel">
-                        <a href="javascript:void(0)" onclick="switchTool('pfsense')"><i class="fa-solid fa-lock"></i>
+                        <a href="javascript:void(0)" data-tool="pfsense"><i class="fa-solid fa-lock"></i>
                             PFsense</a>
                     </div>
                 </div>
@@ -130,10 +131,10 @@
                             style="font-size: 0.8rem; margin-left: 5px;"></i>
                     </button>
                     <div class="dropdown-content glass-panel">
-                        <a href="javascript:void(0)" onclick="switchTool('log_web')"><i class="fa-solid fa-code"></i>
+                        <a href="javascript:void(0)" data-tool="log_web"><i class="fa-solid fa-code"></i>
                             Log servicios
                             web</a>
-                        <a href="javascript:void(0)" onclick="switchTool('log_db')"><i class="fa-solid fa-database"></i>
+                        <a href="javascript:void(0)" data-tool="log_db"><i class="fa-solid fa-database"></i>
                             Servicios db</a>
                     </div>
                 </div>
@@ -260,7 +261,10 @@
 
     </div>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=1.0.3"></script>
+
+
+
 </body>
 
 </html>

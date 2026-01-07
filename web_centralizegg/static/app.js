@@ -90,61 +90,110 @@ const tools = {
 
 
 
-const switchTool = function (toolKey) {
-    console.log('Switching to tool:', toolKey);
+// Tool switcher logic
+function switchTool(toolKey) {
+    console.log('%c[DEBUG] switchTool triggered for:', 'color: #38bdf8; font-weight: bold', toolKey);
+
     const tool = tools[toolKey];
     if (!tool) {
-        console.error('Tool not found:', toolKey);
+        console.warn('[DEBUG] Tool configuration not found for key:', toolKey);
         return;
     }
 
     currentTool = toolKey;
 
-    // Update Category Button
-    const categoryBtn = document.getElementById(tool.categoryBtnId);
-    if (categoryBtn) {
-        categoryBtn.innerHTML = `
-            <i class="${tool.icon}"></i> ${tool.name} <i class="fa-solid fa-chevron-down" style="font-size: 0.8rem; margin-left: 5px;"></i>
-        `;
+    // Update Category Button Identity
+    try {
+        const categoryBtn = document.getElementById(tool.categoryBtnId);
+        if (categoryBtn) {
+            categoryBtn.innerHTML = `
+                <i class="${tool.icon}"></i> ${tool.name} <i class="fa-solid fa-chevron-down" style="font-size: 0.8rem; margin-left: 5px;"></i>
+            `;
+            console.log('[DEBUG] Category button updated:', tool.categoryBtnId);
+        }
+    } catch (e) {
+        console.error('[DEBUG] Failed to update category button:', e);
     }
 
-    // Hide Welcome Screen
-    const welcome = document.getElementById('welcome-screen');
-    if (welcome) welcome.classList.add('hidden');
+    // Comprehensive visibility management
+    const welcomeScreen = document.getElementById('welcome-screen');
+    const virtTool = document.getElementById('virtualization-tool');
+    const containerTool = document.getElementById('container-scanner-tool');
 
-    // Toggle Tool Sections
-    const sections = {
-        'kvm': 'virtualization-tool',
-        'default': 'container-scanner-tool'
-    };
+    if (welcomeScreen) welcomeScreen.style.display = 'none'; // Force hide
 
-    const targetId = (toolKey === 'kvm') ? 'virtualization-tool' : 'container-scanner-tool';
-
-    document.getElementById('virtualization-tool').classList.toggle('hidden', targetId !== 'virtualization-tool');
-    document.getElementById('container-scanner-tool').classList.toggle('hidden', targetId !== 'container-scanner-tool');
-
-    // Update Placeholder for non-KVM tools
-    if (targetId === 'container-scanner-tool') {
-        const scanner = document.getElementById('container-scanner-tool');
-        const icon = scanner.querySelector('.scanner-section i');
-        const title = scanner.querySelector('h2');
-        const desc = scanner.querySelector('p');
-
-        if (icon) icon.className = tool.icon;
-        if (title) title.textContent = `${tool.name} Management`;
-        if (desc) desc.textContent = `Gestión completa de ${tool.name} próximamente.`;
+    if (virtTool) {
+        if (toolKey === 'kvm') {
+            virtTool.classList.remove('hidden');
+            console.log('[DEBUG] Showing virtualization-tool');
+        } else {
+            virtTool.classList.add('hidden');
+        }
     }
 
-    // UI State for Config
+    if (containerTool) {
+        if (toolKey !== 'kvm') {
+            containerTool.classList.remove('hidden');
+            console.log('[DEBUG] Showing container-scanner-tool');
+
+            // Update placeholder content
+            const icon = containerTool.querySelector('.scanner-section i');
+            const title = containerTool.querySelector('h2');
+            const desc = containerTool.querySelector('p');
+            if (icon) icon.className = tool.icon;
+            if (title) title.textContent = `${tool.name} Management`;
+            if (desc) desc.textContent = `Gestión completa de ${tool.name} próximamente.`;
+        } else {
+            containerTool.classList.add('hidden');
+        }
+    }
+
+    // Update Config Button Visibility
     const configBtn = document.getElementById('config-btn');
-    if (configBtn) configBtn.style.display = (toolKey === 'kvm') ? 'block' : 'none';
+    if (configBtn) {
+        configBtn.style.display = (toolKey === 'kvm') ? 'block' : 'none';
+    }
 
+    // Trigger data fetch for KVM
     if (toolKey === 'kvm') {
+        console.log('[DEBUG] Refreshing KVM data...');
         refreshAll();
     }
-};
+}
 
+// Global click handler (Event Delegation)
+document.addEventListener('click', (e) => {
+    const toolLink = e.target.closest('[data-tool]');
+    if (toolLink) {
+        e.preventDefault();
+        e.stopPropagation();
+        const toolKey = toolLink.getAttribute('data-tool');
+        console.log('[DEBUG] Valid tool click detected:', toolKey);
+        switchTool(toolKey);
+    }
+}, true); // Navigation to home (welcome screen)
+function goHome() {
+    console.log('[DEBUG] Navigating to home screen');
+    currentTool = null;
+
+    // Reset visibility
+    const welcomeScreen = document.getElementById('welcome-screen');
+    const virtTool = document.getElementById('virtualization-tool');
+    const containerTool = document.getElementById('container-scanner-tool');
+
+    if (welcomeScreen) welcomeScreen.style.display = 'block';
+    if (virtTool) virtTool.classList.add('hidden');
+    if (containerTool) containerTool.classList.add('hidden');
+
+    // Hide Config UI
+    const configBtn = document.getElementById('config-btn');
+    if (configBtn) configBtn.style.display = 'none';
+}
+
+window.goHome = goHome;
 window.switchTool = switchTool;
+console.log('[DEBUG] Application core initialized.');
+
 
 
 async function fetchHosts() {
@@ -446,20 +495,21 @@ document.getElementById('add-server-btn').onclick = async () => {
 const notifBtn = document.getElementById('notification-btn');
 const notifDropdown = document.getElementById('notification-dropdown');
 
-if (notifBtn) {
-    notifBtn.onclick = (e) => {
+if (notifBtn && notifDropdown) {
+    notifBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         notifDropdown.classList.toggle('hidden');
-    };
+    });
+
+    notifDropdown.addEventListener('click', (e) => {
+        e.stopPropagation();
+    });
+
+    document.addEventListener('click', () => {
+        notifDropdown.classList.add('hidden');
+    });
 }
 
-document.addEventListener('click', () => {
-    if (notifDropdown) notifDropdown.classList.add('hidden');
-});
-
-if (notifDropdown) {
-    notifDropdown.onclick = (e) => e.stopPropagation();
-}
 
 async function checkServerStatus() {
     try {
