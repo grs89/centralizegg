@@ -4,7 +4,7 @@ const API_CONFIG_SERVERS = '/api/config/servers';
 
 // Global state
 let currentServers = [];
-let currentTool = 'kvm';
+let currentTool = null;
 
 const tools = {
     'kvm': {
@@ -98,12 +98,6 @@ function switchTool(toolKey) {
 
     // Reset all category buttons to their original names
     const categories = [...new Set(Object.values(tools).map(t => ({ id: t.categoryBtnId, name: t.categoryName })))];
-    categories.forEach(cat => {
-        const btn = document.getElementById(cat.id);
-        const iconClass = Object.values(tools).find(t => t.categoryBtnId === cat.id).icon; // Representative icon
-        // Actually it's better to keep the original icon of the button from HTML
-        // For simplicity, let's just update the label text
-    });
 
     // Update the specific category button of the selected tool
     const categoryBtn = document.getElementById(tool.categoryBtnId);
@@ -115,9 +109,12 @@ function switchTool(toolKey) {
 
     // Toggle visibility
     const visibleElementId = tool.elementId;
+
+    const welcomeScreen = document.getElementById('welcome-screen');
+    if (welcomeScreen) welcomeScreen.classList.add('hidden');
+
     document.getElementById('virtualization-tool').classList.toggle('hidden', visibleElementId !== 'virtualization-tool');
     document.getElementById('container-scanner-tool').classList.toggle('hidden', visibleElementId !== 'container-scanner-tool');
-
 
     // Handle placeholder content for non-KVM
     if (toolKey !== 'kvm') {
@@ -432,11 +429,63 @@ document.getElementById('add-server-btn').onclick = async () => {
 }
 
 // Init
-fetchHosts();
-fetchVMs();
+// fetchHosts();
+// fetchVMs();
+
+// Notification toggle
+const notifBtn = document.getElementById('notification-btn');
+const notifDropdown = document.getElementById('notification-dropdown');
+
+if (notifBtn) {
+    notifBtn.onclick = (e) => {
+        e.stopPropagation();
+        notifDropdown.classList.toggle('hidden');
+    };
+}
+
+document.addEventListener('click', () => {
+    if (notifDropdown) notifDropdown.classList.add('hidden');
+});
+
+if (notifDropdown) {
+    notifDropdown.onclick = (e) => e.stopPropagation();
+}
+
+async function checkServerStatus() {
+    try {
+        const response = await fetch(API_CONFIG_SERVERS);
+        if (!response.ok) return;
+        const servers = await response.json();
+
+        const offlineServers = servers.filter(s => s.status === 'offline');
+        const badge = document.getElementById('notification-count');
+        const list = document.getElementById('notification-list');
+
+        if (offlineServers.length > 0) {
+            badge.textContent = offlineServers.length;
+            badge.classList.remove('hidden');
+
+            list.innerHTML = offlineServers.map(s => `
+                <li>
+                    <i class="fa-solid fa-circle-exclamation"></i>
+                    <div>
+                        <span class="offline-host-name">${s.name} no accesible</span>
+                        <span class="offline-details">${s.ip_address}:${s.ssh_port || 22}</span>
+                    </div>
+                </li>
+            `).join('');
+        } else {
+            badge.classList.add('hidden');
+            list.innerHTML = '<li style="color:var(--text-secondary); text-align:center; display:block;">Todos los sistemas operativos</li>';
+        }
+    } catch (e) {
+        console.error('Status check error:', e);
+    }
+}
 
 // Auto-refresh
 function refreshAll() {
+    checkServerStatus();
     if (currentTool === 'kvm') {
         fetchHosts();
         fetchVMs();
@@ -444,6 +493,8 @@ function refreshAll() {
 }
 
 setInterval(refreshAll, 5000);
+checkServerStatus(); // Run immediately
+
 
 window.switchTool = switchTool;
 

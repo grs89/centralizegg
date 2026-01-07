@@ -182,44 +182,117 @@ header {
     }
 }
 
-.status-indicator {
+.notification-container {
+    position: relative;
+}
+
+#notification-btn {
+    position: relative;
+    padding: 8px;
+    border-radius: 50%;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    transition: all 0.3s ease;
+}
+
+#notification-btn:hover {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 10px var(--accent-glow);
+}
+
+.notification-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: var(--danger);
+    color: white;
+    font-size: 0.7rem;
+    font-weight: 700;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 50%;
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 0.9rem;
-    color: var(--text-secondary);
-    background: var(--glass-bg);
-    padding: 8px 16px;
-    border-radius: 20px;
-    border: 1px solid var(--glass-border);
+    justify-content: center;
+    border: 2px solid var(--bg-color);
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+    animation: pulse-danger 2s infinite;
 }
 
-
-.status-dot {
-    width: 8px;
-    height: 8px;
-    background: var(--success);
-    border-radius: 50%;
-    box-shadow: 0 0 10px var(--success);
-    animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
+@keyframes pulse-danger {
     0% {
         transform: scale(1);
-        opacity: 1;
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
     }
 
-    50% {
-        transform: scale(1.5);
-        opacity: 0.5;
+    70% {
+        transform: scale(1.1);
+        box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
     }
 
     100% {
         transform: scale(1);
-        opacity: 1;
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
     }
 }
+
+.notification-dropdown {
+    position: absolute;
+    top: 50px;
+    right: 0;
+    width: 280px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    z-index: 1000;
+    padding: 1rem;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.notification-header {
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--glass-border);
+    padding-bottom: 8px;
+    margin-bottom: 5px;
+}
+
+#notification-list {
+    list-style: none;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+#notification-list li {
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+#notification-list li i {
+    color: var(--danger);
+}
+
+#notification-list li .offline-host-name {
+    font-weight: 600;
+    display: block;
+}
+
+#notification-list li .offline-details {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+}
+
 
 /* Glass Panels */
 .glass-panel {
@@ -547,5 +620,85 @@ header {
 
     .host-section {
         padding: 1.5rem;
+    }
+}
+
+/* Welcome Screen */
+.welcome-section {
+    padding: 2rem 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 50vh;
+}
+
+.welcome-card {
+    max-width: 800px;
+    padding: 4rem;
+    text-align: center;
+    animation: fadeInUp 0.5s ease-out;
+}
+
+.welcome-icon {
+    font-size: 4rem;
+    color: var(--accent-color);
+    margin-bottom: 2rem;
+    text-shadow: 0 0 20px var(--accent-glow);
+}
+
+.welcome-card h1 {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+    background: linear-gradient(135deg, var(--text-primary), var(--accent-color));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+
+.welcome-card p {
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+    line-height: 1.6;
+    margin-bottom: 2.5rem;
+}
+
+.welcome-badges {
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.badge {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 10px 20px;
+    border-radius: 50px;
+    border: 1px solid var(--glass-border);
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: all 0.3s ease;
+}
+
+.badge:hover {
+    background: rgba(56, 189, 248, 0.1);
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+    transform: translateY(-3px);
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
     }
 }

@@ -26,11 +26,21 @@
 
 
             <div class="controls" style="display:flex; gap:15px; align-items:center;">
-                <div class="status-indicator">
-                    <span class="status-dot"></span> Live Monitoring
+                <div class="notification-container">
+                    <button id="notification-btn" class="icon-btn" title="Notificaciones">
+                        <i class="fa-solid fa-bell"></i>
+                        <span id="notification-count" class="notification-badge hidden">0</span>
+                    </button>
+                    <div id="notification-dropdown" class="notification-dropdown glass-panel hidden">
+                        <div class="notification-header">Notificaciones</div>
+                        <ul id="notification-list">
+                            <!-- Injected via JS -->
+                        </ul>
+                    </div>
                 </div>
                 <button id="config-btn" class="icon-btn"><i class="fa-solid fa-gear"></i></button>
             </div>
+
         </header>
 
         <nav class="tool-navigation">
@@ -160,8 +170,28 @@
         </div>
 
         <main>
-            <!-- Virtualization Tool Section -->
-            <div id="virtualization-tool">
+            <!-- Welcome Screen (Visible by default) -->
+            <div id="welcome-screen">
+                <section class="welcome-section">
+                    <div class="glass-panel welcome-card">
+                        <div class="welcome-icon">
+                            <i class="fa-solid fa-rocket"></i>
+                        </div>
+                        <h1>Bienvenido a Centralizegg</h1>
+                        <p>Selecciona una herramienta en el menú superior para comenzar a monitorear tu infraestructura.
+                        </p>
+                        <div class="welcome-badges">
+                            <span class="badge"><i class="fa-solid fa-microchip"></i> KVM & Proxmox</span>
+                            <span class="badge"><i class="fa-brands fa-docker"></i> Contenedores</span>
+                            <span class="badge"><i class="fa-solid fa-shield-halved"></i> Firewall</span>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Virtualization Tool Section (Hidden by default) -->
+            <div id="virtualization-tool" class="hidden">
+
                 <!-- Host Section -->
                 <section class="host-section">
                     <div class="section-header">
