@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/grs/centralizegg/internal/collector"
 	"github.com/grs/centralizegg/internal/storage"
+	"github.com/grs/centralizegg/internal/virtualization"
 )
 
 func main() {
@@ -41,7 +41,7 @@ func main() {
 	log.Println("Connected to Database")
 
 	// Initialize Multi-Collector
-	col := collector.NewMultiCollector(db)
+	col := virtualization.NewMultiCollector(db)
 	go col.Start(10 * time.Second) // Check every 10 seconds
 
 	// Router

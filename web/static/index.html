@@ -23,6 +23,8 @@
             <div class="logo">
                 <img src="logo.png" alt="Centralizegg Logo" style="height: 50px; margin-right: 10px;"> Centralizegg
             </div>
+
+
             <div class="controls" style="display:flex; gap:15px; align-items:center;">
                 <div class="status-indicator">
                     <span class="status-dot"></span> Live Monitoring
@@ -30,6 +32,88 @@
                 <button id="config-btn" class="icon-btn"><i class="fa-solid fa-gear"></i></button>
             </div>
         </header>
+
+        <nav class="tool-navigation">
+            <!-- Tool Switcher Dropdowns -->
+            <div class="tool-switcher" style="display:flex; gap:10px; margin-bottom: 2rem;">
+                <!-- Virtualización Dropdown -->
+                <div class="dropdown">
+                    <button class="dropbtn" id="virtualization-btn">
+                        <i class="fa-solid fa-microchip"></i> Virtualización <i class="fa-solid fa-chevron-down"
+                            style="font-size: 0.8rem; margin-left: 5px;"></i>
+                    </button>
+                    <div class="dropdown-content glass-panel">
+                        <a href="#" onclick="switchTool('kvm')"><i class="fa-solid fa-microchip"></i> KVM</a>
+                        <a href="#" onclick="switchTool('proxmox')"><i class="fa-solid fa-server"></i> Proxmox</a>
+                    </div>
+                </div>
+
+                <!-- Almacenamiento Dropdown -->
+                <div class="dropdown">
+                    <button class="dropbtn" id="storage-btn">
+                        <i class="fa-solid fa-database"></i> Almacenamiento <i class="fa-solid fa-chevron-down"
+                            style="font-size: 0.8rem; margin-left: 5px;"></i>
+                    </button>
+                    <div class="dropdown-content glass-panel">
+                        <a href="#" onclick="switchTool('nas')"><i class="fa-solid fa-hdd"></i> NAS</a>
+                        <a href="#" onclick="switchTool('ceph')"><i class="fa-solid fa-cubes"></i> Ceph</a>
+                    </div>
+                </div>
+
+
+                <!-- Contenedores Dropdown -->
+                <div class="dropdown">
+                    <button class="dropbtn" id="containers-btn">
+                        <i class="fa-solid fa-box"></i> Contenedores <i class="fa-solid fa-chevron-down"
+                            style="font-size: 0.8rem; margin-left: 5px;"></i>
+                    </button>
+                    <div class="dropdown-content glass-panel">
+                        <a href="#" onclick="switchTool('docker')"><i class="fa-brands fa-docker"></i> Docker</a>
+                        <a href="#" onclick="switchTool('podman')"><i class="fa-solid fa-box-archive"></i> Podman</a>
+                    </div>
+                </div>
+
+                <!-- Servicios Dropdown -->
+                <div class="dropdown">
+                    <button class="dropbtn" id="services-btn">
+                        <i class="fa-solid fa-gears"></i> Servicios <i class="fa-solid fa-chevron-down"
+                            style="font-size: 0.8rem; margin-left: 5px;"></i>
+                    </button>
+                    <div class="dropdown-content glass-panel">
+                        <a href="#" onclick="switchTool('web_services')"><i class="fa-solid fa-globe"></i> Servicios
+                            web</a>
+                        <a href="#" onclick="switchTool('db_services')"><i class="fa-solid fa-database"></i> Servicios
+                            de DB</a>
+                    </div>
+                </div>
+
+                <!-- Firewall Dropdown -->
+                <div class="dropdown">
+                    <button class="dropbtn" id="firewall-btn">
+                        <i class="fa-solid fa-shield-halved"></i> Firewall <i class="fa-solid fa-chevron-down"
+                            style="font-size: 0.8rem; margin-left: 5px;"></i>
+                    </button>
+                    <div class="dropdown-content glass-panel">
+                        <a href="#" onclick="switchTool('pfsense')"><i class="fa-solid fa-lock"></i> PFsense</a>
+                    </div>
+                </div>
+
+                <!-- Log Dropdown -->
+                <div class="dropdown">
+                    <button class="dropbtn" id="log-btn">
+                        <i class="fa-solid fa-file-lines"></i> Log <i class="fa-solid fa-chevron-down"
+                            style="font-size: 0.8rem; margin-left: 5px;"></i>
+                    </button>
+                    <div class="dropdown-content glass-panel">
+                        <a href="#" onclick="switchTool('log_web')"><i class="fa-solid fa-code"></i> Log servicios
+                            web</a>
+                        <a href="#" onclick="switchTool('log_db')"><i class="fa-solid fa-database"></i> Servicios db</a>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+
 
         <!-- Config Modal -->
         <div id="config-modal" class="modal">
@@ -76,33 +160,57 @@
         </div>
 
         <main>
-            <!-- Host Section -->
-            <section class="host-section">
-                <div class="section-header">
-                    <h2><i class="fa-solid fa-microchip"></i> Host Nodes</h2>
-                </div>
-                <div id="host-nodes-container" class="host-nodes-grid">
-                    <div class="loading-state">
-                        <i class="fa-solid fa-circle-notch fa-spin"></i> Loading host info...
+            <!-- Virtualization Tool Section -->
+            <div id="virtualization-tool">
+                <!-- Host Section -->
+                <section class="host-section">
+                    <div class="section-header">
+                        <h2><i class="fa-solid fa-microchip"></i> Host Nodes</h2>
                     </div>
-                </div>
-            </section>
-
-            <!-- VM Section -->
-            <section class="vm-section">
-                <div class="section-header">
-                    <h2><i class="fa-solid fa-desktop"></i> Virtual Machines</h2>
-                    <div class="refresh-timer">Updated: <span id="last-updated">Just now</span></div>
-                </div>
-
-                <div class="vm-grid" id="vm-grid">
-                    <!-- VMs will be injected here -->
-                    <div class="loading-state">
-                        <i class="fa-solid fa-circle-notch fa-spin"></i> Loading infrastructure...
+                    <div id="host-nodes-container" class="host-nodes-grid">
+                        <div class="loading-state">
+                            <i class="fa-solid fa-circle-notch fa-spin"></i> Loading host info...
+                        </div>
                     </div>
-                </div>
-            </section>
+                </section>
+
+                <!-- VM Section -->
+                <section class="vm-section">
+                    <div class="section-header">
+                        <h2><i class="fa-solid fa-desktop"></i> Virtual Machines</h2>
+                        <div class="refresh-timer">Updated: <span id="last-updated">Just now</span></div>
+                    </div>
+
+                    <div class="vm-grid" id="vm-grid">
+                        <!-- VMs will be injected here -->
+                        <div class="loading-state">
+                            <i class="fa-solid fa-circle-notch fa-spin"></i> Loading infrastructure...
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Container Scanner Tool Section (Placeholder) -->
+            <div id="container-scanner-tool" class="hidden">
+                <section class="scanner-section">
+                    <div class="glass-panel"
+                        style="padding: 3rem; text-align: center; border: 2px dashed var(--glass-border);">
+                        <div style="font-size: 4rem; color: var(--accent-color); margin-bottom: 2rem; opacity: 0.5;">
+                            <i class="fa-solid fa-box-open"></i>
+                        </div>
+                        <h2 style="margin-bottom: 1rem;">Container Security Scanner</h2>
+                        <p style="color: var(--text-secondary); max-width: 500px; margin: 0 auto 2rem auto;">
+                            Deep inspection of Docker images and running containers for vulnerabilities and
+                            misconfigurations.
+                        </p>
+                        <div class="status-indicator" style="display: inline-flex;">
+                            Coming Soon
+                        </div>
+                    </div>
+                </section>
+            </div>
         </main>
+
     </div>
 
     <script src="app.js"></script>

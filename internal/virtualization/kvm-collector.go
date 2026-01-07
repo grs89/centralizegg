@@ -1,4 +1,4 @@
-package collector
+package virtualization
 
 import (
 	"fmt"
@@ -54,8 +54,6 @@ func (mc *MultiCollector) collectOne(s storage.KVMServer) error {
 				authMethods = append(authMethods, ssh.PublicKeys(signer))
 			}
 		}
-		// If we fail to read key but password is provided, we might still succeed.
-		// If both fail, Dial will fail.
 	}
 
 	config := &ssh.ClientConfig{
@@ -65,8 +63,6 @@ func (mc *MultiCollector) collectOne(s storage.KVMServer) error {
 		Timeout:         10 * time.Second,
 	}
 
-	// Address like "192.168.1.100:22"
-	// Sanitize IP if it contains a port (user error)
 	ip := s.IPAddress
 	if host, _, err := net.SplitHostPort(ip); err == nil {
 		ip = host
@@ -83,14 +79,10 @@ func (mc *MultiCollector) collectOne(s storage.KVMServer) error {
 	}
 	defer sshClient.Close()
 
-	// 2. Dial Libvirt over SSH using "net.Conn" interface of SSH
-	// We need to connect to the unix socket ON THE REMOTE machine
 	conn, err := sshClient.Dial("unix", "/var/run/libvirt/libvirt-sock")
 	if err != nil {
 		return fmt.Errorf("remote libvirt socket: %w", err)
 	}
-	// We don't close 'conn' explicitly here because libvirt.New(conn) takes ownership or we defer?
-	// actually libvirt does not close it automatically on disconnect? Safe to defer close.
 	defer conn.Close()
 
 	l := libvirt.New(conn)
@@ -99,12 +91,10 @@ func (mc *MultiCollector) collectOne(s storage.KVMServer) error {
 	}
 	defer l.Disconnect()
 
-	// 3. Logic copied from original collector
-	// Get hostname from libvirt
 	hostBytes, err := l.ConnectGetHostname()
 	hostName := s.Name
 	if err == nil {
-		hostName = hostBytes // Use actual hostname if available, or keep config Name as alias? Let's use config name for consistency in UI for now, or concat.
+		hostName = hostBytes
 	}
 
 	model, memory, cpus, _, _, _, _, _, err := l.NodeGetInfo()
@@ -155,15 +145,12 @@ func (mc *MultiCollector) collectOne(s storage.KVMServer) error {
 			stateStr = "Suspended"
 		}
 
-		// 4. Get I/O Stats (Disk & Network)
 		var diskRead, diskWrite, netRX, netTX uint64
 
-		// Get XML Desc to find device names
 		xmlData, err := l.DomainGetXMLDesc(dom, 0)
 		if err == nil {
 			doc := etree.NewDocument()
 			if err := doc.ReadFromString(xmlData); err == nil {
-				// Sum Disk stats
 				for _, disk := range doc.FindElements("//devices/disk/target") {
 					dev := disk.SelectAttrValue("dev", "")
 					if dev != "" {
@@ -174,7 +161,6 @@ func (mc *MultiCollector) collectOne(s storage.KVMServer) error {
 						}
 					}
 				}
-				// Sum Network stats
 				for _, iface := range doc.FindElements("//devices/interface/target") {
 					dev := iface.SelectAttrValue("dev", "")
 					if dev != "" {

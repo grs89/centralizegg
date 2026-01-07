@@ -2,8 +2,143 @@ const API_HOSTS = '/api/hosts';
 const API_VMS = '/api/vms';
 const API_CONFIG_SERVERS = '/api/config/servers';
 
-// Global server list to access data easily
+// Global state
 let currentServers = [];
+let currentTool = 'kvm';
+
+const tools = {
+    'kvm': {
+        name: 'KVM',
+        icon: 'fa-solid fa-microchip',
+        elementId: 'virtualization-tool',
+        categoryBtnId: 'virtualization-btn',
+        categoryName: 'Virtualización'
+    },
+    'proxmox': {
+        name: 'Proxmox',
+        icon: 'fa-solid fa-server',
+        elementId: 'container-scanner-tool',
+        categoryBtnId: 'virtualization-btn',
+        categoryName: 'Virtualización'
+    },
+    'nas': {
+        name: 'NAS',
+        icon: 'fa-solid fa-hdd',
+        elementId: 'container-scanner-tool',
+        categoryBtnId: 'storage-btn',
+        categoryName: 'Almacenamiento'
+    },
+    'ceph': {
+        name: 'Ceph',
+        icon: 'fa-solid fa-cubes',
+        elementId: 'container-scanner-tool',
+        categoryBtnId: 'storage-btn',
+        categoryName: 'Almacenamiento'
+    },
+    'docker': {
+
+        name: 'Docker',
+        icon: 'fa-brands fa-docker',
+        elementId: 'container-scanner-tool',
+        categoryBtnId: 'containers-btn',
+        categoryName: 'Contenedores'
+    },
+    'podman': {
+        name: 'Podman',
+        icon: 'fa-solid fa-box-archive',
+        elementId: 'container-scanner-tool',
+        categoryBtnId: 'containers-btn',
+        categoryName: 'Contenedores'
+    },
+    'web_services': {
+        name: 'Servicios web',
+        icon: 'fa-solid fa-globe',
+        elementId: 'container-scanner-tool',
+        categoryBtnId: 'services-btn',
+        categoryName: 'Servicios'
+    },
+    'db_services': {
+        name: 'Servicios de DB',
+        icon: 'fa-solid fa-database',
+        elementId: 'container-scanner-tool',
+        categoryBtnId: 'services-btn',
+        categoryName: 'Servicios'
+    },
+    'pfsense': {
+        name: 'PFsense',
+        icon: 'fa-solid fa-shield-halved',
+        elementId: 'container-scanner-tool',
+        categoryBtnId: 'firewall-btn',
+        categoryName: 'Firewall'
+    },
+    'log_web': {
+        name: 'Log servicios web',
+        icon: 'fa-solid fa-file-code',
+        elementId: 'container-scanner-tool',
+        categoryBtnId: 'log-btn',
+        categoryName: 'Log'
+    },
+    'log_db': {
+        name: 'Log servicios db',
+        icon: 'fa-solid fa-file-lines',
+        elementId: 'container-scanner-tool',
+        categoryBtnId: 'log-btn',
+        categoryName: 'Log'
+    }
+};
+
+
+
+
+function switchTool(toolKey) {
+    if (!tools[toolKey]) return;
+
+    currentTool = toolKey;
+    const tool = tools[toolKey];
+
+    // Reset all category buttons to their original names
+    const categories = [...new Set(Object.values(tools).map(t => ({ id: t.categoryBtnId, name: t.categoryName })))];
+    categories.forEach(cat => {
+        const btn = document.getElementById(cat.id);
+        const iconClass = Object.values(tools).find(t => t.categoryBtnId === cat.id).icon; // Representative icon
+        // Actually it's better to keep the original icon of the button from HTML
+        // For simplicity, let's just update the label text
+    });
+
+    // Update the specific category button of the selected tool
+    const categoryBtn = document.getElementById(tool.categoryBtnId);
+    if (categoryBtn) {
+        categoryBtn.innerHTML = `
+            <i class="${tool.icon}"></i> ${tool.name} <i class="fa-solid fa-chevron-down" style="font-size: 0.8rem; margin-left: 5px;"></i>
+        `;
+    }
+
+    // Toggle visibility
+    const visibleElementId = tool.elementId;
+    document.getElementById('virtualization-tool').classList.toggle('hidden', visibleElementId !== 'virtualization-tool');
+    document.getElementById('container-scanner-tool').classList.toggle('hidden', visibleElementId !== 'container-scanner-tool');
+
+
+    // Handle placeholder content for non-KVM
+    if (toolKey !== 'kvm') {
+        const placeholder = document.getElementById('container-scanner-tool');
+        const title = placeholder.querySelector('h2');
+        const desc = placeholder.querySelector('p');
+        const icon = placeholder.querySelector('i');
+
+        icon.className = tool.icon;
+        title.textContent = `${tool.name} Management`;
+        desc.textContent = `Full visibility and orchestration for ${tool.name} workloads coming soon.`;
+    }
+
+    const configBtn = document.getElementById('config-btn');
+    if (toolKey === 'kvm') {
+        configBtn.style.display = 'block';
+        refreshAll();
+    } else {
+        configBtn.style.display = 'none';
+    }
+}
 
 async function fetchHosts() {
     try {
@@ -302,10 +437,15 @@ fetchVMs();
 
 // Auto-refresh
 function refreshAll() {
-    fetchHosts();
-    fetchVMs();
+    if (currentTool === 'kvm') {
+        fetchHosts();
+        fetchVMs();
+    }
 }
+
 setInterval(refreshAll, 5000);
+
+window.switchTool = switchTool;
 
 function formatBytes(bytes, decimals = 2) {
     if (bytes === 0) return '0 Bytes';
