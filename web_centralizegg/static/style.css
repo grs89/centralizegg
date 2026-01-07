@@ -201,7 +201,31 @@ header {
     display: block;
 }
 
+.nav-config-btn {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-secondary);
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    width: 42px;
+    height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin-left: auto;
+    /* Push to the right */
+}
+
+.nav-config-btn:hover {
+    background: rgba(56, 189, 248, 0.1);
+    color: var(--accent-color);
+    border-color: var(--accent-color);
+    box-shadow: 0 0 15px var(--accent-glow);
+}
+
 @keyframes fadeIn {
+
     from {
         opacity: 0;
         transform: translateY(-10px);
@@ -348,8 +372,21 @@ header {
 
 .host-node-card {
     padding: 1.5rem;
-    transition: transform 0.2s;
+    transition: all 0.3s ease;
+    cursor: pointer;
 }
+
+.host-node-card:hover {
+    transform: translateY(-5px);
+    border-color: rgba(56, 189, 248, 0.4);
+}
+
+.host-node-card.active {
+    border-color: var(--accent-color);
+    background: rgba(56, 189, 248, 0.05);
+    box-shadow: 0 0 20px rgba(56, 189, 248, 0.2);
+}
+
 
 .host-node-header {
     display: flex;

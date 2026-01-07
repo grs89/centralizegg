@@ -5,6 +5,8 @@ const API_CONFIG_SERVERS = '/api/config/servers';
 // Global state
 let currentServers = [];
 let currentTool = null;
+let selectedHostId = null;
+
 
 const tools = {
     'kvm': {
@@ -175,8 +177,10 @@ document.addEventListener('click', (e) => {
 function goHome() {
     console.log('[DEBUG] Navigating to home screen');
     currentTool = null;
+    selectedHostId = null; // Reset selection
 
     // Reset visibility
+
     const welcomeScreen = document.getElementById('welcome-screen');
     const virtTool = document.getElementById('virtualization-tool');
     const containerTool = document.getElementById('container-scanner-tool');
@@ -192,6 +196,15 @@ function goHome() {
 
 window.goHome = goHome;
 window.switchTool = switchTool;
+
+function selectHost(id) {
+    console.log('[DEBUG] Selected Host ID:', id);
+    selectedHostId = id;
+    fetchHosts(); // Re-render hosts to show active state
+    fetchVMs();   // Filter VMs
+}
+window.selectHost = selectHost;
+
 console.log('[DEBUG] Application core initialized.');
 
 
@@ -202,7 +215,13 @@ async function fetchHosts() {
         if (!response.ok) throw new Error('Failed to fetch hosts');
         const hosts = await response.json();
 
+        // Sort hosts alphabetically by server_name
+        if (hosts && Array.isArray(hosts)) {
+            hosts.sort((a, b) => a.server_name.localeCompare(b.server_name));
+        }
+
         const container = document.getElementById('host-nodes-container');
+
         if (!container) return;
 
         if (!hosts || hosts.length === 0) {
@@ -212,13 +231,16 @@ async function fetchHosts() {
 
         container.innerHTML = hosts.map(host => {
             const memGB = (host.total_memory / (1024 * 1024 * 1024)).toFixed(2);
+            const isActive = selectedHostId === host.id ? 'active' : '';
             return `
-            <div class="host-node-card glass-panel">
+            <div class="host-node-card glass-panel ${isActive}" onclick="selectHost(${host.id})">
                 <div class="host-node-header">
                     <div class="host-node-titles">
                         <div class="host-node-main-title">${host.server_name}</div>
                         <div class="host-node-sub-title"> ${host.hostname} | ${host.ip_address}</div>
+                        <div class="host-node-sub-title" style="margin-top: 5px; opacity: 0.8;"><i class="fa-brands fa-linux"></i> ${host.os_name || 'Detectando SO...'}</div>
                     </div>
+
                 </div>
                 <div class="host-stats">
                     <div class="stat-card">
@@ -247,6 +269,7 @@ async function fetchHosts() {
             `;
         }).join('');
     } catch (e) {
+
         console.error(e);
         document.getElementById('host-nodes-container').innerHTML = '<div class="loading-state" style="color:var(--danger)">Failed to load hosts</div>';
     }
@@ -258,14 +281,32 @@ async function fetchVMs() {
         if (!response.ok) throw new Error('Failed to fetch VMs');
         const vms = await response.json();
 
+        // Sort VMs alphabetically by name
+        if (vms && Array.isArray(vms)) {
+            vms.sort((a, b) => a.name.localeCompare(b.name));
+        }
+
         const grid = document.getElementById('vm-grid');
 
-        if (!vms || vms.length === 0) {
-            grid.innerHTML = '<div class="loading-state">No VMs found or collector is initializing...</div>';
+        if (!selectedHostId) {
+            grid.innerHTML = '<div class="loading-state" style="opacity:0.6;"><i class="fa-solid fa-arrow-up"></i> Selecciona un Host Node para ver sus VMs</div>';
             return;
         }
 
-        grid.innerHTML = vms.map(vm => {
+        // Sort and Filter VMs
+        let filteredVMs = [];
+        if (vms && Array.isArray(vms)) {
+            filteredVMs = vms.filter(vm => vm.host_id === selectedHostId);
+            filteredVMs.sort((a, b) => a.name.localeCompare(b.name));
+        }
+
+        if (filteredVMs.length === 0) {
+            grid.innerHTML = '<div class="loading-state">No hay VMs en este host o están cargando...</div>';
+            return;
+        }
+
+        grid.innerHTML = filteredVMs.map(vm => {
+
             const memGB = (vm.max_memory / (1024 * 1024 * 1024)).toFixed(1);
             const memUsedGB = (vm.memory_usage / (1024 * 1024 * 1024)).toFixed(1);
             const memPercent = vm.max_memory > 0 ? (vm.memory_usage / vm.max_memory) * 100 : 0;

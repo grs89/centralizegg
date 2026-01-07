@@ -17,7 +17,9 @@ CREATE TABLE IF NOT EXISTS hosts (
     cpu_model VARCHAR(255),
     cpu_cores INT,
     total_memory BIGINT,
+    os_name VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
     CONSTRAINT fk_server FOREIGN KEY(server_id) REFERENCES kvm_servers(id) ON DELETE CASCADE
 );
 

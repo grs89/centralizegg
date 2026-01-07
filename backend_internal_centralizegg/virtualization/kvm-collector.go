@@ -97,10 +97,25 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 	if err == nil {
 		hostName = hostBytes
 	}
-
 	model, memory, cpus, _, _, _, _, _, err := l.NodeGetInfo()
 	if err != nil {
 		return fmt.Errorf("node info: %w", err)
+	}
+
+	// Fetch OS Name via SSH command
+
+	osName := "Unknown OS"
+	session, err := sshClient.NewSession()
+	if err == nil {
+		defer session.Close()
+		output, err := session.Output("grep PRETTY_NAME /etc/os-release | cut -d '\"' -f 2")
+		if err == nil {
+			osName = string(output)
+			// Remove newline if present
+			if len(osName) > 0 && osName[len(osName)-1] == '\n' {
+				osName = osName[:len(osName)-1]
+			}
+		}
 	}
 
 	h := data_centralizegg.Host{
@@ -109,6 +124,7 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 		CPUModel:    int8ToString(model[:]),
 		CPUCores:    int(cpus),
 		TotalMemory: uint64(memory) * 1024,
+		OSName:      osName,
 	}
 
 	hostID, err := mc.DB.UpsertHost(h)
