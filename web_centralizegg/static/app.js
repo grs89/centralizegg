@@ -90,16 +90,17 @@ const tools = {
 
 
 
-function switchTool(toolKey) {
-    if (!tools[toolKey]) return;
+const switchTool = function (toolKey) {
+    console.log('Switching to tool:', toolKey);
+    const tool = tools[toolKey];
+    if (!tool) {
+        console.error('Tool not found:', toolKey);
+        return;
+    }
 
     currentTool = toolKey;
-    const tool = tools[toolKey];
 
-    // Reset all category buttons to their original names
-    const categories = [...new Set(Object.values(tools).map(t => ({ id: t.categoryBtnId, name: t.categoryName })))];
-
-    // Update the specific category button of the selected tool
+    // Update Category Button
     const categoryBtn = document.getElementById(tool.categoryBtnId);
     if (categoryBtn) {
         categoryBtn.innerHTML = `
@@ -107,35 +108,44 @@ function switchTool(toolKey) {
         `;
     }
 
-    // Toggle visibility
-    const visibleElementId = tool.elementId;
+    // Hide Welcome Screen
+    const welcome = document.getElementById('welcome-screen');
+    if (welcome) welcome.classList.add('hidden');
 
-    const welcomeScreen = document.getElementById('welcome-screen');
-    if (welcomeScreen) welcomeScreen.classList.add('hidden');
+    // Toggle Tool Sections
+    const sections = {
+        'kvm': 'virtualization-tool',
+        'default': 'container-scanner-tool'
+    };
 
-    document.getElementById('virtualization-tool').classList.toggle('hidden', visibleElementId !== 'virtualization-tool');
-    document.getElementById('container-scanner-tool').classList.toggle('hidden', visibleElementId !== 'container-scanner-tool');
+    const targetId = (toolKey === 'kvm') ? 'virtualization-tool' : 'container-scanner-tool';
 
-    // Handle placeholder content for non-KVM
-    if (toolKey !== 'kvm') {
-        const placeholder = document.getElementById('container-scanner-tool');
-        const title = placeholder.querySelector('h2');
-        const desc = placeholder.querySelector('p');
-        const icon = placeholder.querySelector('i');
+    document.getElementById('virtualization-tool').classList.toggle('hidden', targetId !== 'virtualization-tool');
+    document.getElementById('container-scanner-tool').classList.toggle('hidden', targetId !== 'container-scanner-tool');
 
-        icon.className = tool.icon;
-        title.textContent = `${tool.name} Management`;
-        desc.textContent = `Full visibility and orchestration for ${tool.name} workloads coming soon.`;
+    // Update Placeholder for non-KVM tools
+    if (targetId === 'container-scanner-tool') {
+        const scanner = document.getElementById('container-scanner-tool');
+        const icon = scanner.querySelector('.scanner-section i');
+        const title = scanner.querySelector('h2');
+        const desc = scanner.querySelector('p');
+
+        if (icon) icon.className = tool.icon;
+        if (title) title.textContent = `${tool.name} Management`;
+        if (desc) desc.textContent = `Gestión completa de ${tool.name} próximamente.`;
     }
 
+    // UI State for Config
     const configBtn = document.getElementById('config-btn');
+    if (configBtn) configBtn.style.display = (toolKey === 'kvm') ? 'block' : 'none';
+
     if (toolKey === 'kvm') {
-        configBtn.style.display = 'block';
         refreshAll();
-    } else {
-        configBtn.style.display = 'none';
     }
-}
+};
+
+window.switchTool = switchTool;
+
 
 async function fetchHosts() {
     try {
@@ -496,7 +506,7 @@ setInterval(refreshAll, 5000);
 checkServerStatus(); // Run immediately
 
 
-window.switchTool = switchTool;
+
 
 function formatBytes(bytes, decimals = 2) {
     if (bytes === 0) return '0 Bytes';

@@ -26,6 +26,10 @@
 
 
             <div class="controls" style="display:flex; gap:15px; align-items:center;">
+                <button id="nala-ia-btn" class="nala-btn" title="analiza tus problemas con IA">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Nala IA
+                </button>
+
                 <div class="notification-container">
                     <button id="notification-btn" class="icon-btn" title="Notificaciones">
                         <i class="fa-solid fa-bell"></i>
@@ -38,8 +42,11 @@
                         </ul>
                     </div>
                 </div>
+
                 <button id="config-btn" class="icon-btn"><i class="fa-solid fa-gear"></i></button>
+
             </div>
+
 
         </header>
 
@@ -53,8 +60,10 @@
                             style="font-size: 0.8rem; margin-left: 5px;"></i>
                     </button>
                     <div class="dropdown-content glass-panel">
-                        <a href="#" onclick="switchTool('kvm')"><i class="fa-solid fa-microchip"></i> KVM</a>
-                        <a href="#" onclick="switchTool('proxmox')"><i class="fa-solid fa-server"></i> Proxmox</a>
+                        <a href="javascript:void(0)" onclick="switchTool('kvm')"><i class="fa-solid fa-microchip"></i>
+                            KVM</a>
+                        <a href="javascript:void(0)" onclick="switchTool('proxmox')"><i class="fa-solid fa-server"></i>
+                            Proxmox</a>
                     </div>
                 </div>
 
@@ -65,8 +74,9 @@
                             style="font-size: 0.8rem; margin-left: 5px;"></i>
                     </button>
                     <div class="dropdown-content glass-panel">
-                        <a href="#" onclick="switchTool('nas')"><i class="fa-solid fa-hdd"></i> NAS</a>
-                        <a href="#" onclick="switchTool('ceph')"><i class="fa-solid fa-cubes"></i> Ceph</a>
+                        <a href="javascript:void(0)" onclick="switchTool('nas')"><i class="fa-solid fa-hdd"></i> NAS</a>
+                        <a href="javascript:void(0)" onclick="switchTool('ceph')"><i class="fa-solid fa-cubes"></i>
+                            Ceph</a>
                     </div>
                 </div>
 
@@ -78,8 +88,10 @@
                             style="font-size: 0.8rem; margin-left: 5px;"></i>
                     </button>
                     <div class="dropdown-content glass-panel">
-                        <a href="#" onclick="switchTool('docker')"><i class="fa-brands fa-docker"></i> Docker</a>
-                        <a href="#" onclick="switchTool('podman')"><i class="fa-solid fa-box-archive"></i> Podman</a>
+                        <a href="javascript:void(0)" onclick="switchTool('docker')"><i class="fa-brands fa-docker"></i>
+                            Docker</a>
+                        <a href="javascript:void(0)" onclick="switchTool('podman')"><i
+                                class="fa-solid fa-box-archive"></i> Podman</a>
                     </div>
                 </div>
 
@@ -90,9 +102,11 @@
                             style="font-size: 0.8rem; margin-left: 5px;"></i>
                     </button>
                     <div class="dropdown-content glass-panel">
-                        <a href="#" onclick="switchTool('web_services')"><i class="fa-solid fa-globe"></i> Servicios
+                        <a href="javascript:void(0)" onclick="switchTool('web_services')"><i
+                                class="fa-solid fa-globe"></i> Servicios
                             web</a>
-                        <a href="#" onclick="switchTool('db_services')"><i class="fa-solid fa-database"></i> Servicios
+                        <a href="javascript:void(0)" onclick="switchTool('db_services')"><i
+                                class="fa-solid fa-database"></i> Servicios
                             de DB</a>
                     </div>
                 </div>
@@ -104,7 +118,8 @@
                             style="font-size: 0.8rem; margin-left: 5px;"></i>
                     </button>
                     <div class="dropdown-content glass-panel">
-                        <a href="#" onclick="switchTool('pfsense')"><i class="fa-solid fa-lock"></i> PFsense</a>
+                        <a href="javascript:void(0)" onclick="switchTool('pfsense')"><i class="fa-solid fa-lock"></i>
+                            PFsense</a>
                     </div>
                 </div>
 
@@ -115,9 +130,11 @@
                             style="font-size: 0.8rem; margin-left: 5px;"></i>
                     </button>
                     <div class="dropdown-content glass-panel">
-                        <a href="#" onclick="switchTool('log_web')"><i class="fa-solid fa-code"></i> Log servicios
+                        <a href="javascript:void(0)" onclick="switchTool('log_web')"><i class="fa-solid fa-code"></i>
+                            Log servicios
                             web</a>
-                        <a href="#" onclick="switchTool('log_db')"><i class="fa-solid fa-database"></i> Servicios db</a>
+                        <a href="javascript:void(0)" onclick="switchTool('log_db')"><i class="fa-solid fa-database"></i>
+                            Servicios db</a>
                     </div>
                 </div>
             </div>
