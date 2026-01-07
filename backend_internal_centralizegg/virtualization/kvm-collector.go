@@ -102,19 +102,51 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 		return fmt.Errorf("node info: %w", err)
 	}
 
-	// Fetch OS Name via SSH command
-
+	// Fetch OS Name and Free Memory via SSH
 	osName := "Unknown OS"
+	var freeMem uint64
+
 	session, err := sshClient.NewSession()
 	if err == nil {
 		defer session.Close()
+		// Get OS Name
 		output, err := session.Output("grep PRETTY_NAME /etc/os-release | cut -d '\"' -f 2")
 		if err == nil {
 			osName = string(output)
-			// Remove newline if present
 			if len(osName) > 0 && osName[len(osName)-1] == '\n' {
 				osName = osName[:len(osName)-1]
 			}
+		}
+	}
+
+	// New session for memory info
+	sessionMem, err := sshClient.NewSession()
+	if err == nil {
+		defer sessionMem.Close()
+		// Get Available Memory in bytes using /proc/meminfo
+		memOutput, err := sessionMem.Output("grep MemAvailable /proc/meminfo | awk '{print $2 * 1024}'")
+		if err == nil {
+			fmt.Sscanf(string(memOutput), "%d", &freeMem)
+		} else {
+			// Fallback to MemFree if Available is missing
+			sessionMem2, _ := sshClient.NewSession()
+			if sessionMem2 != nil {
+				defer sessionMem2.Close()
+				memOutput2, _ := sessionMem2.Output("grep MemFree /proc/meminfo | awk '{print $2 * 1024}'")
+				fmt.Sscanf(string(memOutput2), "%d", &freeMem)
+			}
+		}
+	}
+
+	// New session for CPU usage
+	var cpuUsage float64
+	sessionCPU, err := sshClient.NewSession()
+	if err == nil {
+		defer sessionCPU.Close()
+		// Get CPU Usage percentage (100 - idle)
+		cpuOutput, err := sessionCPU.Output("top -bn1 | grep 'Cpu(s)' | awk '{print $2 + $4}'")
+		if err == nil {
+			fmt.Sscanf(string(cpuOutput), "%f", &cpuUsage)
 		}
 	}
 
@@ -124,6 +156,8 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 		CPUModel:    int8ToString(model[:]),
 		CPUCores:    int(cpus),
 		TotalMemory: uint64(memory) * 1024,
+		FreeMemory:  freeMem,
+		CPUUsage:    cpuUsage,
 		OSName:      osName,
 	}
 

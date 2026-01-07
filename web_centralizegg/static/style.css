@@ -374,6 +374,7 @@ header {
     padding: 1.5rem;
     transition: all 0.3s ease;
     cursor: pointer;
+    position: relative;
 }
 
 .host-node-card:hover {
@@ -429,6 +430,15 @@ header {
     transform: translateY(-2px);
     border-color: var(--accent-color);
 }
+
+.stat-card.clickable {
+    cursor: pointer;
+}
+
+.stat-card.clickable:active {
+    transform: scale(0.98);
+}
+
 
 .stat-card .icon {
     width: 36px;
@@ -804,4 +814,77 @@ header {
 
 .nala-btn:active {
     transform: translateY(0);
+}
+
+/* Popovers */
+.memory-popover,
+.cpu-popover {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 100;
+    width: 90%;
+    max-width: 280px;
+    padding: 1.25rem;
+    animation: popoverFadeIn 0.2s ease-out;
+    pointer-events: auto;
+}
+
+@keyframes popoverFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px) scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.popover-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--accent-color);
+}
+
+.close-popover {
+    cursor: pointer;
+    font-size: 1rem;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+}
+
+.close-popover:hover {
+    opacity: 1;
+}
+
+.popover-body .popover-metric {
+    margin-bottom: 1rem;
+}
+
+.popover-body .metric-info {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: 5px;
+}
+
+.popover-stats {
+    display: flex;
+    justify-content: space-between;
+    border-top: 1px solid var(--glass-border);
+    padding-top: 0.75rem;
+    font-size: 0.8rem;
+}
+
+.p-stat strong {
+    color: var(--text-secondary);
+    font-weight: 400;
 }

@@ -8,6 +8,7 @@ let currentTool = null;
 let selectedHostId = null;
 
 
+
 const tools = {
     'kvm': {
         name: 'KVM',
@@ -205,7 +206,147 @@ function selectHost(id) {
 }
 window.selectHost = selectHost;
 
+function showMemoryPopover(e, id) {
+    e.stopPropagation();
+
+    // Find the host card (parent of the stat-card)
+    const hostCard = e.currentTarget.closest('.host-node-card');
+    if (!hostCard) return;
+
+    // Remove existing popover in this card
+    const existing = hostCard.querySelector('.memory-popover');
+    if (existing) {
+        existing.remove();
+        return;
+    }
+
+    // Also remove any other popovers anywhere else to avoid clutter
+    document.querySelectorAll('.memory-popover').forEach(p => p.remove());
+
+    fetch(API_HOSTS).then(res => res.json()).then(hosts => {
+        const host = hosts.find(h => h.id === id);
+        if (!host) return;
+
+        const popover = document.createElement('div');
+        popover.className = 'memory-popover glass-panel';
+
+        const memTotalGB = (host.total_memory / (1024 * 1024 * 1024)).toFixed(2);
+        const memFreeGB = (host.free_memory / (1024 * 1024 * 1024)).toFixed(2);
+        const usedBytes = host.total_memory - host.free_memory;
+        const usedPercent = host.total_memory > 0 ? ((usedBytes / host.total_memory) * 100).toFixed(1) : 0;
+
+        popover.innerHTML = `
+            <div class="popover-header">
+                <span><i class="fa-solid fa-memory"></i> Detalle de Memoria</span>
+                <i class="fa-solid fa-xmark close-popover"></i>
+            </div>
+            <div class="popover-body">
+                <div class="popover-metric">
+                    <div class="metric-info">
+                        <span>Uso en Tiempo Real</span>
+                        <span>${usedPercent}%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${usedPercent}%"></div>
+                    </div>
+                </div>
+                <div class="popover-stats">
+                    <div class="p-stat"><strong>Total:</strong> ${memTotalGB} GB</div>
+                    <div class="p-stat"><strong>Libre:</strong> ${memFreeGB} GB</div>
+                </div>
+            </div>
+        `;
+
+        hostCard.appendChild(popover);
+
+        // Close logic
+        popover.querySelector('.close-popover').onclick = (ev) => {
+            ev.stopPropagation();
+            popover.remove();
+        };
+
+        const closeHandler = (ev) => {
+            if (!popover.contains(ev.target)) {
+                popover.remove();
+                document.removeEventListener('click', closeHandler);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', closeHandler), 10);
+    });
+}
+
+
+window.showMemoryPopover = showMemoryPopover;
+
+function showCPUPopover(e, id) {
+    e.stopPropagation();
+
+    // Find the host card
+    const hostCard = e.currentTarget.closest('.host-node-card');
+    if (!hostCard) return;
+
+    // Remove existing popover in this card
+    const existing = hostCard.querySelector('.cpu-popover');
+    if (existing) {
+        existing.remove();
+        return;
+    }
+
+    // Remove others
+    document.querySelectorAll('.memory-popover, .cpu-popover').forEach(p => p.remove());
+
+    fetch(API_HOSTS).then(res => res.json()).then(hosts => {
+        const host = hosts.find(h => h.id === id);
+        if (!host) return;
+
+        const popover = document.createElement('div');
+        popover.className = 'cpu-popover glass-panel';
+
+        const usedPercent = host.cpu_usage ? host.cpu_usage.toFixed(1) : "0.0";
+        const freePercent = (100 - parseFloat(usedPercent)).toFixed(1);
+
+        popover.innerHTML = `
+            <div class="popover-header">
+                <span><i class="fa-solid fa-microchip"></i> Detalle de CPU</span>
+                <i class="fa-solid fa-xmark close-popover"></i>
+            </div>
+            <div class="popover-body">
+                <div class="popover-metric">
+                    <div class="metric-info">
+                        <span>Uso de CPU</span>
+                        <span>${usedPercent}%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${usedPercent}%; background: var(--accent-color);"></div>
+                    </div>
+                </div>
+                <div class="popover-stats">
+                    <div class="p-stat"><strong>Ocupado:</strong> ${usedPercent}%</div>
+                    <div class="p-stat"><strong>Libre:</strong> ${freePercent}%</div>
+                </div>
+            </div>
+        `;
+
+        hostCard.appendChild(popover);
+
+        popover.querySelector('.close-popover').onclick = (ev) => {
+            ev.stopPropagation();
+            popover.remove();
+        };
+
+        const closeHandler = (ev) => {
+            if (!popover.contains(ev.target)) {
+                popover.remove();
+                document.removeEventListener('click', closeHandler);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', closeHandler), 10);
+    });
+}
+window.showCPUPopover = showCPUPopover;
+
 console.log('[DEBUG] Application core initialized.');
+
 
 
 
@@ -243,14 +384,15 @@ async function fetchHosts() {
 
                 </div>
                 <div class="host-stats">
-                    <div class="stat-card">
+                    <div class="stat-card clickable" onclick="showMemoryPopover(event, ${host.id})">
                         <div class="icon"><i class="fa-solid fa-memory"></i></div>
                         <div class="info">
                             <span class="label">Memory</span>
                             <span class="value">${memGB} GB</span>
                         </div>
                     </div>
-                    <div class="stat-card">
+
+                    <div class="stat-card clickable" onclick="showCPUPopover(event, ${host.id})">
                         <div class="icon"><i class="fa-solid fa-layer-group"></i></div>
                         <div class="info">
                             <span class="label">Cores</span>

@@ -30,15 +30,17 @@ type VM struct {
 }
 
 type Host struct {
-	ID          int64  `json:"id"`
-	ServerID    int64  `json:"server_id"`
-	Hostname    string `json:"hostname"`
-	ServerName  string `json:"server_name"`
-	IPAddress   string `json:"ip_address"`
-	CPUModel    string `json:"cpu_model"`
-	CPUCores    int    `json:"cpu_cores"`
-	TotalMemory uint64 `json:"total_memory"`
-	OSName      string `json:"os_name"`
+	ID          int64   `json:"id"`
+	ServerID    int64   `json:"server_id"`
+	Hostname    string  `json:"hostname"`
+	ServerName  string  `json:"server_name"`
+	IPAddress   string  `json:"ip_address"`
+	CPUModel    string  `json:"cpu_model"`
+	CPUCores    int     `json:"cpu_cores"`
+	TotalMemory uint64  `json:"total_memory"`
+	FreeMemory  uint64  `json:"free_memory"`
+	CPUUsage    float64 `json:"cpu_usage"`
+	OSName      string  `json:"os_name"`
 }
 
 type KVMServer struct {
@@ -64,6 +66,8 @@ func NewPostgresDB(connStr string) (*DB, error) {
 
 	// Auto-migration: Ensure os_name column exists in hosts table
 	_, _ = db.Exec("ALTER TABLE hosts ADD COLUMN IF NOT EXISTS os_name VARCHAR(255)")
+	_, _ = db.Exec("ALTER TABLE hosts ADD COLUMN IF NOT EXISTS free_memory BIGINT DEFAULT 0")
+	_, _ = db.Exec("ALTER TABLE hosts ADD COLUMN IF NOT EXISTS cpu_usage DOUBLE PRECISION DEFAULT 0")
 
 	return &DB{Conn: db}, nil
 }
@@ -74,12 +78,12 @@ func (d *DB) UpsertHost(h Host) (int64, error) {
 	err := d.Conn.QueryRow("SELECT id FROM hosts WHERE server_id = $1", h.ServerID).Scan(&id)
 	if err == sql.ErrNoRows {
 		err = d.Conn.QueryRow(`
-			INSERT INTO hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, os_name)
-			VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.OSName).Scan(&id)
+			INSERT INTO hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName).Scan(&id)
 	} else if err == nil {
-		_, err = d.Conn.Exec(`UPDATE hosts SET hostname=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, os_name=$5 WHERE id=$6`,
-			h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.OSName, id)
+		_, err = d.Conn.Exec(`UPDATE hosts SET hostname=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7 WHERE id=$8`,
+			h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, id)
 	}
 	return id, err
 }
@@ -198,7 +202,7 @@ func (d *DB) DeleteServer(id int64) error {
 
 func (d *DB) GetHosts() ([]Host, error) {
 	rows, err := d.Conn.Query(`
-		SELECT h.id, h.server_id, h.hostname, s.name, s.ip_address, h.cpu_model, h.cpu_cores, h.total_memory, h.os_name
+		SELECT h.id, h.server_id, h.hostname, s.name, s.ip_address, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name
 		FROM hosts h
 		JOIN kvm_servers s ON h.server_id = s.id`)
 	if err != nil {
@@ -210,7 +214,7 @@ func (d *DB) GetHosts() ([]Host, error) {
 	for rows.Next() {
 		var h Host
 		var osName sql.NullString
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &osName); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &osName); err != nil {
 			return nil, err
 		}
 		h.OSName = osName.String
