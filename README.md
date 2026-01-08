@@ -17,12 +17,13 @@
 **Centralizegg** es una solución de monitoreo ligera y containerizada para múltiples servidores KVM. Proporciona un dashboard premium en tiempo real para visualizar los recursos de tus hosts y el estado de las máquinas virtuales (VMs) de forma centralizada.
 
 ## ✨ Características Principales
-*   **Soporte Multi-Servidor**: Gestiona múltiples nodos KVM desde una sola interfaz.
-*   **Indicadores de Estado**: Visualiza qué servidores están 🟢 Online o 🔴 Offline.
-*   **Detalles de VM**: Consulta vCPU, Memoria configurada y uso en tiempo real.
-*   **Métricas de I/O**: Monitoreo en tiempo real de Lectura/Escritura de Disco y RX/TX de Red.
-*   **Web-Based Config**: Añade o elimina servidores directamente desde el dashboard.
-*   **Seguridad**: Soporte para puertos SSH personalizados y autenticación por contraseña.
+*   **Detección de SO**: Identificación automática del Sistema Operativo de cada host con iconos representativos.
+*   **Métricas Premium**: Ventanas flotantes (popovers) interactivas para CPU y Memoria con barras de progreso en tiempo real.
+*   **Filtrado Inteligente**: Selecciona un host para filtrar instantáneamente su cuadrícula de máquinas virtuales.
+*   **Orden Alfabético**: Organización automática de hosts y VMs para una navegación más rápida.
+*   **Navegación Optimizada**: Acceso rápido a la configuración y cambio de herramientas desde la barra superior.
+*   **Web-Based Config**: Añade o elimina servidores KVM directamente desde el dashboard.
+*   **Seguridad**: Soporte para puertos SSH personalizados y autenticación robusta (Clave/Contraseña).
 
 ## 🚀 Instalación Rápida
 
@@ -49,12 +50,13 @@ Accede al dashboard en: `http://localhost:8080`
 **Centralizegg** is a lightweight, containerized monitoring solution for multiple KVM servers. It provides a premium, real-time dashboard to visualize host resources and VM states from a centralized location.
 
 ## ✨ Key Features
-*   **Multi-Server Support**: Manage multiple KVM nodes from a single interface.
-*   **Status Indicators**: See which servers are 🟢 Online or 🔴 Offline.
-*   **VM Details**: View vCPU, configured Memory, and real-time usage.
-*   **I/O Metrics**: Real-time monitoring for Disk Read/Write and Network RX/TX.
-*   **Web-Based Config**: Add or remove servers directly from the dashboard.
-*   **Security**: Support for custom SSH ports and password authentication.
+*   **OS Detection**: Automatic OS identification for each host with representative icons.
+*   **Premium Metrics**: Interactive floating popovers for CPU and Memory with real-time progress bars.
+*   **Smart Filtering**: Select a host to instantly filter its Virtual Machine grid.
+*   **Alphabetical Sorting**: Automatic organization of hosts and VMs for faster navigation.
+*   **Optimized Navigation**: Quick access to config and tool switching from the top bar.
+*   **Web-Based Config**: Add or remove KVM servers directly from the dashboard.
+*   **Security**: Support for custom SSH ports and robust authentication (Key/Password).
 
 ## 🚀 Quick Start
 
