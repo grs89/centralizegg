@@ -767,6 +767,7 @@ function renderVMs() {
                     <div class="stat-value-display">
                         <div class="vm-stat-sub" style="font-size: 0.75rem;">RX: ${formatBytes(vm.net_rx, 1)}</div>
                         <div class="vm-stat-sub" style="font-size: 0.75rem;">TX: ${formatBytes(vm.net_tx, 1)}</div>
+                        ${vm.guest_ips ? `<div class="vm-stat-sub" style="font-size: 0.70rem; color: var(--accent-color); margin-top:2px;">${vm.guest_ips.split(' ')[0]}</div>` : ''}
                     </div>
                 </div>
             </div>

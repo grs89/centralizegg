@@ -258,6 +258,47 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 			}
 		}
 
+		// QEMU Guest Agent Data
+		var guestIPs, guestFSUsage string
+
+		// Get IPs via Agent
+		ifaces, err := l.DomainInterfaceAddresses(dom, uint32(libvirt.DomainInterfaceAddressesSrcAgent), 0)
+		if err == nil {
+			var ipList []string
+			for _, iface := range ifaces {
+				for _, addr := range iface.Addrs {
+					// Filter out loopback (127.0.0.1, ::1) usually
+					// Just taking everything for now, or maybe only IPv4?
+					ipList = append(ipList, addr.Addr)
+				}
+			}
+			// Just join them roughly
+			if len(ipList) > 0 {
+				guestIPs = fmt.Sprintf("%v", ipList)
+				// Clean up brackets [ ] if standard print
+				if len(guestIPs) > 1 {
+					guestIPs = guestIPs[1 : len(guestIPs)-1]
+				}
+			}
+		}
+
+		// Get FS Info via Agent
+		// Note: The current go-libvirt struct implementation does not expose Total/Used bytes directly.
+		// Leaving empty for now or implementation via alternate method (SSH/Custom).
+		if false {
+			fsInfos, _, err := l.DomainGetFsinfo(dom, 0)
+			if err == nil {
+				var usages []string
+				for _, fs := range fsInfos {
+					mount := fs.Mountpoint
+					usages = append(usages, mount)
+				}
+				if len(usages) > 0 {
+					guestFSUsage = fmt.Sprintf("%v", usages)
+				}
+			}
+		}
+
 		vm := data_centralizegg.VM{
 			Name:           dom.Name,
 			State:          stateStr,
@@ -272,6 +313,8 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 			DiskWrite:      diskWrite,
 			NetRX:          netRX,
 			NetTX:          netTX,
+			GuestIPs:       guestIPs,
+			GuestFSUsage:   guestFSUsage,
 			HostID:         hostID,
 		}
 

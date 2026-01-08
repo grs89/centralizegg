@@ -27,6 +27,8 @@ type VM struct {
 	DiskWrite      uint64    `json:"disk_write"`
 	NetRX          uint64    `json:"net_rx"`
 	NetTX          uint64    `json:"net_tx"`
+	GuestIPs       string    `json:"guest_ips"`
+	GuestFSUsage   string    `json:"guest_fs_usage"`
 	CPUUsage       float64   `json:"cpu_usage"`
 	HostID         int64     `json:"host_id"`
 	UpdatedAt      time.Time `json:"updated_at"`
@@ -74,6 +76,8 @@ func NewPostgresDB(connStr string) (*DB, error) {
 	_, _ = db.Exec("ALTER TABLE vms ADD COLUMN IF NOT EXISTS cpu_usage DOUBLE PRECISION DEFAULT 0")
 	_, _ = db.Exec("ALTER TABLE vms ADD COLUMN IF NOT EXISTS disk_allocation BIGINT DEFAULT 0")
 	_, _ = db.Exec("ALTER TABLE vms ADD COLUMN IF NOT EXISTS disk_capacity BIGINT DEFAULT 0")
+	_, _ = db.Exec("ALTER TABLE vms ADD COLUMN IF NOT EXISTS guest_ips TEXT DEFAULT ''")
+	_, _ = db.Exec("ALTER TABLE vms ADD COLUMN IF NOT EXISTS guest_fs_usage TEXT DEFAULT ''")
 
 	return &DB{Conn: db}, nil
 }
@@ -100,20 +104,20 @@ func (d *DB) UpsertVM(vm VM) error {
 
 	if err == sql.ErrNoRows {
 		_, err = d.Conn.Exec(`
-			INSERT INTO vms (name, state, vcpu, cpu_time, cpu_usage, memory_usage, max_memory, disk_allocation, disk_capacity, disk_read, disk_write, net_rx, net_tx, host_id, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())`,
-			vm.Name, vm.State, vm.VCPU, vm.CPUTime, vm.CPUUsage, vm.MemoryUsage, vm.MaxMemory, vm.DiskAllocation, vm.DiskCapacity, vm.DiskRead, vm.DiskWrite, vm.NetRX, vm.NetTX, vm.HostID)
+			INSERT INTO vms (name, state, vcpu, cpu_time, cpu_usage, memory_usage, max_memory, disk_allocation, disk_capacity, disk_read, disk_write, net_rx, net_tx, guest_ips, guest_fs_usage, host_id, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW())`,
+			vm.Name, vm.State, vm.VCPU, vm.CPUTime, vm.CPUUsage, vm.MemoryUsage, vm.MaxMemory, vm.DiskAllocation, vm.DiskCapacity, vm.DiskRead, vm.DiskWrite, vm.NetRX, vm.NetTX, vm.GuestIPs, vm.GuestFSUsage, vm.HostID)
 	} else if err == nil {
 		_, err = d.Conn.Exec(`
-			UPDATE vms SET state=$1, vcpu=$2, cpu_time=$3, cpu_usage=$4, memory_usage=$5, max_memory=$6, disk_allocation=$7, disk_capacity=$8, disk_read=$9, disk_write=$10, net_rx=$11, net_tx=$12, updated_at=NOW()
-			WHERE id=$13`,
-			vm.State, vm.VCPU, vm.CPUTime, vm.CPUUsage, vm.MemoryUsage, vm.MaxMemory, vm.DiskAllocation, vm.DiskCapacity, vm.DiskRead, vm.DiskWrite, vm.NetRX, vm.NetTX, id)
+			UPDATE vms SET state=$1, vcpu=$2, cpu_time=$3, cpu_usage=$4, memory_usage=$5, max_memory=$6, disk_allocation=$7, disk_capacity=$8, disk_read=$9, disk_write=$10, net_rx=$11, net_tx=$12, guest_ips=$13, guest_fs_usage=$14, updated_at=NOW()
+			WHERE id=$15`,
+			vm.State, vm.VCPU, vm.CPUTime, vm.CPUUsage, vm.MemoryUsage, vm.MaxMemory, vm.DiskAllocation, vm.DiskCapacity, vm.DiskRead, vm.DiskWrite, vm.NetRX, vm.NetTX, vm.GuestIPs, vm.GuestFSUsage, id)
 	}
 	return err
 }
 
 func (d *DB) GetAllVMs() ([]VM, error) {
-	rows, err := d.Conn.Query("SELECT id, name, state, vcpu, cpu_time, cpu_usage, memory_usage, max_memory, disk_allocation, disk_capacity, disk_read, disk_write, net_rx, net_tx, host_id, updated_at FROM vms")
+	rows, err := d.Conn.Query("SELECT id, name, state, vcpu, cpu_time, cpu_usage, memory_usage, max_memory, disk_allocation, disk_capacity, disk_read, disk_write, net_rx, net_tx, guest_ips, guest_fs_usage, host_id, updated_at FROM vms")
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +126,7 @@ func (d *DB) GetAllVMs() ([]VM, error) {
 	var vms []VM
 	for rows.Next() {
 		var vm VM
-		if err := rows.Scan(&vm.ID, &vm.Name, &vm.State, &vm.VCPU, &vm.CPUTime, &vm.CPUUsage, &vm.MemoryUsage, &vm.MaxMemory, &vm.DiskAllocation, &vm.DiskCapacity, &vm.DiskRead, &vm.DiskWrite, &vm.NetRX, &vm.NetTX, &vm.HostID, &vm.UpdatedAt); err != nil {
+		if err := rows.Scan(&vm.ID, &vm.Name, &vm.State, &vm.VCPU, &vm.CPUTime, &vm.CPUUsage, &vm.MemoryUsage, &vm.MaxMemory, &vm.DiskAllocation, &vm.DiskCapacity, &vm.DiskRead, &vm.DiskWrite, &vm.NetRX, &vm.NetTX, &vm.GuestIPs, &vm.GuestFSUsage, &vm.HostID, &vm.UpdatedAt); err != nil {
 			return nil, err
 		}
 		vms = append(vms, vm)
