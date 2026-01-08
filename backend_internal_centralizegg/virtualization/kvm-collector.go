@@ -13,12 +13,21 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+type vmStats struct {
+	cpuTime uint64
+	lastAt  time.Time
+}
+
 type MultiCollector struct {
-	DB *data_centralizegg.DB
+	DB      *data_centralizegg.DB
+	lastVMs map[string]vmStats // Key: hostID-vmName
 }
 
 func NewMultiCollector(db *data_centralizegg.DB) *MultiCollector {
-	return &MultiCollector{DB: db}
+	return &MultiCollector{
+		DB:      db,
+		lastVMs: make(map[string]vmStats),
+	}
 }
 
 func (mc *MultiCollector) CollectAll() {
@@ -178,6 +187,23 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 			continue
 		}
 
+		// Calculate CPU Usage %
+		var cpuUsage float64
+		key := fmt.Sprintf("%d-%s", hostID, dom.Name)
+		now := time.Now()
+		if prev, ok := mc.lastVMs[key]; ok {
+			deltaStats := float64(cpuTime - prev.cpuTime)
+			deltaTime := now.Sub(prev.lastAt).Seconds()
+			if deltaTime > 0 && vcpu > 0 {
+				// cpuUsage = (nanoseconds / (delta_seconds * 1e9 * cores)) * 100
+				cpuUsage = (deltaStats / (deltaTime * 1e9 * float64(vcpu))) * 100
+				if cpuUsage > 100 {
+					cpuUsage = 100
+				}
+			}
+		}
+		mc.lastVMs[key] = vmStats{cpuTime: cpuTime, lastAt: now}
+
 		stateStr := "Unknown"
 		switch libvirt.DomainState(state) {
 		case libvirt.DomainRunning:
@@ -197,6 +223,7 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 		}
 
 		var diskRead, diskWrite, netRX, netTX uint64
+		var diskCapacity, diskAllocation uint64
 
 		xmlData, err := l.DomainGetXMLDesc(dom, 0)
 		if err == nil {
@@ -209,6 +236,12 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 						if err == nil {
 							diskRead += uint64(dr)
 							diskWrite += uint64(dw)
+						}
+						// Get Block Info for capacity
+						cap, alloc, _, err := l.DomainGetBlockInfo(dom, dev, 0)
+						if err == nil {
+							diskCapacity += cap
+							diskAllocation += alloc
 						}
 					}
 				}
@@ -226,17 +259,20 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 		}
 
 		vm := data_centralizegg.VM{
-			Name:        dom.Name,
-			State:       stateStr,
-			VCPU:        int(vcpu),
-			CPUTime:     cpuTime,
-			MemoryUsage: memory * 1024,
-			MaxMemory:   maxMem * 1024,
-			DiskRead:    diskRead,
-			DiskWrite:   diskWrite,
-			NetRX:       netRX,
-			NetTX:       netTX,
-			HostID:      hostID,
+			Name:           dom.Name,
+			State:          stateStr,
+			VCPU:           int(vcpu),
+			CPUTime:        cpuTime,
+			CPUUsage:       cpuUsage,
+			MemoryUsage:    memory * 1024,
+			MaxMemory:      maxMem * 1024,
+			DiskAllocation: diskAllocation,
+			DiskCapacity:   diskCapacity,
+			DiskRead:       diskRead,
+			DiskWrite:      diskWrite,
+			NetRX:          netRX,
+			NetTX:          netTX,
+			HostID:         hostID,
 		}
 
 		mc.DB.UpsertVM(vm)

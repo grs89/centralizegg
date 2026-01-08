@@ -685,9 +685,12 @@ function renderVMs() {
         const memUsedGB = (vm.memory_usage / (1024 * 1024 * 1024)).toFixed(1);
         const memPercent = vm.max_memory > 0 ? ((vm.memory_usage / vm.max_memory) * 100).toFixed(0) : 0;
 
-        // Mock CPU percent for VM or use calculated if available (here we don't have per-vm cpu % easily yet, just time)
-        // For visual consistency, let's use a "Busy" indicator if cpu_time is active or just 0 if unknown
-        const cpuSeconds = (vm.cpu_time / 1e9).toFixed(1);
+        const cpuPercent = vm.cpu_usage ? vm.cpu_usage.toFixed(0) : 0;
+
+        const diskTotalGB = (vm.disk_capacity / (1024 * 1024 * 1024)).toFixed(1);
+        const diskUsedGB = (vm.disk_allocation / (1024 * 1024 * 1024)).toFixed(1);
+        const diskPercent = vm.disk_capacity > 0 ? ((vm.disk_allocation / vm.disk_capacity) * 100).toFixed(0) : 0;
+
         const isRunning = vm.state.toLowerCase() === 'running';
 
         return `
@@ -699,7 +702,7 @@ function renderVMs() {
                     </div>
                     <div class="vm-title-group">
                         <h4>${vm.name}</h4>
-                        <div class="vm-subtitle">${vm.vcpu} vCPU | ${memTotalGB} GB</div>
+                        <div class="vm-subtitle">${vm.vcpu} vCPU | ${isRunning ? 'En ejecución' : 'Apagada'}</div>
                     </div>
                 </div>
                 <div class="vm-status-badge ${isRunning ? 'running' : 'shutoff'}">
@@ -716,46 +719,54 @@ function renderVMs() {
                         <span>Memoria</span>
                     </div>
                     <div class="stat-value-display">
-                        <div class="vm-stat-value" style="color: ${getStatusColor(memPercent)};">${memPercent}%</div>
+                        <div class="vm-stat-value" style="color: ${getStatusColor(memPercent)};">
+                            ${memPercent}% <span class="vm-stat-sub">(${memUsedGB}/${memTotalGB}GB)</span>
+                        </div>
                         <div class="host-progress-container" style="height: 4px;">
                             <div class="host-progress-fill" style="width: ${memPercent}%; background: ${getStatusColor(memPercent)};"></div>
                         </div>
                     </div>
                 </div>
 
-                <!-- VM CPU Time -->
+                <!-- VM CPU Usage -->
                 <div class="vm-stat-item">
                     <div class="vm-stat-label">
-                        <i class="fa-solid fa-clock"></i>
-                        <span>CPU Time</span>
+                        <i class="fa-solid fa-microchip"></i>
+                        <span>CPU Usage</span>
                     </div>
                     <div class="stat-value-display">
-                        <div class="vm-stat-value" style="color: var(--accent-color);">${cpuSeconds}s</div>
-                        <div class="vm-stat-sub">Uso acumulado</div>
+                        <div class="vm-stat-value" style="color: ${getStatusColor(cpuPercent)};">${cpuPercent}%</div>
+                        <div class="host-progress-container" style="height: 4px;">
+                            <div class="host-progress-fill" style="width: ${cpuPercent}%; background: ${getStatusColor(cpuPercent)};"></div>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Disk I/O -->
+                <!-- VM Disk -->
                 <div class="vm-stat-item">
                     <div class="vm-stat-label">
                         <i class="fa-solid fa-hard-drive"></i>
-                        <span>Disk I/O</span>
+                        <span>Disco</span>
                     </div>
                     <div class="stat-value-display">
-                        <div class="vm-stat-sub">R: ${formatBytes(vm.disk_read, 1)}</div>
-                        <div class="vm-stat-sub">W: ${formatBytes(vm.disk_write, 1)}</div>
+                        <div class="vm-stat-value" style="color: ${getStatusColor(diskPercent)};">
+                            ${diskPercent}% <span class="vm-stat-sub">(${diskUsedGB}/${diskTotalGB}GB)</span>
+                        </div>
+                        <div class="host-progress-container" style="height: 4px;">
+                            <div class="host-progress-fill" style="width: ${diskPercent}%; background: ${getStatusColor(diskPercent)};"></div>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Network -->
+                <!-- Network info as subtext -->
                 <div class="vm-stat-item">
                     <div class="vm-stat-label">
                         <i class="fa-solid fa-network-wired"></i>
                         <span>Network</span>
                     </div>
                     <div class="stat-value-display">
-                        <div class="vm-stat-sub">RX: ${formatBytes(vm.net_rx, 1)}</div>
-                        <div class="vm-stat-sub">TX: ${formatBytes(vm.net_tx, 1)}</div>
+                        <div class="vm-stat-sub" style="font-size: 0.75rem;">RX: ${formatBytes(vm.net_rx, 1)}</div>
+                        <div class="vm-stat-sub" style="font-size: 0.75rem;">TX: ${formatBytes(vm.net_tx, 1)}</div>
                     </div>
                 </div>
             </div>
