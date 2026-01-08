@@ -7,6 +7,12 @@ let currentServers = [];
 let currentTool = null;
 let selectedHostId = null;
 
+// Cache for search
+let allHostsCache = [];
+let allVMsCache = [];
+let searchQuery = "";
+let selectedSuggestionIndex = -1;
+
 
 
 const tools = {
@@ -347,7 +353,136 @@ window.showCPUPopover = showCPUPopover;
 
 console.log('[DEBUG] Application core initialized.');
 
+// Search Input Listener
+const searchInput = document.getElementById('global-search');
+const suggestionsContainer = document.getElementById('search-suggestions');
 
+searchInput?.addEventListener('input', (e) => {
+    searchQuery = e.target.value.toLowerCase().trim();
+    console.log('[DEBUG] Search Query:', searchQuery);
+
+    selectedSuggestionIndex = -1; // Reset selection
+    updateSuggestions();
+
+    renderHosts();
+    renderVMs();
+});
+
+searchInput?.addEventListener('keydown', (e) => {
+    const items = suggestionsContainer.querySelectorAll('.suggestion-item');
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        selectedSuggestionIndex = Math.min(selectedSuggestionIndex + 1, items.length - 1);
+        updateSuggestionSelection(items);
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        selectedSuggestionIndex = Math.max(selectedSuggestionIndex - 1, 0);
+        updateSuggestionSelection(items);
+    } else if (e.key === 'Enter') {
+        if (selectedSuggestionIndex >= 0 && items[selectedSuggestionIndex]) {
+            e.preventDefault();
+            items[selectedSuggestionIndex].click();
+        }
+    } else if (e.key === 'Escape') {
+        suggestionsContainer.classList.add('hidden');
+    }
+});
+
+// Close suggestions when clicking outside
+document.addEventListener('click', (e) => {
+    if (!searchInput.contains(e.target) && !suggestionsContainer.contains(e.target)) {
+        suggestionsContainer.classList.add('hidden');
+    }
+});
+
+function updateSuggestionSelection(items) {
+    items.forEach((item, index) => {
+        if (index === selectedSuggestionIndex) {
+            item.classList.add('selected');
+            item.scrollIntoView({ block: 'nearest' });
+        } else {
+            item.classList.remove('selected');
+        }
+    });
+}
+
+function updateSuggestions() {
+    if (!searchQuery || searchQuery.length < 1) {
+        suggestionsContainer.innerHTML = '';
+        suggestionsContainer.classList.add('hidden');
+        return;
+    }
+
+    const suggestions = [];
+
+    // Match Hosts
+    allHostsCache.forEach(host => {
+        if (host.server_name.toLowerCase().includes(searchQuery) ||
+            host.hostname.toLowerCase().includes(searchQuery) ||
+            host.ip_address.toLowerCase().includes(searchQuery)) {
+            suggestions.push({
+                type: 'host',
+                id: host.id,
+                title: host.server_name,
+                subtitle: `${host.hostname} | ${host.ip_address}`,
+                icon: 'fa-solid fa-server',
+                original: host
+            });
+        }
+    });
+
+    // Match VMs
+    allVMsCache.forEach(vm => {
+        if (vm.name.toLowerCase().includes(searchQuery)) {
+            const host = allHostsCache.find(h => h.id === vm.host_id);
+            suggestions.push({
+                type: 'vm',
+                id: vm.host_id, // We want to select the host to see the VM
+                title: vm.name,
+                subtitle: host ? `Host: ${host.server_name}` : 'Virtual Machine',
+                icon: 'fa-solid fa-desktop',
+                original: vm
+            });
+        }
+    });
+
+    if (suggestions.length === 0) {
+        suggestionsContainer.innerHTML = '';
+        suggestionsContainer.classList.add('hidden');
+        return;
+    }
+
+    // Limit suggestions
+    const limitedSuggestions = suggestions.slice(0, 8);
+
+    suggestionsContainer.innerHTML = limitedSuggestions.map((s, idx) => `
+        <div class="suggestion-item" onclick="applySuggestion('${s.type}', ${s.id}, '${s.title.replace(/'/g, "\\'")}')">
+            <i class="${s.icon}"></i>
+            <div class="suggestion-content">
+                <span class="suggestion-title">${s.title}</span>
+                <span class="suggestion-subtitle">${s.subtitle}</span>
+            </div>
+            <span class="suggestion-category">${s.type}</span>
+        </div>
+    `).join('');
+
+    suggestionsContainer.classList.remove('hidden');
+}
+
+window.applySuggestion = (type, hostId, title) => {
+    searchQuery = title.toLowerCase();
+    searchInput.value = title;
+    suggestionsContainer.classList.add('hidden');
+
+    // If it's KVM, select the host
+    if (currentTool === 'kvm' || !currentTool) {
+        if (currentTool !== 'kvm') switchTool('kvm');
+        selectHost(hostId);
+    }
+
+    renderHosts();
+    renderVMs();
+};
 
 
 async function fetchHosts() {
@@ -361,60 +496,86 @@ async function fetchHosts() {
             hosts.sort((a, b) => a.server_name.localeCompare(b.server_name));
         }
 
+        allHostsCache = hosts || [];
+        renderHosts();
+    } catch (e) {
+        console.error(e);
         const container = document.getElementById('host-nodes-container');
+        if (container) container.innerHTML = '<div class="loading-state" style="color:var(--danger)">Failed to load hosts</div>';
+    }
+}
 
-        if (!container) return;
+function renderHosts() {
+    const container = document.getElementById('host-nodes-container');
+    if (!container) return;
 
-        if (!hosts || hosts.length === 0) {
-            container.innerHTML = '<div class="loading-state">No hosts monitored yet...</div>';
-            return;
-        }
+    if (!allHostsCache || allHostsCache.length === 0) {
+        container.innerHTML = '<div class="loading-state">No hosts monitored yet...</div>';
+        return;
+    }
 
-        container.innerHTML = hosts.map(host => {
-            const memGB = (host.total_memory / (1024 * 1024 * 1024)).toFixed(2);
-            const isActive = selectedHostId === host.id ? 'active' : '';
-            return `
-            <div class="host-node-card glass-panel ${isActive}" onclick="selectHost(${host.id})">
-                <div class="host-node-header">
-                    <div class="host-node-titles">
-                        <div class="host-node-main-title">${host.server_name}</div>
-                        <div class="host-node-sub-title"> ${host.hostname} | ${host.ip_address}</div>
-                        <div class="host-node-sub-title" style="margin-top: 5px; opacity: 0.8;"><i class="fa-brands fa-linux"></i> ${host.os_name || 'Detectando SO...'}</div>
-                    </div>
+    // Filter hosts based on search query OR if they contain matching VMs
+    const filteredHosts = allHostsCache.filter(host => {
+        if (!searchQuery) return true;
 
+        const matchesHost = host.server_name.toLowerCase().includes(searchQuery) ||
+            host.hostname.toLowerCase().includes(searchQuery) ||
+            host.ip_address.toLowerCase().includes(searchQuery) ||
+            (host.os_name && host.os_name.toLowerCase().includes(searchQuery));
+
+        // Also show host if any of its VMs match
+        const hasMatchingVM = allVMsCache.some(vm =>
+            vm.host_id === host.id && vm.name.toLowerCase().includes(searchQuery)
+        );
+
+        return matchesHost || hasMatchingVM;
+    });
+
+    if (filteredHosts.length === 0) {
+        container.innerHTML = '<div class="loading-state">No se encontraron resultados para "' + searchQuery + '"</div>';
+        return;
+    }
+
+    container.innerHTML = filteredHosts.map(host => {
+        const memGB = (host.total_memory / (1024 * 1024 * 1024)).toFixed(2);
+        const isActive = selectedHostId === host.id ? 'active' : '';
+        return `
+        <div class="host-node-card glass-panel ${isActive}" onclick="selectHost(${host.id})">
+            <div class="host-node-header">
+                <div class="host-node-titles">
+                    <div class="host-node-main-title">${host.server_name}</div>
+                    <div class="host-node-sub-title"> ${host.hostname} | ${host.ip_address}</div>
+                    <div class="host-node-sub-title" style="margin-top: 5px; opacity: 0.8;"><i class="fa-brands fa-linux"></i> ${host.os_name || 'Detectando SO...'}</div>
                 </div>
-                <div class="host-stats">
-                    <div class="stat-card clickable" onclick="showMemoryPopover(event, ${host.id})">
-                        <div class="icon"><i class="fa-solid fa-memory"></i></div>
-                        <div class="info">
-                            <span class="label">Memory</span>
-                            <span class="value">${memGB} GB</span>
-                        </div>
-                    </div>
 
-                    <div class="stat-card clickable" onclick="showCPUPopover(event, ${host.id})">
-                        <div class="icon"><i class="fa-solid fa-layer-group"></i></div>
-                        <div class="info">
-                            <span class="label">Cores</span>
-                            <span class="value">${host.cpu_cores}</span>
-                        </div>
+            </div>
+            <div class="host-stats">
+                <div class="stat-card clickable" onclick="showMemoryPopover(event, ${host.id})">
+                    <div class="icon"><i class="fa-solid fa-memory"></i></div>
+                    <div class="info">
+                        <span class="label">Memory</span>
+                        <span class="value">${memGB} GB</span>
                     </div>
-                    <div class="stat-card wide" style="grid-column: span 2;">
-                        <div class="icon"><i class="fa-solid fa-fingerprint"></i></div>
-                        <div class="info">
-                            <span class="label">CPU Model</span>
-                            <span class="value" style="font-size: 0.8rem;">${host.cpu_model}</span>
-                        </div>
+                </div>
+
+                <div class="stat-card clickable" onclick="showCPUPopover(event, ${host.id})">
+                    <div class="icon"><i class="fa-solid fa-layer-group"></i></div>
+                    <div class="info">
+                        <span class="label">Cores</span>
+                        <span class="value">${host.cpu_cores}</span>
+                    </div>
+                </div>
+                <div class="stat-card wide" style="grid-column: span 2;">
+                    <div class="icon"><i class="fa-solid fa-fingerprint"></i></div>
+                    <div class="info">
+                        <span class="label">CPU Model</span>
+                        <span class="value" style="font-size: 0.8rem;">${host.cpu_model}</span>
                     </div>
                 </div>
             </div>
-            `;
-        }).join('');
-    } catch (e) {
-
-        console.error(e);
-        document.getElementById('host-nodes-container').innerHTML = '<div class="loading-state" style="color:var(--danger)">Failed to load hosts</div>';
-    }
+        </div>
+        `;
+    }).join('');
 }
 
 async function fetchVMs() {
@@ -428,89 +589,100 @@ async function fetchVMs() {
             vms.sort((a, b) => a.name.localeCompare(b.name));
         }
 
+        allVMsCache = vms || [];
+        renderVMs();
+    } catch (e) {
+        console.error(e);
         const grid = document.getElementById('vm-grid');
+        if (grid) grid.innerHTML = '<div class="loading-state" style="color:var(--danger)"><i class="fa-solid fa-triangle-exclamation"></i> Connection Lost</div>';
+    }
+}
 
-        if (!selectedHostId) {
-            grid.innerHTML = '<div class="loading-state" style="opacity:0.6;"><i class="fa-solid fa-arrow-up"></i> Selecciona un Host Node para ver sus VMs</div>';
-            return;
-        }
+function renderVMs() {
+    const grid = document.getElementById('vm-grid');
+    if (!grid) return;
 
-        // Sort and Filter VMs
-        let filteredVMs = [];
-        if (vms && Array.isArray(vms)) {
-            filteredVMs = vms.filter(vm => vm.host_id === selectedHostId);
-            filteredVMs.sort((a, b) => a.name.localeCompare(b.name));
-        }
+    if (!selectedHostId) {
+        grid.innerHTML = '<div class="loading-state" style="opacity:0.6;"><i class="fa-solid fa-arrow-up"></i> Selecciona un Host Node para ver sus VMs</div>';
+        return;
+    }
 
-        if (filteredVMs.length === 0) {
-            grid.innerHTML = '<div class="loading-state">No hay VMs en este host o están cargando...</div>';
-            return;
-        }
+    // Filter and Sort VMs
+    let filteredVMs = allVMsCache.filter(vm => vm.host_id === selectedHostId);
 
-        grid.innerHTML = filteredVMs.map(vm => {
+    // Apply search filter
+    if (searchQuery) {
+        filteredVMs = filteredVMs.filter(vm =>
+            vm.name.toLowerCase().includes(searchQuery) ||
+            vm.state.toLowerCase().includes(searchQuery)
+        );
+    }
 
-            const memGB = (vm.max_memory / (1024 * 1024 * 1024)).toFixed(1);
-            const memUsedGB = (vm.memory_usage / (1024 * 1024 * 1024)).toFixed(1);
-            const memPercent = vm.max_memory > 0 ? (vm.memory_usage / vm.max_memory) * 100 : 0;
-            const cpuSeconds = (vm.cpu_time / 1e9).toFixed(1);
+    if (filteredVMs.length === 0) {
+        const msg = searchQuery ? `No se encontraron VMs que coincidan con "${searchQuery}"` : "No hay VMs en este host o están cargando...";
+        grid.innerHTML = `<div class="loading-state">${msg}</div>`;
+        return;
+    }
 
-            return `
-            <div class="vm-card state-${vm.state}">
-                <div class="vm-header">
-                    <div class="vm-name"><i class="fa-solid fa-server"></i> ${vm.name}</div>
-                    <div class="vm-state">${vm.state}</div>
-                </div>
-                <!-- Details Badge -->
-                <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:15px; display:flex; gap:10px;">
-                     <span style="background:rgba(255,255,255,0.05); padding:2px 6px; border-radius:4px;"><i class="fa-solid fa-microchip"></i> ${vm.vcpu || '?'} vCPU</span>
-                     <span style="background:rgba(255,255,255,0.05); padding:2px 6px; border-radius:4px;"><i class="fa-solid fa-memory"></i> ${memGB} GB RAM</span>
+    grid.innerHTML = filteredVMs.map(vm => {
+        const memGB = (vm.max_memory / (1024 * 1024 * 1024)).toFixed(1);
+        const memUsedGB = (vm.memory_usage / (1024 * 1024 * 1024)).toFixed(1);
+        const memPercent = vm.max_memory > 0 ? (vm.memory_usage / vm.max_memory) * 100 : 0;
+        const cpuSeconds = (vm.cpu_time / 1e9).toFixed(1);
+
+        return `
+        <div class="vm-card state-${vm.state}">
+            <div class="vm-header">
+                <div class="vm-name"><i class="fa-solid fa-server"></i> ${vm.name}</div>
+                <div class="vm-state">${vm.state}</div>
+            </div>
+            <!-- Details Badge -->
+            <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:15px; display:flex; gap:10px;">
+                 <span style="background:rgba(255,255,255,0.05); padding:2px 6px; border-radius:4px;"><i class="fa-solid fa-microchip"></i> ${vm.vcpu || '?'} vCPU</span>
+                 <span style="background:rgba(255,255,255,0.05); padding:2px 6px; border-radius:4px;"><i class="fa-solid fa-memory"></i> ${memGB} GB RAM</span>
+            </div>
+            
+            <div class="vm-metrics">
+                <div class="metric">
+                    <div class="metric-header">
+                        <span>Memory Usage</span>
+                        <span>${memUsedGB} / ${memGB} GB</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${memPercent}%"></div>
+                    </div>
                 </div>
                 
-                <div class="vm-metrics">
-                    <div class="metric">
-                        <div class="metric-header">
-                            <span>Memory Usage</span>
-                            <span>${memUsedGB} / ${memGB} GB</span>
-                        </div>
-                        <div class="progress-bar">
-                            <div class="progress-fill" style="width: ${memPercent}%"></div>
-                        </div>
+                <div class="metric">
+                    <div class="metric-header">
+                        <span>CPU Time (Cumulative)</span>
+                        <span>${cpuSeconds}s</span>
                     </div>
-                    
-                    <div class="metric">
-                        <div class="metric-header">
-                            <span>CPU Time (Cumulative)</span>
-                            <span>${cpuSeconds}s</span>
-                        </div>
-                        <div class="progress-bar">
-                            <div class="progress-fill" style="background: var(--accent-color); width: 100%; opacity: 0.3;"></div>
-                        </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="background: var(--accent-color); width: 100%; opacity: 0.3;"></div>
                     </div>
+                </div>
 
-                    <div class="vm-io-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; font-size:0.8rem; color:var(--text-secondary);">
-                        <div class="io-item">
-                            <div style="font-weight:bold; color:var(--text-primary); margin-bottom:4px;"><i class="fa-solid fa-hard-drive"></i> Disk I/O</div>
-                            <div>R: ${formatBytes(vm.disk_read)}</div>
-                            <div>W: ${formatBytes(vm.disk_write)}</div>
-                        </div>
-                        <div class="io-item">
-                            <div style="font-weight:bold; color:var(--text-primary); margin-bottom:4px;"><i class="fa-solid fa-network-wired"></i> Network</div>
-                            <div>RX: ${formatBytes(vm.net_rx)}</div>
-                            <div>TX: ${formatBytes(vm.net_tx)}</div>
-                        </div>
+                <div class="vm-io-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; font-size:0.8rem; color:var(--text-secondary);">
+                    <div class="io-item">
+                        <div style="font-weight:bold; color:var(--text-primary); margin-bottom:4px;"><i class="fa-solid fa-hard-drive"></i> Disk I/O</div>
+                        <div>R: ${formatBytes(vm.disk_read)}</div>
+                        <div>W: ${formatBytes(vm.disk_write)}</div>
+                    </div>
+                    <div class="io-item">
+                        <div style="font-weight:bold; color:var(--text-primary); margin-bottom:4px;"><i class="fa-solid fa-network-wired"></i> Network</div>
+                        <div>RX: ${formatBytes(vm.net_rx)}</div>
+                        <div>TX: ${formatBytes(vm.net_tx)}</div>
                     </div>
                 </div>
             </div>
-            `;
-        }).join('');
+        </div>
+        `;
+    }).join('');
 
-        const now = new Date();
-        document.getElementById('last-updated').textContent = now.toLocaleTimeString();
-
-    } catch (e) {
-        console.error(e);
-        document.getElementById('vm-grid').innerHTML = '<div class="loading-state" style="color:var(--danger)"><i class="fa-solid fa-triangle-exclamation"></i> Connection Lost</div>';
-    }
+    const now = new Date();
+    const lastUpdated = document.getElementById('last-updated');
+    if (lastUpdated) lastUpdated.textContent = now.toLocaleTimeString();
 }
 
 // Config Modal Logic

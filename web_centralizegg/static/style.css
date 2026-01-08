@@ -888,3 +888,130 @@ header {
     color: var(--text-secondary);
     font-weight: 400;
 }
+/* Search Styles */
+.search-container {
+    position: relative;
+    flex: 1;
+    max-width: 500px;
+    margin: 0 2rem;
+}
+
+.search-icon {
+    position: absolute;
+    left: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    pointer-events: none;
+    transition: color 0.3s ease;
+}
+
+#global-search {
+    width: 100%;
+    background: rgba(15, 23, 42, 0.4);
+    border: 1px solid var(--glass-border);
+    padding: 10px 15px 10px 40px;
+    border-radius: 10px;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+}
+
+#global-search:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    background: rgba(15, 23, 42, 0.6);
+    box-shadow: 0 0 15px var(--accent-glow);
+}
+
+#global-search:focus + .search-icon {
+    color: var(--accent-color);
+}
+
+#global-search::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
+@media (max-width: 850px) {
+    .search-container {
+        margin: 0 1rem;
+    }
+}
+
+@media (max-width: 700px) {
+    header {
+        flex-wrap: wrap;
+        gap: 15px;
+    }
+    
+    .search-container {
+        order: 3;
+        max-width: 100%;
+        margin: 0;
+    }
+}
+
+/* Search Suggestions */
+.search-suggestions {
+    position: absolute;
+    top: calc(100% + 5px);
+    left: 0;
+    width: 100%;
+    max-height: 300px;
+    overflow-y: auto;
+    z-index: 3000;
+    padding: 8px;
+    animation: fadeIn 0.2s ease-out;
+}
+
+.suggestion-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 15px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: var(--text-secondary);
+}
+
+.suggestion-item:hover, .suggestion-item.selected {
+    background: rgba(56, 189, 248, 0.1);
+    color: var(--accent-color);
+}
+
+.suggestion-item i {
+    width: 16px;
+    font-size: 0.9rem;
+    opacity: 0.7;
+}
+
+.suggestion-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.suggestion-title {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.suggestion-subtitle {
+    font-size: 0.75rem;
+    opacity: 0.6;
+}
+
+.suggestion-category {
+    margin-left: auto;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 2px 6px;
+    border-radius: 4px;
+    opacity: 0.5;
+}
