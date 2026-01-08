@@ -537,39 +537,95 @@ function renderHosts() {
     }
 
     container.innerHTML = filteredHosts.map(host => {
-        const memGB = (host.total_memory / (1024 * 1024 * 1024)).toFixed(2);
+        const memTotalGB = (host.total_memory / (1024 * 1024 * 1024)).toFixed(1);
+        const memFreeGB = (host.free_memory / (1024 * 1024 * 1024)).toFixed(1);
+        const memUsedGB = (parseFloat(memTotalGB) - parseFloat(memFreeGB)).toFixed(1);
+        const memPercent = host.total_memory > 0 ? (((host.total_memory - host.free_memory) / host.total_memory) * 100).toFixed(0) : 0;
+
+        const cpuPercent = host.cpu_usage ? host.cpu_usage.toFixed(0) : 0;
         const isActive = selectedHostId === host.id ? 'active' : '';
+
+        // Find if server is online from currentServers (config)
+        const serverConfig = currentServers.find(s => s.id === host.server_id);
+        const isOnline = serverConfig ? serverConfig.status === 'online' : true;
+
         return `
         <div class="host-node-card glass-panel ${isActive}" onclick="selectHost(${host.id})">
             <div class="host-node-header">
-                <div class="host-node-titles">
-                    <div class="host-node-main-title">${host.server_name}</div>
-                    <div class="host-node-sub-title"> ${host.hostname} | ${host.ip_address}</div>
-                    <div class="host-node-sub-title" style="margin-top: 5px; opacity: 0.8;"><i class="fa-brands fa-linux"></i> ${host.os_name || 'Detectando SO...'}</div>
+                <div class="host-node-identity">
+                    <div class="host-icon-box">
+                        <i class="fa-solid fa-server"></i>
+                    </div>
+                    <div class="host-title-group">
+                        <h3>${host.server_name}</h3>
+                        <div class="ip-badge">${host.ip_address}</div>
+                    </div>
                 </div>
-
+                <div class="host-status-badge ${isOnline ? '' : 'offline'}">
+                    <span class="status-dot ${isOnline ? 'online' : 'offline'}"></span>
+                    ${isOnline ? 'Online' : 'Offline'}
+                </div>
             </div>
-            <div class="host-stats">
-                <div class="stat-card clickable" onclick="showMemoryPopover(event, ${host.id})">
-                    <div class="icon"><i class="fa-solid fa-memory"></i></div>
-                    <div class="info">
-                        <span class="label">Memory</span>
-                        <span class="value">${memGB} GB</span>
+
+            <div class="host-os-info" style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                <i class="${getOSIcon(host.os_name)} fa-fw" style="font-size: 1rem; color: var(--accent-color);"></i>
+                <span>${host.os_name || 'Linux Generic'}</span>
+            </div>
+
+            <div class="host-stats-grid">
+                <!-- CPU Stat -->
+                <div class="host-stat-item">
+                    <div class="stat-label-row">
+                        <i class="fa-solid fa-microchip"></i>
+                        <span>CPU</span>
+                    </div>
+                    <div class="stat-value-display">
+                        <div class="stat-value-main" style="color: ${getStatusColor(cpuPercent)};">${cpuPercent}%</div>
+                        <div class="host-progress-container">
+                            <div class="host-progress-fill" style="width: ${cpuPercent}%; background: ${getStatusColor(cpuPercent)};"></div>
+                        </div>
                     </div>
                 </div>
 
-                <div class="stat-card clickable" onclick="showCPUPopover(event, ${host.id})">
-                    <div class="icon"><i class="fa-solid fa-layer-group"></i></div>
-                    <div class="info">
-                        <span class="label">Cores</span>
-                        <span class="value">${host.cpu_cores}</span>
+                <!-- Memory Stat -->
+                <div class="host-stat-item">
+                    <div class="stat-label-row">
+                        <i class="fa-solid fa-memory"></i>
+                        <span>Memoria</span>
+                    </div>
+                    <div class="stat-value-display">
+                        <div class="stat-value-main" style="color: ${getStatusColor(memPercent)};">
+                            ${memPercent}% <span class="stat-value-sub" style="font-size: 0.75rem; color: inherit; opacity: 0.8;">(${memUsedGB} / ${memTotalGB} GB)</span>
+                        </div>
+                        <div class="host-progress-container">
+                            <div class="host-progress-fill" style="width: ${memPercent}%; background: ${getStatusColor(memPercent)};"></div>
+                        </div>
                     </div>
                 </div>
-                <div class="stat-card wide" style="grid-column: span 2;">
-                    <div class="icon"><i class="fa-solid fa-fingerprint"></i></div>
-                    <div class="info">
-                        <span class="label">CPU Model</span>
-                        <span class="value" style="font-size: 0.8rem;">${host.cpu_model}</span>
+
+                <!-- Disk Stat (Placeholder) -->
+                <div class="host-stat-item">
+                    <div class="stat-label-row">
+                        <i class="fa-solid fa-hard-drive"></i>
+                        <span>Disco</span>
+                    </div>
+                    <div class="stat-value-display">
+                        <div class="stat-value-main" style="color: ${getStatusColor(67)};">67%</div>
+                        <div class="host-progress-container">
+                            <div class="host-progress-fill" style="width: 67%; background: ${getStatusColor(67)};"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Cores Stat -->
+                <div class="host-stat-item">
+                    <div class="stat-label-row">
+                        <i class="fa-solid fa-layer-group"></i>
+                        <span>Cores</span>
+                    </div>
+                    <div class="stat-value-display">
+                        <div class="stat-value-main color-cores">${host.cpu_cores}</div>
+                        <div class="stat-value-sub">x86_64</div>
                     </div>
                 </div>
             </div>
@@ -625,54 +681,81 @@ function renderVMs() {
     }
 
     grid.innerHTML = filteredVMs.map(vm => {
-        const memGB = (vm.max_memory / (1024 * 1024 * 1024)).toFixed(1);
+        const memTotalGB = (vm.max_memory / (1024 * 1024 * 1024)).toFixed(1);
         const memUsedGB = (vm.memory_usage / (1024 * 1024 * 1024)).toFixed(1);
-        const memPercent = vm.max_memory > 0 ? (vm.memory_usage / vm.max_memory) * 100 : 0;
+        const memPercent = vm.max_memory > 0 ? ((vm.memory_usage / vm.max_memory) * 100).toFixed(0) : 0;
+
+        // Mock CPU percent for VM or use calculated if available (here we don't have per-vm cpu % easily yet, just time)
+        // For visual consistency, let's use a "Busy" indicator if cpu_time is active or just 0 if unknown
         const cpuSeconds = (vm.cpu_time / 1e9).toFixed(1);
+        const isRunning = vm.state.toLowerCase() === 'running';
 
         return `
-        <div class="vm-card state-${vm.state}">
+        <div class="vm-card glass-panel state-${vm.state}">
             <div class="vm-header">
-                <div class="vm-name"><i class="fa-solid fa-server"></i> ${vm.name}</div>
-                <div class="vm-state">${vm.state}</div>
-            </div>
-            <!-- Details Badge -->
-            <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:15px; display:flex; gap:10px;">
-                 <span style="background:rgba(255,255,255,0.05); padding:2px 6px; border-radius:4px;"><i class="fa-solid fa-microchip"></i> ${vm.vcpu || '?'} vCPU</span>
-                 <span style="background:rgba(255,255,255,0.05); padding:2px 6px; border-radius:4px;"><i class="fa-solid fa-memory"></i> ${memGB} GB RAM</span>
-            </div>
-            
-            <div class="vm-metrics">
-                <div class="metric">
-                    <div class="metric-header">
-                        <span>Memory Usage</span>
-                        <span>${memUsedGB} / ${memGB} GB</span>
+                <div class="vm-identity">
+                    <div class="vm-icon-box">
+                        <i class="fa-solid fa-desktop"></i>
                     </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: ${memPercent}%"></div>
+                    <div class="vm-title-group">
+                        <h4>${vm.name}</h4>
+                        <div class="vm-subtitle">${vm.vcpu} vCPU | ${memTotalGB} GB</div>
                     </div>
                 </div>
-                
-                <div class="metric">
-                    <div class="metric-header">
-                        <span>CPU Time (Cumulative)</span>
-                        <span>${cpuSeconds}s</span>
+                <div class="vm-status-badge ${isRunning ? 'running' : 'shutoff'}">
+                    <span class="status-dot ${isRunning ? 'online' : ''}"></span>
+                    ${vm.state}
+                </div>
+            </div>
+
+            <div class="vm-stats-grid" style="margin-top: 5px;">
+                <!-- VM Memory -->
+                <div class="vm-stat-item">
+                    <div class="vm-stat-label">
+                        <i class="fa-solid fa-memory"></i>
+                        <span>Memoria</span>
                     </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="background: var(--accent-color); width: 100%; opacity: 0.3;"></div>
+                    <div class="stat-value-display">
+                        <div class="vm-stat-value" style="color: ${getStatusColor(memPercent)};">${memPercent}%</div>
+                        <div class="host-progress-container" style="height: 4px;">
+                            <div class="host-progress-fill" style="width: ${memPercent}%; background: ${getStatusColor(memPercent)};"></div>
+                        </div>
                     </div>
                 </div>
 
-                <div class="vm-io-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; font-size:0.8rem; color:var(--text-secondary);">
-                    <div class="io-item">
-                        <div style="font-weight:bold; color:var(--text-primary); margin-bottom:4px;"><i class="fa-solid fa-hard-drive"></i> Disk I/O</div>
-                        <div>R: ${formatBytes(vm.disk_read)}</div>
-                        <div>W: ${formatBytes(vm.disk_write)}</div>
+                <!-- VM CPU Time -->
+                <div class="vm-stat-item">
+                    <div class="vm-stat-label">
+                        <i class="fa-solid fa-clock"></i>
+                        <span>CPU Time</span>
                     </div>
-                    <div class="io-item">
-                        <div style="font-weight:bold; color:var(--text-primary); margin-bottom:4px;"><i class="fa-solid fa-network-wired"></i> Network</div>
-                        <div>RX: ${formatBytes(vm.net_rx)}</div>
-                        <div>TX: ${formatBytes(vm.net_tx)}</div>
+                    <div class="stat-value-display">
+                        <div class="vm-stat-value" style="color: var(--accent-color);">${cpuSeconds}s</div>
+                        <div class="vm-stat-sub">Uso acumulado</div>
+                    </div>
+                </div>
+
+                <!-- Disk I/O -->
+                <div class="vm-stat-item">
+                    <div class="vm-stat-label">
+                        <i class="fa-solid fa-hard-drive"></i>
+                        <span>Disk I/O</span>
+                    </div>
+                    <div class="stat-value-display">
+                        <div class="vm-stat-sub">R: ${formatBytes(vm.disk_read, 1)}</div>
+                        <div class="vm-stat-sub">W: ${formatBytes(vm.disk_write, 1)}</div>
+                    </div>
+                </div>
+
+                <!-- Network -->
+                <div class="vm-stat-item">
+                    <div class="vm-stat-label">
+                        <i class="fa-solid fa-network-wired"></i>
+                        <span>Network</span>
+                    </div>
+                    <div class="stat-value-display">
+                        <div class="vm-stat-sub">RX: ${formatBytes(vm.net_rx, 1)}</div>
+                        <div class="vm-stat-sub">TX: ${formatBytes(vm.net_tx, 1)}</div>
                     </div>
                 </div>
             </div>
@@ -872,6 +955,8 @@ async function checkServerStatus() {
         if (!response.ok) return;
         const servers = await response.json();
 
+        currentServers = servers || []; // Sync global state
+
         const offlineServers = servers.filter(s => s.status === 'offline');
         const badge = document.getElementById('notification-count');
         const list = document.getElementById('notification-list');
@@ -920,4 +1005,29 @@ function formatBytes(bytes, decimals = 2) {
     const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
+
+function getOSIcon(osName) {
+    if (!osName) return 'fa-brands fa-linux';
+    const os = osName.toLowerCase();
+
+    // Default fallback
+    let icon = 'fa-brands fa-linux';
+
+    if (os.includes('ubuntu')) icon = 'fa-brands fa-ubuntu';
+    else if (os.includes('debian')) icon = 'fa-brands fa-linux'; // Use linux penguin for debian for better compatibility
+    else if (os.includes('fedora')) icon = 'fa-brands fa-fedora';
+    else if (os.includes('centos')) icon = 'fa-brands fa-centos';
+    else if (os.includes('windows')) icon = 'fa-brands fa-windows';
+    else if (os.includes('red hat') || os.includes('rhel')) icon = 'fa-brands fa-redhat';
+    else if (os.includes('suse')) icon = 'fa-brands fa-suse';
+
+    return icon;
+}
+
+function getStatusColor(percent) {
+    const val = parseFloat(percent);
+    if (val <= 60) return '#22c55e'; // Success Green
+    if (val <= 80) return '#eab308'; // Warning Yellow/Amber
+    return '#ef4444'; // Danger Red
 }
