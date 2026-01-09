@@ -1,4 +1,6 @@
-CREATE TABLE IF NOT EXISTS kvm_servers (
+CREATE SCHEMA IF NOT EXISTS virtualization;
+
+CREATE TABLE IF NOT EXISTS virtualization.kvm_servers (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     ip_address VARCHAR(255) NOT NULL,
@@ -10,7 +12,7 @@ CREATE TABLE IF NOT EXISTS kvm_servers (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS hosts (
+CREATE TABLE IF NOT EXISTS virtualization.hosts (
     id SERIAL PRIMARY KEY,
     server_id INT, -- Link to kvm_servers
     hostname VARCHAR(255) NOT NULL,
@@ -18,30 +20,36 @@ CREATE TABLE IF NOT EXISTS hosts (
     cpu_cores INT,
     total_memory BIGINT,
     free_memory BIGINT DEFAULT 0,
+    cpu_usage DOUBLE PRECISION DEFAULT 0,
     os_name VARCHAR(255),
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT fk_server FOREIGN KEY(server_id) REFERENCES kvm_servers(id) ON DELETE CASCADE
+    CONSTRAINT fk_server FOREIGN KEY(server_id) REFERENCES virtualization.kvm_servers(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS vms (
+CREATE TABLE IF NOT EXISTS virtualization.vms (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     state VARCHAR(50),
     vcpu INT,
     cpu_time BIGINT,
+    cpu_usage DOUBLE PRECISION DEFAULT 0,
     memory_usage BIGINT,
     max_memory BIGINT,
+    disk_allocation BIGINT DEFAULT 0,
+    disk_capacity BIGINT DEFAULT 0,
     disk_read BIGINT DEFAULT 0,
     disk_write BIGINT DEFAULT 0,
     net_rx BIGINT DEFAULT 0,
     net_tx BIGINT DEFAULT 0,
+    guest_ips TEXT DEFAULT '',
+    guest_fs_usage TEXT DEFAULT '',
     host_id INT,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_host FOREIGN KEY(host_id) REFERENCES hosts(id) ON DELETE CASCADE
+    CONSTRAINT fk_host FOREIGN KEY(host_id) REFERENCES virtualization.hosts(id) ON DELETE CASCADE
 );
 
 -- Indexes
-CREATE INDEX IF NOT EXISTS idx_vms_name ON vms(name);
-CREATE INDEX IF NOT EXISTS idx_hosts_server ON hosts(server_id);
+CREATE INDEX IF NOT EXISTS idx_vms_name ON virtualization.vms(name);
+CREATE INDEX IF NOT EXISTS idx_hosts_server ON virtualization.hosts(server_id);
