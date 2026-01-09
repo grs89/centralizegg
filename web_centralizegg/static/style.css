@@ -1254,11 +1254,21 @@ header {
     font-size: 1.2rem;
 }
 
+.vm-title-group {
+    flex: 1;
+    min-width: 0;
+    /* Critical for truncate to work */
+    margin-right: 8px;
+}
+
 .vm-title-group h4 {
     font-size: 1rem;
     font-weight: 700;
     color: var(--text-primary);
     margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .vm-title-group .vm-subtitle {
@@ -1268,6 +1278,7 @@ header {
 }
 
 .vm-status-badge {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     gap: 6px;
