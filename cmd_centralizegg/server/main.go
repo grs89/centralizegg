@@ -11,6 +11,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/data_centralizegg"
+	"github.com/grs/centralizegg/backend_internal_centralizegg/firewall"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/virtualization"
 )
 
@@ -40,9 +41,13 @@ func main() {
 	}
 	log.Println("Connected to Database")
 
-	// Initialize Multi-Collector
+	// Initialize Multi-Collector (KVM)
 	col := virtualization.NewMultiCollector(db)
 	go col.Start(10 * time.Second) // Check every 10 seconds
+
+	// Initialize PFSense Collector
+	pfCol := firewall.NewPFSenseCollector(db)
+	go pfCol.Start(10 * time.Second) // Check every 10 seconds
 
 	// Router
 	r := mux.NewRouter()
@@ -70,6 +75,32 @@ func main() {
 			return
 		}
 		json.NewEncoder(w).Encode(vms)
+	}).Methods("GET")
+
+	// Firewall hosts API
+	r.HandleFunc("/api/firewall/hosts", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s", r.Method, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		hosts, err := db.GetFirewallHosts()
+		if err != nil {
+			log.Printf("Error GetFirewallHosts: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(hosts)
+	}).Methods("GET")
+
+	// Firewall servers config API
+	r.HandleFunc("/api/firewall/servers", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s", r.Method, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		servers, err := db.GetPFSenseServers()
+		if err != nil {
+			log.Printf("Error GetPFSenseServers: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(servers)
 	}).Methods("GET")
 
 	// Config API

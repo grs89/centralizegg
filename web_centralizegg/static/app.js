@@ -1,9 +1,12 @@
 const API_HOSTS = '/api/hosts';
 const API_VMS = '/api/vms';
 const API_CONFIG_SERVERS = '/api/config/servers';
+const API_FIREWALL_HOSTS = '/api/firewall/hosts';
+const API_FIREWALL_SERVERS = '/api/firewall/servers';
 
 // Global state
 let currentServers = [];
+let currentFirewallServers = [];
 let currentTool = null;
 let selectedHostId = null;
 
@@ -159,30 +162,26 @@ function switchTool(toolKey) {
                 hostNodesTitle.innerHTML = `<i class="${tool.icon}"></i> Host Nodes`;
             }
 
-            // Render host nodes for this tool
-            renderHostNodes('host-nodes-container-generic', {
-                icon: tool.icon,
-                showOSInfo: true,
-                showStats: true
-            });
+            // Render host nodes for this tool (will be empty if no hosts configured)
+            checkAndFetchHostsForTool(toolKey);
         } else {
             containerTool.classList.add('hidden');
         }
     }
 
-    // Update Config Button Visibility
-    const configBtn = document.getElementById('config-btn');
-    if (configBtn) {
-        configBtn.style.display = (toolKey === 'kvm') ? 'block' : 'none';
-    }
+    // Update Config Button Visibility - show only if there are configured servers
+    updateConfigButtonVisibility(toolKey);
 
-    // Trigger data fetch for KVM
+    // Trigger data fetch based on tool
     if (toolKey === 'kvm') {
         console.log('[DEBUG] Refreshing KVM data...');
         refreshAll();
+    } else if (toolKey === 'pfsense') {
+        // For PFSense, fetch firewall hosts
+        fetchFirewallHosts();
     } else {
-        // For other tools, refresh hosts data to show in Host Nodes section
-        fetchHosts();
+        // For other tools, check if they have hosts configured
+        checkAndFetchHostsForTool(toolKey);
     }
 }
 
@@ -522,6 +521,128 @@ window.applySuggestion = (type, hostId, title) => {
 };
 
 
+// Function to get the appropriate API endpoint for hosts based on tool
+function getHostsAPIForTool(toolKey) {
+    const toolHostsMap = {
+        'kvm': API_HOSTS,
+        'proxmox': API_HOSTS, // Proxmox uses same as KVM for now
+        'pfsense': API_FIREWALL_HOSTS,
+        // Add more mappings as needed
+    };
+    return toolHostsMap[toolKey] || null;
+}
+
+// Function to check if a tool has configured servers and fetch hosts
+async function checkAndFetchHostsForTool(toolKey) {
+    const apiEndpoint = getHostsAPIForTool(toolKey);
+    if (apiEndpoint) {
+        try {
+            const response = await fetch(apiEndpoint);
+            if (response.ok) {
+                const hosts = await response.json();
+                if (hosts && hosts.length > 0) {
+                    // Update cache and render
+                    if (toolKey === 'pfsense') {
+                        allHostsCache = hosts || [];
+                        renderHostNodes('host-nodes-container-generic', {
+                            icon: tools[toolKey].icon,
+                            showOSInfo: true,
+                            showStats: true
+                        });
+                    } else {
+                        fetchHosts();
+                    }
+                } else {
+                    // No hosts, render empty
+                    renderHostNodes('host-nodes-container-generic', {
+                        icon: tools[toolKey].icon,
+                        showOSInfo: true,
+                        showStats: true,
+                        hostsData: []
+                    });
+                }
+            }
+        } catch (e) {
+            console.error('Error fetching hosts for tool:', e);
+        }
+    } else {
+        // No API endpoint for this tool, render empty
+        renderHostNodes('host-nodes-container-generic', {
+            icon: tools[toolKey]?.icon || 'fa-solid fa-server',
+            showOSInfo: true,
+            showStats: true,
+            hostsData: []
+        });
+    }
+}
+
+// Function to update config button visibility based on tool and configured servers
+async function updateConfigButtonVisibility(toolKey) {
+    const configBtn = document.getElementById('config-btn');
+    if (!configBtn) return;
+
+    // Tools that support configuration
+    const configurableTools = ['kvm', 'pfsense'];
+    
+    if (!configurableTools.includes(toolKey)) {
+        configBtn.style.display = 'none';
+        return;
+    }
+
+    // Check if there are configured servers for this tool
+    try {
+        let hasServers = false;
+        if (toolKey === 'kvm') {
+            const response = await fetch(API_CONFIG_SERVERS);
+            if (response.ok) {
+                const servers = await response.json();
+                hasServers = servers && servers.length > 0;
+            }
+        } else if (toolKey === 'pfsense') {
+            const response = await fetch(API_FIREWALL_SERVERS);
+            if (response.ok) {
+                const servers = await response.json();
+                hasServers = servers && servers.length > 0;
+            }
+        }
+
+        configBtn.style.display = hasServers ? 'block' : 'none';
+    } catch (e) {
+        console.error('Error checking servers:', e);
+        configBtn.style.display = 'none';
+    }
+}
+
+// Fetch firewall hosts
+async function fetchFirewallHosts() {
+    try {
+        const response = await fetch(API_FIREWALL_HOSTS);
+        if (!response.ok) throw new Error('Failed to fetch firewall hosts');
+        const hosts = await response.json();
+
+        // Sort hosts alphabetically by server_name
+        if (hosts && Array.isArray(hosts)) {
+            hosts.sort((a, b) => (a.server_name || '').localeCompare(b.server_name || ''));
+        }
+
+        allHostsCache = hosts || [];
+        renderHostNodes('host-nodes-container-generic', {
+            icon: tools[currentTool]?.icon || 'fa-solid fa-shield-halved',
+            showOSInfo: true,
+            showStats: true
+        });
+        
+        // Update config button visibility after fetching hosts
+        if (currentTool) {
+            updateConfigButtonVisibility(currentTool);
+        }
+    } catch (e) {
+        console.error(e);
+        const container = document.getElementById('host-nodes-container-generic');
+        if (container) container.innerHTML = '<div class="loading-state" style="color:var(--danger)">Failed to load hosts</div>';
+    }
+}
+
 async function fetchHosts() {
     try {
         const response = await fetch(API_HOSTS);
@@ -536,6 +657,11 @@ async function fetchHosts() {
         allHostsCache = hosts || [];
         renderHosts();
         
+        // Update config button visibility after fetching hosts
+        if (currentTool) {
+            updateConfigButtonVisibility(currentTool);
+        }
+        
         // Also update generic host nodes container if visible (for other tools)
         const genericContainer = document.getElementById('host-nodes-container-generic');
         if (genericContainer) {
@@ -543,11 +669,7 @@ async function fetchHosts() {
             if (toolSection && !toolSection.closest('.hidden')) {
                 const currentToolObj = tools[currentTool];
                 if (currentToolObj && currentTool !== 'kvm') {
-                    renderHostNodes('host-nodes-container-generic', {
-                        icon: currentToolObj.icon,
-                        showOSInfo: true,
-                        showStats: true
-                    });
+                    checkAndFetchHostsForTool(currentTool);
                 }
             }
         }
@@ -574,7 +696,7 @@ function renderHostNodes(containerId = 'host-nodes-container', config = {}) {
     const customIcon = config.icon || 'fa-solid fa-server';
 
     if (!hostsData || hostsData.length === 0) {
-        container.innerHTML = '<div class="loading-state">No hosts monitored yet...</div>';
+        container.innerHTML = '<div class="loading-state" style="opacity:0.6; text-align:center; padding:3rem;">No hay hosts configurados para esta herramienta</div>';
         return;
     }
 
@@ -1051,13 +1173,26 @@ if (notifBtn && notifDropdown) {
 
 async function checkServerStatus() {
     try {
-        const response = await fetch(API_CONFIG_SERVERS);
-        if (!response.ok) return;
-        const servers = await response.json();
+        // Check KVM servers
+        const kvmResponse = await fetch(API_CONFIG_SERVERS);
+        let kvmServers = [];
+        if (kvmResponse.ok) {
+            kvmServers = await kvmResponse.json() || [];
+        }
 
-        currentServers = servers || []; // Sync global state
+        // Check Firewall servers
+        const firewallResponse = await fetch(API_FIREWALL_SERVERS);
+        let firewallServers = [];
+        if (firewallResponse.ok) {
+            firewallServers = await firewallResponse.json() || [];
+        }
 
-        const offlineServers = servers.filter(s => s.status === 'offline');
+        currentServers = kvmServers; // Sync global state for KVM
+        currentFirewallServers = firewallServers; // Sync global state for Firewall
+
+        // Combine all servers and filter offline ones
+        const allServers = [...kvmServers, ...firewallServers];
+        const offlineServers = allServers.filter(s => s.status === 'offline');
         const badge = document.getElementById('notification-count');
         const list = document.getElementById('notification-list');
 
@@ -1070,7 +1205,7 @@ async function checkServerStatus() {
                     <i class="fa-solid fa-circle-exclamation"></i>
                     <div>
                         <span class="offline-host-name">${s.name} no accesible</span>
-                        <span class="offline-details">${s.ip_address}:${s.ssh_port || 22}</span>
+                        <span class="offline-details">${s.ip_address}:${s.ssh_port || s.api_port || 22}</span>
                     </div>
                 </li>
             `).join('');
@@ -1089,9 +1224,11 @@ function refreshAll() {
     if (currentTool === 'kvm') {
         fetchHosts();
         fetchVMs();
+    } else if (currentTool === 'pfsense') {
+        fetchFirewallHosts();
     } else if (currentTool) {
-        // Refresh hosts for other tools too
-        fetchHosts();
+        // Refresh hosts for other tools
+        checkAndFetchHostsForTool(currentTool);
     }
 }
 

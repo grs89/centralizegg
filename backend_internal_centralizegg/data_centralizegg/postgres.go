@@ -71,6 +71,7 @@ func NewPostgresDB(connStr string) (*DB, error) {
 
 	// Auto-migration strategies
 	_, _ = db.Exec("CREATE SCHEMA IF NOT EXISTS virtualization")
+	_, _ = db.Exec("CREATE SCHEMA IF NOT EXISTS firewall")
 	// Ensure tables exist if not (simplified, ideally usage of migrate tool)
 	// For now we assume init.sql handles creation or we ALTER existing ones.
 	// NOTE: The ALTER queries below assume the table is in 'virtualization' schema now.
@@ -229,6 +230,132 @@ func (d *DB) GetHosts() ([]Host, error) {
 		var h Host
 		var osName sql.NullString
 		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &osName); err != nil {
+			return nil, err
+		}
+		h.OSName = osName.String
+		hosts = append(hosts, h)
+	}
+	return hosts, nil
+}
+
+// PFSense types and functions
+type PFSenseServer struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	IPAddress string `json:"ip_address"`
+	APIPort   int    `json:"api_port"`
+	APIKey    string `json:"api_key"`
+	APISecret string `json:"api_secret"`
+	Status    string `json:"status"` // online, offline, unknown
+}
+
+type FirewallHost struct {
+	ID              int64   `json:"id"`
+	ServerID        int64   `json:"server_id"`
+	Hostname        string  `json:"hostname"`
+	ServerName      string  `json:"server_name"`
+	IPAddress       string  `json:"ip_address"`
+	CPUModel        string  `json:"cpu_model"`
+	CPUCores        int     `json:"cpu_cores"`
+	TotalMemory     uint64  `json:"total_memory"`
+	FreeMemory      uint64  `json:"free_memory"`
+	CPUUsage        float64 `json:"cpu_usage"`
+	OSName          string  `json:"os_name"`
+	NetRXTotal      uint64  `json:"net_rx_total"`
+	NetTXTotal      uint64  `json:"net_tx_total"`
+	NetRXBytesPerSec uint64 `json:"net_rx_bytes_per_sec"`
+	NetTXBytesPerSec uint64 `json:"net_tx_bytes_per_sec"`
+}
+
+type FirewallInterface struct {
+	ID            int64  `json:"id"`
+	HostID        int64  `json:"host_id"`
+	InterfaceName string `json:"interface_name"`
+	InterfaceType string `json:"interface_type"`
+	Status        string `json:"status"`
+	NetRXBytes    uint64 `json:"net_rx_bytes"`
+	NetTXBytes    uint64 `json:"net_tx_bytes"`
+	NetRXPackets  uint64 `json:"net_rx_packets"`
+	NetTXPackets  uint64 `json:"net_tx_packets"`
+	NetRXErrors   uint64 `json:"net_rx_errors"`
+	NetTXErrors   uint64 `json:"net_tx_errors"`
+	NetRXDropped  uint64 `json:"net_rx_dropped"`
+	NetTXDropped  uint64 `json:"net_tx_dropped"`
+}
+
+func (d *DB) UpsertFirewallHost(h FirewallHost) (int64, error) {
+	var id int64
+	err := d.Conn.QueryRow("SELECT id FROM firewall.hosts WHERE server_id = $1", h.ServerID).Scan(&id)
+	if err == sql.ErrNoRows {
+		err = d.Conn.QueryRow(`
+			INSERT INTO firewall.hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, net_rx_total, net_tx_total, net_rx_bytes_per_sec, net_tx_bytes_per_sec)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
+			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.NetRXTotal, h.NetTXTotal, h.NetRXBytesPerSec, h.NetTXBytesPerSec).Scan(&id)
+	} else if err == nil {
+		_, err = d.Conn.Exec(`UPDATE firewall.hosts SET hostname=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, net_rx_total=$8, net_tx_total=$9, net_rx_bytes_per_sec=$10, net_tx_bytes_per_sec=$11 WHERE id=$12`,
+			h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.NetRXTotal, h.NetTXTotal, h.NetRXBytesPerSec, h.NetTXBytesPerSec, id)
+	}
+	return id, err
+}
+
+func (d *DB) UpsertFirewallInterface(iface FirewallInterface) error {
+	var id int64
+	err := d.Conn.QueryRow("SELECT id FROM firewall.interfaces WHERE host_id = $1 AND interface_name = $2", iface.HostID, iface.InterfaceName).Scan(&id)
+	if err == sql.ErrNoRows {
+		_, err = d.Conn.Exec(`
+			INSERT INTO firewall.interfaces (host_id, interface_name, interface_type, status, net_rx_bytes, net_tx_bytes, net_rx_packets, net_tx_packets, net_rx_errors, net_tx_errors, net_rx_dropped, net_tx_dropped, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())`,
+			iface.HostID, iface.InterfaceName, iface.InterfaceType, iface.Status, iface.NetRXBytes, iface.NetTXBytes, iface.NetRXPackets, iface.NetTXPackets, iface.NetRXErrors, iface.NetTXErrors, iface.NetRXDropped, iface.NetTXDropped)
+	} else if err == nil {
+		_, err = d.Conn.Exec(`
+			UPDATE firewall.interfaces SET interface_type=$1, status=$2, net_rx_bytes=$3, net_tx_bytes=$4, net_rx_packets=$5, net_tx_packets=$6, net_rx_errors=$7, net_tx_errors=$8, net_rx_dropped=$9, net_tx_dropped=$10, updated_at=NOW()
+			WHERE id=$11`,
+			iface.InterfaceType, iface.Status, iface.NetRXBytes, iface.NetTXBytes, iface.NetRXPackets, iface.NetTXPackets, iface.NetRXErrors, iface.NetTXErrors, iface.NetRXDropped, iface.NetTXDropped, id)
+	}
+	return err
+}
+
+func (d *DB) GetPFSenseServers() ([]PFSenseServer, error) {
+	rows, err := d.Conn.Query("SELECT id, name, ip_address, api_port, api_key, api_secret, status FROM firewall.pfsense_servers")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var servers []PFSenseServer
+	for rows.Next() {
+		var s PFSenseServer
+		var key, secret sql.NullString
+		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.APIPort, &key, &secret, &s.Status); err != nil {
+			return nil, err
+		}
+		s.APIKey = key.String
+		s.APISecret = secret.String
+		servers = append(servers, s)
+	}
+	return servers, nil
+}
+
+func (d *DB) SetPFSenseServerStatus(id int64, status string) error {
+	_, err := d.Conn.Exec("UPDATE firewall.pfsense_servers SET status=$1 WHERE id=$2", status, id)
+	return err
+}
+
+func (d *DB) GetFirewallHosts() ([]FirewallHost, error) {
+	rows, err := d.Conn.Query(`
+		SELECT h.id, h.server_id, h.hostname, s.name, s.ip_address, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, h.net_rx_total, h.net_tx_total, h.net_rx_bytes_per_sec, h.net_tx_bytes_per_sec
+		FROM firewall.hosts h
+		JOIN firewall.pfsense_servers s ON h.server_id = s.id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var hosts []FirewallHost
+	for rows.Next() {
+		var h FirewallHost
+		var osName sql.NullString
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &osName, &h.NetRXTotal, &h.NetTXTotal, &h.NetRXBytesPerSec, &h.NetTXBytesPerSec); err != nil {
 			return nil, err
 		}
 		h.OSName = osName.String
