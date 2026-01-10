@@ -152,6 +152,19 @@ function switchTool(toolKey) {
             if (icon) icon.className = tool.icon;
             if (title) title.textContent = `${tool.name} Management`;
             if (desc) desc.textContent = `Gestión completa de ${tool.name} próximamente.`;
+
+            // Update title for host nodes section
+            const hostNodesTitle = document.getElementById('host-nodes-title-generic');
+            if (hostNodesTitle) {
+                hostNodesTitle.innerHTML = `<i class="${tool.icon}"></i> Host Nodes`;
+            }
+
+            // Render host nodes for this tool
+            renderHostNodes('host-nodes-container-generic', {
+                icon: tool.icon,
+                showOSInfo: true,
+                showStats: true
+            });
         } else {
             containerTool.classList.add('hidden');
         }
@@ -167,6 +180,9 @@ function switchTool(toolKey) {
     if (toolKey === 'kvm') {
         console.log('[DEBUG] Refreshing KVM data...');
         refreshAll();
+    } else {
+        // For other tools, refresh hosts data to show in Host Nodes section
+        fetchHosts();
     }
 }
 
@@ -364,8 +380,29 @@ searchInput?.addEventListener('input', (e) => {
     selectedSuggestionIndex = -1; // Reset selection
     updateSuggestions();
 
+    // Update KVM hosts
     renderHosts();
-    renderVMs();
+    
+    // Update VMs if KVM tool is active
+    if (currentTool === 'kvm') {
+        renderVMs();
+    }
+    
+    // Also update generic host nodes container if visible (for other tools)
+    const genericContainer = document.getElementById('host-nodes-container-generic');
+    if (genericContainer) {
+        const toolSection = genericContainer.closest('section');
+        if (toolSection && !toolSection.closest('.hidden')) {
+            const currentToolObj = tools[currentTool];
+            if (currentToolObj && currentTool !== 'kvm') {
+                renderHostNodes('host-nodes-container-generic', {
+                    icon: currentToolObj.icon,
+                    showOSInfo: true,
+                    showStats: true
+                });
+            }
+        }
+    }
 });
 
 searchInput?.addEventListener('keydown', (e) => {
@@ -498,38 +535,71 @@ async function fetchHosts() {
 
         allHostsCache = hosts || [];
         renderHosts();
+        
+        // Also update generic host nodes container if visible (for other tools)
+        const genericContainer = document.getElementById('host-nodes-container-generic');
+        if (genericContainer) {
+            const toolSection = genericContainer.closest('section');
+            if (toolSection && !toolSection.closest('.hidden')) {
+                const currentToolObj = tools[currentTool];
+                if (currentToolObj && currentTool !== 'kvm') {
+                    renderHostNodes('host-nodes-container-generic', {
+                        icon: currentToolObj.icon,
+                        showOSInfo: true,
+                        showStats: true
+                    });
+                }
+            }
+        }
     } catch (e) {
         console.error(e);
         const container = document.getElementById('host-nodes-container');
         if (container) container.innerHTML = '<div class="loading-state" style="color:var(--danger)">Failed to load hosts</div>';
+        const genericContainer = document.getElementById('host-nodes-container-generic');
+        if (genericContainer) genericContainer.innerHTML = '<div class="loading-state" style="color:var(--danger)">Failed to load hosts</div>';
     }
 }
 
-function renderHosts() {
-    const container = document.getElementById('host-nodes-container');
+// Generic function to render host nodes for any tool
+function renderHostNodes(containerId = 'host-nodes-container', config = {}) {
+    const container = document.getElementById(containerId);
     if (!container) return;
 
-    if (!allHostsCache || allHostsCache.length === 0) {
+    // Use allHostsCache by default, or custom data if provided
+    const hostsData = config.hostsData || allHostsCache;
+    const customFilter = config.customFilter || null;
+    const onHostClick = config.onHostClick || 'selectHost'; // Default to string for onclick
+    const showOSInfo = config.showOSInfo !== false; // Default true
+    const showStats = config.showStats !== false; // Default true
+    const customIcon = config.icon || 'fa-solid fa-server';
+
+    if (!hostsData || hostsData.length === 0) {
         container.innerHTML = '<div class="loading-state">No hosts monitored yet...</div>';
         return;
     }
 
     // Filter hosts based on search query OR if they contain matching VMs
-    const filteredHosts = allHostsCache.filter(host => {
-        if (!searchQuery) return true;
+    let filteredHosts = hostsData;
+    
+    if (customFilter) {
+        filteredHosts = hostsData.filter(customFilter);
+    } else {
+        filteredHosts = hostsData.filter(host => {
+            if (!searchQuery) return true;
 
-        const matchesHost = host.server_name.toLowerCase().includes(searchQuery) ||
-            host.hostname.toLowerCase().includes(searchQuery) ||
-            host.ip_address.toLowerCase().includes(searchQuery) ||
-            (host.os_name && host.os_name.toLowerCase().includes(searchQuery));
+            const matchesHost = host.server_name?.toLowerCase().includes(searchQuery) ||
+                host.hostname?.toLowerCase().includes(searchQuery) ||
+                host.ip_address?.toLowerCase().includes(searchQuery) ||
+                (host.os_name && host.os_name.toLowerCase().includes(searchQuery));
 
-        // Also show host if any of its VMs match
-        const hasMatchingVM = allVMsCache.some(vm =>
-            vm.host_id === host.id && vm.name.toLowerCase().includes(searchQuery)
-        );
+            // Also show host if any of its VMs match (for KVM)
+            const hasMatchingVM = allVMsCache.some(vm =>
+                vm.host_id === host.id && vm.name.toLowerCase().includes(searchQuery)
+            );
 
-        return matchesHost || hasMatchingVM;
-    });
+            return matchesHost || hasMatchingVM;
+        });
+    }
 
     if (filteredHosts.length === 0) {
         container.innerHTML = '<div class="loading-state">No se encontraron resultados para "' + searchQuery + '"</div>';
@@ -537,10 +607,12 @@ function renderHosts() {
     }
 
     container.innerHTML = filteredHosts.map(host => {
-        const memTotalGB = (host.total_memory / (1024 * 1024 * 1024)).toFixed(1);
-        const memFreeGB = (host.free_memory / (1024 * 1024 * 1024)).toFixed(1);
+        const memTotal = host.total_memory || 0;
+        const memFree = host.free_memory || 0;
+        const memTotalGB = (memTotal / (1024 * 1024 * 1024)).toFixed(1);
+        const memFreeGB = (memFree / (1024 * 1024 * 1024)).toFixed(1);
         const memUsedGB = (parseFloat(memTotalGB) - parseFloat(memFreeGB)).toFixed(1);
-        const memPercent = host.total_memory > 0 ? (((host.total_memory - host.free_memory) / host.total_memory) * 100).toFixed(0) : 0;
+        const memPercent = memTotal > 0 ? (((memTotal - memFree) / memTotal) * 100).toFixed(0) : 0;
 
         const cpuPercent = host.cpu_usage ? host.cpu_usage.toFixed(0) : 0;
         const isActive = selectedHostId === host.id ? 'active' : '';
@@ -549,16 +621,19 @@ function renderHosts() {
         const serverConfig = currentServers.find(s => s.id === host.server_id);
         const isOnline = serverConfig ? serverConfig.status === 'online' : true;
 
+        // Handle onclick - use the provided function name or default to selectHost
+        const onClickHandler = onHostClick || 'selectHost';
+
         return `
-        <div class="host-node-card glass-panel ${isActive}" onclick="selectHost(${host.id})">
+        <div class="host-node-card glass-panel ${isActive}" onclick="${onClickHandler}(${host.id})">
             <div class="host-node-header">
                 <div class="host-node-identity">
                     <div class="host-icon-box">
-                        <i class="fa-solid fa-server"></i>
+                        <i class="${customIcon}"></i>
                     </div>
                     <div class="host-title-group">
-                        <h3>${host.server_name}</h3>
-                        <div class="ip-badge">${host.ip_address}</div>
+                        <h3>${host.server_name || host.name || 'Unknown'}</h3>
+                        <div class="ip-badge">${host.ip_address || 'N/A'}</div>
                     </div>
                 </div>
                 <div class="host-status-badge ${isOnline ? '' : 'offline'}">
@@ -567,11 +642,14 @@ function renderHosts() {
                 </div>
             </div>
 
+            ${showOSInfo && host.os_name ? `
             <div class="host-os-info" style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
                 <i class="${getOSIcon(host.os_name)} fa-fw" style="font-size: 1rem; color: var(--accent-color);"></i>
                 <span>${host.os_name || 'Linux Generic'}</span>
             </div>
+            ` : ''}
 
+            ${showStats ? `
             <div class="host-stats-grid">
                 <!-- CPU Stat -->
                 <div class="host-stat-item">
@@ -603,7 +681,7 @@ function renderHosts() {
                     </div>
                 </div>
 
-                <!-- Disk Stat (Placeholder) -->
+                <!-- Disk Stat -->
                 <div class="host-stat-item">
                     <div class="stat-label-row">
                         <i class="fa-solid fa-hard-drive"></i>
@@ -624,14 +702,24 @@ function renderHosts() {
                         <span>Cores</span>
                     </div>
                     <div class="stat-value-display">
-                        <div class="stat-value-main color-cores">${host.cpu_cores}</div>
+                        <div class="stat-value-main color-cores">${host.cpu_cores || 'N/A'}</div>
                         <div class="stat-value-sub">x86_64</div>
                     </div>
                 </div>
             </div>
+            ` : ''}
         </div>
         `;
     }).join('');
+}
+
+// Wrapper function for KVM (backward compatibility)
+function renderHosts() {
+    renderHostNodes('host-nodes-container', {
+        icon: 'fa-solid fa-server',
+        showOSInfo: true,
+        showStats: true
+    });
 }
 
 async function fetchVMs() {
@@ -1001,6 +1089,9 @@ function refreshAll() {
     if (currentTool === 'kvm') {
         fetchHosts();
         fetchVMs();
+    } else if (currentTool) {
+        // Refresh hosts for other tools too
+        fetchHosts();
     }
 }
 
