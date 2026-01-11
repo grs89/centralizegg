@@ -30,6 +30,70 @@ let allVMsCache = [];
 let searchQuery = "";
 let selectedSuggestionIndex = -1;
 
+// VM Network History Cache
+const vmNetworkHistory = {}; // Key: vmId, Value: { rx: [], tx: [], lastRx, lastTx, lastTime }
+const HISTORY_POINTS = 20;
+
+function updateNetworkHistory(vms) {
+    const now = Date.now();
+    vms.forEach(vm => {
+        if (!vmNetworkHistory[vm.id]) {
+            vmNetworkHistory[vm.id] = {
+                rx: Array(HISTORY_POINTS).fill(0),
+                tx: Array(HISTORY_POINTS).fill(0),
+                lastRx: vm.net_rx,
+                lastTx: vm.net_tx,
+                lastTime: now
+            };
+        } else {
+            const entry = vmNetworkHistory[vm.id];
+            const timeDelta = (now - entry.lastTime) / 1000; // seconds
+
+            if (timeDelta > 0) {
+                // Calculate rate in Bytes/s
+                // Handle counter reset/overflow rudimentarily (if current < last, assume 0 rate or just push 0)
+                let rxRate = 0;
+                let txRate = 0;
+
+                if (vm.net_rx >= entry.lastRx) {
+                    rxRate = (vm.net_rx - entry.lastRx) / timeDelta;
+                }
+                if (vm.net_tx >= entry.lastTx) {
+                    txRate = (vm.net_tx - entry.lastTx) / timeDelta;
+                }
+
+                entry.rx.push(rxRate);
+                entry.tx.push(txRate);
+
+                if (entry.rx.length > HISTORY_POINTS) entry.rx.shift();
+                if (entry.tx.length > HISTORY_POINTS) entry.tx.shift();
+
+                entry.lastRx = vm.net_rx;
+                entry.lastTx = vm.net_tx;
+                entry.lastTime = now;
+            }
+        }
+    });
+}
+
+function renderSparkline(data, color, width = 100, height = 30) {
+    if (!data || data.length < 2) return '';
+
+    const max = Math.max(...data, 1); // Avoid div by zero
+    // Scale points
+    const points = data.map((val, idx) => {
+        const x = (idx / (HISTORY_POINTS - 1)) * width;
+        const y = height - ((val / max) * height);
+        return `${x},${y}`;
+    }).join(' ');
+
+    return `
+        <svg width="${width}" height="${height}" fill="none" class="sparkline">
+            <polyline points="${points}" stroke="${color}" stroke-width="1.5" stroke-linecap="round" vector-effect="non-scaling-stroke" />
+        </svg>
+    `;
+}
+
 
 
 const tools = {
@@ -872,6 +936,7 @@ async function fetchVMs() {
         }
 
         allVMsCache = vms || [];
+        updateNetworkHistory(allVMsCache);
         renderVMs();
     } catch (e) {
         console.error(e);
@@ -917,6 +982,11 @@ function renderVMs() {
         const diskUsedGB = (vm.disk_allocation / (1024 * 1024 * 1024)).toFixed(1);
         const diskPercent = vm.disk_capacity > 0 ? ((vm.disk_allocation / vm.disk_capacity) * 100).toFixed(0) : 0;
 
+        let disks = [];
+        try {
+            if (vm.disks) disks = JSON.parse(vm.disks);
+        } catch (e) { console.error("Error parsing disks JSON", e); }
+
         const isRunning = vm.state.toLowerCase() === 'running';
 
         return `
@@ -928,7 +998,9 @@ function renderVMs() {
                     </div>
                     <div class="vm-title-group">
                         <h4>${vm.name}</h4>
-                        <div class="vm-subtitle">${vm.vcpu} vCPU</div>
+                        <div class="vm-subtitle" style="font-size: 0.8rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px;" title="${vm.os_name || 'Unknown OS'}">
+                            ${(vm.os_name && vm.os_name.trim() !== "") ? vm.os_name : "Unknown OS"}
+                        </div>
                     </div>
                 </div>
                 <div class="vm-status-badge ${isRunning ? 'running' : 'shutoff'}" title="${vm.state}">
@@ -971,28 +1043,69 @@ function renderVMs() {
                 <div class="vm-stat-item">
                     <div class="vm-stat-label">
                         <i class="fa-solid fa-hard-drive"></i>
-                        <span>Disco</span>
+                        <span>Disco${disks.length > 1 ? 's' : ''}</span>
                     </div>
                     <div class="stat-value-display">
-                        <div class="vm-stat-value" style="color: ${getStatusColor(diskPercent)};">
-                            ${diskPercent}% <span class="vm-stat-sub">(${diskUsedGB}/${diskTotalGB}GB)</span>
-                        </div>
-                        <div class="host-progress-container" style="height: 4px;">
-                            <div class="host-progress-fill" style="width: ${diskPercent}%; background: ${getStatusColor(diskPercent)};"></div>
-                        </div>
+                        ${disks.length > 1 ?
+                disks.map(d => {
+                    const dCap = (d.capacity / (1024 * 1024 * 1024)).toFixed(1);
+                    const dAlloc = (d.allocation / (1024 * 1024 * 1024)).toFixed(1);
+                    const dPct = d.capacity > 0 ? ((d.allocation / d.capacity) * 100).toFixed(0) : 0;
+                    return `
+                                <div style="margin-bottom: 4px;">
+                                    <div class="vm-stat-value" style="font-size: 0.7rem; color: var(--text-secondary); display: flex; justify-content: space-between;">
+                                        <span>${d.device}</span>
+                                        <span style="color: ${getStatusColor(dPct)};">${dPct}% (${dAlloc}/${dCap}GB)</span>
+                                    </div>
+                                    <div class="host-progress-container" style="height: 3px;">
+                                        <div class="host-progress-fill" style="width: ${dPct}%; background: ${getStatusColor(dPct)};"></div>
+                                    </div>
+                                </div>`;
+                }).join('')
+                :
+                `<div class="vm-stat-value" style="color: ${getStatusColor(diskPercent)};">
+                                ${diskPercent}% <span class="vm-stat-sub">(${diskUsedGB}/${diskTotalGB}GB)</span>
+                            </div>
+                            <div class="host-progress-container" style="height: 4px;">
+                                <div class="host-progress-fill" style="width: ${diskPercent}%; background: ${getStatusColor(diskPercent)};"></div>
+                            </div>`
+            }
                     </div>
                 </div>
 
-                <!-- Network info as subtext -->
+                <!-- Network info with Sparklines -->
                 <div class="vm-stat-item">
                     <div class="vm-stat-label">
                         <i class="fa-solid fa-network-wired"></i>
                         <span>Network</span>
                     </div>
                     <div class="stat-value-display">
-                        <div class="vm-stat-sub" style="font-size: 0.75rem;">RX: ${formatBytes(vm.net_rx, 1)}</div>
-                        <div class="vm-stat-sub" style="font-size: 0.75rem;">TX: ${formatBytes(vm.net_tx, 1)}</div>
-                        ${vm.guest_ips ? `<div class="vm-stat-sub" style="font-size: 0.70rem; color: var(--accent-color); margin-top:2px;">${vm.guest_ips.split(' ')[0]}</div>` : ''}
+                        <div style="display: flex; gap: 10px; align-items: flex-end; justify-content: space-between;">
+                            
+                            <!-- RX Column -->
+                            <div style="flex: 1; display: flex; flex-direction: column; gap: 2px;">
+                                <div style="font-size: 0.65rem; color: var(--text-secondary); display: flex; justify-content: space-between;">
+                                    <span>RX</span>
+                                    <span>${formatBytes(vm.net_rx, 1)}</span>
+                                </div>
+                                <div style="height: 25px; overflow: hidden; opacity: 0.8;">
+                                    ${vmNetworkHistory[vm.id] ? renderSparkline(vmNetworkHistory[vm.id].rx, '#4ade80', 60, 25) : ''}
+                                </div>
+                            </div>
+
+                            <!-- TX Column -->
+                            <div style="flex: 1; display: flex; flex-direction: column; gap: 2px;">
+                                <div style="font-size: 0.65rem; color: var(--text-secondary); display: flex; justify-content: space-between;">
+                                    <span>TX</span>
+                                    <span>${formatBytes(vm.net_tx, 1)}</span>
+                                </div>
+                                <div style="height: 25px; overflow: hidden; opacity: 0.8;">
+                                     ${vmNetworkHistory[vm.id] ? renderSparkline(vmNetworkHistory[vm.id].tx, '#fb923c', 60, 25) : ''}
+                                </div>
+                            </div>
+
+                        </div>
+                         ${vm.guest_ips ? `<div class="vm-stat-sub" style="font-size: 0.70rem; color: var(--accent-color); margin-top:4px; text-align: right;">${vm.guest_ips.split(' ')[0]}</div>` : ''}
                     </div>
                 </div>
             </div>

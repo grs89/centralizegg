@@ -1,6 +1,7 @@
 package virtualization
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -12,6 +13,12 @@ import (
 	"github.com/grs/centralizegg/backend_internal_centralizegg/data_centralizegg"
 	"golang.org/x/crypto/ssh"
 )
+
+type DiskStat struct {
+	Device     string `json:"device"`
+	Capacity   uint64 `json:"capacity"`
+	Allocation uint64 `json:"allocation"`
+}
 
 type vmStats struct {
 	cpuTime uint64
@@ -27,6 +34,13 @@ func NewMultiCollector(db *data_centralizegg.DB) *MultiCollector {
 	return &MultiCollector{
 		DB:      db,
 		lastVMs: make(map[string]vmStats),
+	}
+}
+
+func (mc *MultiCollector) Start(interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	for range ticker.C {
+		mc.CollectAll()
 	}
 }
 
@@ -224,6 +238,7 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 
 		var diskRead, diskWrite, netRX, netTX uint64
 		var diskCapacity, diskAllocation uint64
+		var diskStats []DiskStat
 
 		xmlData, err := l.DomainGetXMLDesc(dom, 0)
 		if err == nil {
@@ -242,6 +257,11 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 						if err == nil {
 							diskCapacity += cap
 							diskAllocation += alloc
+							diskStats = append(diskStats, DiskStat{
+								Device:     dev,
+								Capacity:   cap,
+								Allocation: alloc,
+							})
 						}
 					}
 				}
@@ -299,6 +319,45 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 			}
 		}
 
+		// QEMU Guest OS Info
+		var osName string
+		// Try guest-get-osinfo if agent is available
+		if true { // Wrapping to keep scope clean or just nice spacing
+			cmd := `{"execute": "guest-get-osinfo"}`
+			// QEMUDomainAgentCommand(Dom Domain, Cmd string, Timeout int32, Flags uint32) (rResult OptString, err error)
+			respOpt, err := l.QEMUDomainAgentCommand(dom, cmd, 5, 0)
+			if err == nil {
+				// OptString is defined as []string in go-libvirt (usually)
+				// We need to check assuming it is []string based on common go-libvirt patterns for nullable strings in XDR
+				var resp string
+				if len(respOpt) > 0 {
+					resp = respOpt[0]
+				}
+
+				if resp != "" {
+					var result struct {
+						Return struct {
+							PrettyName string `json:"pretty-name"`
+							Name       string `json:"name"`
+							Version    string `json:"version"`
+							VersionId  string `json:"version-id"`
+							Id         string `json:"id"`
+						} `json:"return"`
+					}
+					if err := json.Unmarshal([]byte(resp), &result); err == nil {
+						if result.Return.PrettyName != "" {
+							osName = result.Return.PrettyName
+						} else if result.Return.Name != "" {
+							osName = fmt.Sprintf("%s %s", result.Return.Name, result.Return.Version)
+						}
+					}
+				}
+			}
+		}
+
+		// Serialize DiskStats
+		disksJSON, _ := json.Marshal(diskStats)
+
 		vm := data_centralizegg.VM{
 			Name:           dom.Name,
 			State:          stateStr,
@@ -313,6 +372,8 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 			DiskWrite:      diskWrite,
 			NetRX:          netRX,
 			NetTX:          netTX,
+			Disks:          string(disksJSON),
+			OSName:         osName,
 			GuestIPs:       guestIPs,
 			GuestFSUsage:   guestFSUsage,
 			HostID:         hostID,
@@ -322,17 +383,6 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 	}
 
 	return nil
-}
-
-func (mc *MultiCollector) Start(interval time.Duration) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	mc.CollectAll() // First run
-
-	for range ticker.C {
-		mc.CollectAll()
-	}
 }
 
 func int8ToString(bs []int8) string {
