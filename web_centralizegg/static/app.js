@@ -768,7 +768,6 @@ function renderHostNodes(containerId = 'host-nodes-container', config = {}) {
             <div class="host-os-info" style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
                 <i class="${getOSIcon(host.os_name)} fa-fw" style="font-size: 1rem; color: var(--accent-color);"></i>
                 <span>${host.os_name || 'Linux Generic'}</span>
-                ${arch ? `<span class="arch-badge" style="font-size: 0.7rem; background: rgba(30, 215, 96, 0.15); color: #1ed760; padding: 1px 6px; border-radius: 4px; border: 1px solid rgba(30, 215, 96, 0.3); font-weight: 600;">${arch}</span>` : ''}
             </div>
             ` : ''}
 
@@ -826,7 +825,7 @@ function renderHostNodes(containerId = 'host-nodes-container', config = {}) {
                     </div>
                     <div class="stat-value-display">
                         <div class="stat-value-main color-cores">${host.cpu_cores || 'N/A'}</div>
-                        <div class="stat-value-sub">x86_64</div>
+                        <div class="stat-value-sub" style="font-size: 0.7rem; color: rgba(255,255,255,0.5);">${arch || 'Unknown'}</div>
                     </div>
                 </div>
             </div>
