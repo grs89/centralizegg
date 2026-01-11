@@ -76,6 +76,18 @@ func (mc *PfsenseCollector) collectOne(s data_centralizegg.PFSenseServer) error 
 		uname += " " + osRelease
 	}
 
+	// CPU Model (x86/ARM detection)
+	cpuModel, err := runCommand(client, "sysctl -n hw.model")
+	if err != nil {
+		cpuModel = "Generic (" + strings.TrimSpace(uname) + ")"
+	} else {
+		cpuModel = strings.TrimSpace(cpuModel)
+		// Append arch if not clear in model, though usually model is enough.
+		// Let's ensure arch is visible in CPUModel if desired, or just rely on it.
+		// "Intel(R) Core(TM)..." is good.
+		// If ARM it might say "Apple M1" or generic ARM string.
+	}
+
 	// 2. CPU & Memory using top (FreeBSD style on pfSense)
 	// top -d 1 -n 1
 	topOut, err := runCommand(client, "top -d 1 -n 1")
@@ -104,7 +116,7 @@ func (mc *PfsenseCollector) collectOne(s data_centralizegg.PFSenseServer) error 
 	hostID, err := mc.DB.UpsertFirewallHost(data_centralizegg.FirewallHost{
 		ServerID:         s.ID,
 		Hostname:         strings.TrimSpace(hostname),
-		CPUModel:         "Generic", // Hard to get reliably without other tools
+		CPUModel:         cpuModel,
 		CPUCores:         cpuCores,
 		TotalMemory:      memTotal,
 		FreeMemory:       memFree,
