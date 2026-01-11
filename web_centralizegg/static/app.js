@@ -1001,6 +1001,9 @@ function renderVMs() {
                         <div class="vm-subtitle" style="font-size: 0.8rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px;" title="${vm.os_name || 'Unknown OS'}">
                             ${(vm.os_name && vm.os_name.trim() !== "") ? vm.os_name : "Unknown OS"}
                         </div>
+                        <div class="vm-subtitle" style="font-size: 0.75rem; color: var(--accent-color); margin-top: 1px;" title="${vm.guest_ips || 'N/A'}">
+                            ${vm.guest_ips ? vm.guest_ips.split(' ')[0] : 'N/A'}
+                        </div>
                     </div>
                 </div>
                 <div class="vm-status-badge ${isRunning ? 'running' : 'shutoff'}" title="${vm.state}">
