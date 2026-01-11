@@ -1089,7 +1089,7 @@ function renderVMs() {
                             <div style="flex: 1; display: flex; flex-direction: column; gap: 2px;">
                                 <div style="font-size: 0.65rem; color: var(--text-secondary); display: flex; justify-content: space-between;">
                                     <span>RX</span>
-                                    <span>${formatBytes(vm.net_rx, 1)}</span>
+                                    <span>${vmNetworkHistory[vm.id] ? formatBytes(vmNetworkHistory[vm.id].rx[vmNetworkHistory[vm.id].rx.length - 1], 1) + '/s' : '0 B/s'}</span>
                                 </div>
                                 <div style="height: 25px; overflow: hidden; opacity: 0.8;">
                                     ${vmNetworkHistory[vm.id] ? renderSparkline(vmNetworkHistory[vm.id].rx, '#4ade80', 60, 25) : ''}
@@ -1100,7 +1100,7 @@ function renderVMs() {
                             <div style="flex: 1; display: flex; flex-direction: column; gap: 2px;">
                                 <div style="font-size: 0.65rem; color: var(--text-secondary); display: flex; justify-content: space-between;">
                                     <span>TX</span>
-                                    <span>${formatBytes(vm.net_tx, 1)}</span>
+                                    <span>${vmNetworkHistory[vm.id] ? formatBytes(vmNetworkHistory[vm.id].tx[vmNetworkHistory[vm.id].tx.length - 1], 1) + '/s' : '0 B/s'}</span>
                                 </div>
                                 <div style="height: 25px; overflow: hidden; opacity: 0.8;">
                                      ${vmNetworkHistory[vm.id] ? renderSparkline(vmNetworkHistory[vm.id].tx, '#fb923c', 60, 25) : ''}
