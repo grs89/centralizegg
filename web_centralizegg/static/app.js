@@ -92,7 +92,7 @@ const tools = {
     },
     'pfsense': {
         name: 'PFsense',
-        icon: 'fa-solid fa-shield-halved',
+        icon: 'fa-brands fa-freebsd',
         elementId: 'container-scanner-tool',
         categoryBtnId: 'firewall-btn',
         categoryName: 'Firewall'
@@ -1281,6 +1281,7 @@ function getOSIcon(osName) {
     else if (os.includes('windows')) icon = 'fa-brands fa-windows';
     else if (os.includes('red hat') || os.includes('rhel')) icon = 'fa-brands fa-redhat';
     else if (os.includes('suse')) icon = 'fa-brands fa-suse';
+    else if (os.includes('pfsense') || os.includes('freebsd')) icon = 'fa-brands fa-freebsd';
 
     return icon;
 }

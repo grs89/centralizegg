@@ -69,24 +69,136 @@ func NewPostgresDB(connStr string) (*DB, error) {
 		return nil, fmt.Errorf("failed to ping db: %w", err)
 	}
 
-	// Auto-migration strategies
-	_, _ = db.Exec("CREATE SCHEMA IF NOT EXISTS virtualization")
-	_, _ = db.Exec("CREATE SCHEMA IF NOT EXISTS firewall")
-	// Ensure tables exist if not (simplified, ideally usage of migrate tool)
-	// For now we assume init.sql handles creation or we ALTER existing ones.
-	// NOTE: The ALTER queries below assume the table is in 'virtualization' schema now.
-	// If tables were in public, they need to be moved manually or via SQL script.
-
-	_, _ = db.Exec("ALTER TABLE virtualization.hosts ADD COLUMN IF NOT EXISTS os_name VARCHAR(255)")
-	_, _ = db.Exec("ALTER TABLE virtualization.hosts ADD COLUMN IF NOT EXISTS free_memory BIGINT DEFAULT 0")
-	_, _ = db.Exec("ALTER TABLE virtualization.hosts ADD COLUMN IF NOT EXISTS cpu_usage DOUBLE PRECISION DEFAULT 0")
-	_, _ = db.Exec("ALTER TABLE virtualization.vms ADD COLUMN IF NOT EXISTS cpu_usage DOUBLE PRECISION DEFAULT 0")
-	_, _ = db.Exec("ALTER TABLE virtualization.vms ADD COLUMN IF NOT EXISTS disk_allocation BIGINT DEFAULT 0")
-	_, _ = db.Exec("ALTER TABLE virtualization.vms ADD COLUMN IF NOT EXISTS disk_capacity BIGINT DEFAULT 0")
-	_, _ = db.Exec("ALTER TABLE virtualization.vms ADD COLUMN IF NOT EXISTS guest_ips TEXT DEFAULT ''")
-	_, _ = db.Exec("ALTER TABLE virtualization.vms ADD COLUMN IF NOT EXISTS guest_fs_usage TEXT DEFAULT ''")
+	// Run migrations
+	ensureSchema(db)
 
 	return &DB{Conn: db}, nil
+}
+
+func ensureSchema(db *sql.DB) {
+	schemas := []string{"virtualization", "firewall", "storage", "containers"}
+	for _, s := range schemas {
+		_, _ = db.Exec(fmt.Sprintf("CREATE SCHEMA IF NOT EXISTS %s", s))
+	}
+
+	queries := []string{
+		// Firewall Tables
+		`CREATE TABLE IF NOT EXISTS firewall.pfsense_servers (
+			id SERIAL PRIMARY KEY,
+			name VARCHAR(255) NOT NULL,
+			ip_address VARCHAR(255) NOT NULL,
+			ssh_port INT DEFAULT 22,
+			username VARCHAR(255) NOT NULL,
+			status VARCHAR(50) DEFAULT 'unknown',
+			password VARCHAR(255),
+			ssh_key_path VARCHAR(255) DEFAULT '/root/.ssh/id_rsa',
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS firewall.hosts (
+			id SERIAL PRIMARY KEY,
+			server_id INT REFERENCES firewall.pfsense_servers(id) ON DELETE CASCADE,
+			hostname VARCHAR(255) NOT NULL,
+			cpu_model VARCHAR(255),
+			cpu_cores INT,
+			total_memory BIGINT,
+			free_memory BIGINT DEFAULT 0,
+			cpu_usage DOUBLE PRECISION DEFAULT 0,
+			os_name VARCHAR(255),
+			net_rx_total BIGINT DEFAULT 0,
+			net_tx_total BIGINT DEFAULT 0,
+			net_rx_bytes_per_sec BIGINT DEFAULT 0,
+			net_tx_bytes_per_sec BIGINT DEFAULT 0,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS firewall.interfaces (
+			id SERIAL PRIMARY KEY,
+			host_id INT REFERENCES firewall.hosts(id) ON DELETE CASCADE,
+			interface_name VARCHAR(255) NOT NULL,
+			interface_type VARCHAR(50),
+			status VARCHAR(50),
+			net_rx_bytes BIGINT DEFAULT 0,
+			net_tx_bytes BIGINT DEFAULT 0,
+			net_rx_packets BIGINT DEFAULT 0,
+			net_tx_packets BIGINT DEFAULT 0,
+			net_rx_errors BIGINT DEFAULT 0,
+			net_tx_errors BIGINT DEFAULT 0,
+			net_rx_dropped BIGINT DEFAULT 0,
+			net_tx_dropped BIGINT DEFAULT 0,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`,
+		// Generic Server Tables
+		`CREATE TABLE IF NOT EXISTS virtualization.proxmox_servers (
+			id SERIAL PRIMARY KEY,
+			name VARCHAR(255) NOT NULL,
+			ip_address VARCHAR(255) NOT NULL,
+			ssh_port INT DEFAULT 22,
+			username VARCHAR(255) NOT NULL,
+			status VARCHAR(50) DEFAULT 'unknown',
+			password VARCHAR(255),
+			ssh_key_path VARCHAR(255) DEFAULT '/root/.ssh/id_rsa',
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS storage.nas_servers (
+			id SERIAL PRIMARY KEY,
+			name VARCHAR(255) NOT NULL,
+			ip_address VARCHAR(255) NOT NULL,
+			ssh_port INT DEFAULT 22,
+			username VARCHAR(255) NOT NULL,
+			status VARCHAR(50) DEFAULT 'unknown',
+			password VARCHAR(255),
+			ssh_key_path VARCHAR(255) DEFAULT '/root/.ssh/id_rsa',
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS storage.ceph_servers (
+			id SERIAL PRIMARY KEY,
+			name VARCHAR(255) NOT NULL,
+			ip_address VARCHAR(255) NOT NULL,
+			ssh_port INT DEFAULT 22,
+			username VARCHAR(255) NOT NULL,
+			status VARCHAR(50) DEFAULT 'unknown',
+			password VARCHAR(255),
+			ssh_key_path VARCHAR(255) DEFAULT '/root/.ssh/id_rsa',
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS containers.docker_servers (
+			id SERIAL PRIMARY KEY,
+			name VARCHAR(255) NOT NULL,
+			ip_address VARCHAR(255) NOT NULL,
+			ssh_port INT DEFAULT 22,
+			username VARCHAR(255) NOT NULL,
+			status VARCHAR(50) DEFAULT 'unknown',
+			password VARCHAR(255),
+			ssh_key_path VARCHAR(255) DEFAULT '/root/.ssh/id_rsa',
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS containers.podman_servers (
+			id SERIAL PRIMARY KEY,
+			name VARCHAR(255) NOT NULL,
+			ip_address VARCHAR(255) NOT NULL,
+			ssh_port INT DEFAULT 22,
+			username VARCHAR(255) NOT NULL,
+			status VARCHAR(50) DEFAULT 'unknown',
+			password VARCHAR(255),
+			ssh_key_path VARCHAR(255) DEFAULT '/root/.ssh/id_rsa',
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`,
+
+		// KVM extra columns if missing (from previous code)
+		"ALTER TABLE virtualization.hosts ADD COLUMN IF NOT EXISTS os_name VARCHAR(255)",
+		"ALTER TABLE virtualization.hosts ADD COLUMN IF NOT EXISTS free_memory BIGINT DEFAULT 0",
+		"ALTER TABLE virtualization.hosts ADD COLUMN IF NOT EXISTS cpu_usage DOUBLE PRECISION DEFAULT 0",
+		"ALTER TABLE virtualization.vms ADD COLUMN IF NOT EXISTS cpu_usage DOUBLE PRECISION DEFAULT 0",
+		"ALTER TABLE virtualization.vms ADD COLUMN IF NOT EXISTS disk_allocation BIGINT DEFAULT 0",
+		"ALTER TABLE virtualization.vms ADD COLUMN IF NOT EXISTS disk_capacity BIGINT DEFAULT 0",
+		"ALTER TABLE virtualization.vms ADD COLUMN IF NOT EXISTS guest_ips TEXT DEFAULT ''",
+		"ALTER TABLE virtualization.vms ADD COLUMN IF NOT EXISTS guest_fs_usage TEXT DEFAULT ''",
+	}
+
+	for _, q := range queries {
+		if _, err := db.Exec(q); err != nil {
+			log.Printf("Migration warning (query: %s): %v", q, err)
+		}
+	}
 }
 
 func (d *DB) UpsertHost(h Host) (int64, error) {
@@ -240,13 +352,14 @@ func (d *DB) GetHosts() ([]Host, error) {
 
 // PFSense types and functions
 type PFSenseServer struct {
-	ID        int64  `json:"id"`
-	Name      string `json:"name"`
-	IPAddress string `json:"ip_address"`
-	APIPort   int    `json:"api_port"`
-	APIKey    string `json:"api_key"`
-	APISecret string `json:"api_secret"`
-	Status    string `json:"status"` // online, offline, unknown
+	ID         int64  `json:"id"`
+	Name       string `json:"name"`
+	IPAddress  string `json:"ip_address"`
+	SSHPort    int    `json:"ssh_port"`
+	Username   string `json:"username"`
+	Password   string `json:"password"`
+	SSHKeyPath string `json:"ssh_key_path"`
+	Status     string `json:"status"`
 }
 
 type FirewallHost struct {
@@ -316,7 +429,7 @@ func (d *DB) UpsertFirewallInterface(iface FirewallInterface) error {
 }
 
 func (d *DB) GetPFSenseServers() ([]PFSenseServer, error) {
-	rows, err := d.Conn.Query("SELECT id, name, ip_address, api_port, api_key, api_secret, status FROM firewall.pfsense_servers")
+	rows, err := d.Conn.Query("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, status FROM firewall.pfsense_servers")
 	if err != nil {
 		return nil, err
 	}
@@ -325,15 +438,37 @@ func (d *DB) GetPFSenseServers() ([]PFSenseServer, error) {
 	var servers []PFSenseServer
 	for rows.Next() {
 		var s PFSenseServer
-		var key, secret sql.NullString
-		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.APIPort, &key, &secret, &s.Status); err != nil {
+		var pwd sql.NullString
+		// Scan 8 columns
+		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.Status); err != nil {
 			return nil, err
 		}
-		s.APIKey = key.String
-		s.APISecret = secret.String
+		s.Password = pwd.String
 		servers = append(servers, s)
 	}
 	return servers, nil
+}
+
+func (d *DB) AddPFSenseServer(s PFSenseServer) (int64, error) {
+	var id int64
+	// Default key path
+	if s.SSHKeyPath == "" {
+		s.SSHKeyPath = "/root/.ssh/id_rsa"
+	}
+	err := d.Conn.QueryRow(`INSERT INTO firewall.pfsense_servers (name, ip_address, ssh_port, username, password, ssh_key_path, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+		s.Name, s.IPAddress, s.SSHPort, s.Username, s.Password, s.SSHKeyPath, "unknown").Scan(&id)
+	return id, err
+}
+
+func (d *DB) UpdatePFSenseServer(s PFSenseServer) error {
+	_, err := d.Conn.Exec(`UPDATE firewall.pfsense_servers SET name=$1, ip_address=$2, ssh_port=$3, username=$4, password=$5, ssh_key_path=$6 WHERE id=$7`,
+		s.Name, s.IPAddress, s.SSHPort, s.Username, s.Password, s.SSHKeyPath, s.ID)
+	return err
+}
+
+func (d *DB) DeletePFSenseServer(id int64) error {
+	_, err := d.Conn.Exec("DELETE FROM firewall.pfsense_servers WHERE id=$1", id)
+	return err
 }
 
 func (d *DB) SetPFSenseServerStatus(id int64, status string) error {

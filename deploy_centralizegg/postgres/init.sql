@@ -61,10 +61,11 @@ CREATE TABLE IF NOT EXISTS firewall.pfsense_servers (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     ip_address VARCHAR(255) NOT NULL,
-    api_port INT DEFAULT 443,
-    api_key VARCHAR(255) NOT NULL,
-    api_secret VARCHAR(255) NOT NULL,
+    ssh_port INT DEFAULT 22,
+    username VARCHAR(255) NOT NULL,
     status VARCHAR(50) DEFAULT 'unknown',
+    password VARCHAR(255),
+    ssh_key_path VARCHAR(255) DEFAULT '/root/.ssh/id_rsa',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

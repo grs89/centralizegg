@@ -1,373 +1,259 @@
 package firewall
 
 import (
-	"crypto/tls"
-	"encoding/json"
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net/http"
+	"net"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/grs/centralizegg/backend_internal_centralizegg/data_centralizegg"
+	"golang.org/x/crypto/ssh"
 )
 
-type PFSenseCollector struct {
-	DB           *data_centralizegg.DB
-	lastNetStats map[int64]netStats // Key: serverID, for calculating per-second rates
+type PfsenseCollector struct {
+	DB *data_centralizegg.DB
 }
 
-type netStats struct {
-	rxTotal    uint64
-	txTotal    uint64
-	lastAt     time.Time
-}
-
-type PFSenseAPIResponse struct {
-	Status string      `json:"status"`
-	Data   interface{} `json:"data"`
-}
-
-type SystemStatus struct {
-	Hostname string `json:"hostname"`
-	Version  string `json:"version"`
-	Uptime   string `json:"uptime"`
-}
-
-type SystemLoad struct {
-	OneMin     float64 `json:"1min"`
-	FiveMin    float64 `json:"5min"`
-	FifteenMin float64 `json:"15min"`
-}
-
-type SystemMemory struct {
-	Total     uint64 `json:"total"`
-	Used      uint64 `json:"used"`
-	Free      uint64 `json:"free"`
-	Available uint64 `json:"available"`
-}
-
-type InterfaceStats struct {
-	Name        string `json:"name"`
-	Type        string `json:"type"`
-	Status      string `json:"status"`
-	InBytes     uint64 `json:"inbytes"`
-	OutBytes    uint64 `json:"outbytes"`
-	InPackets   uint64 `json:"inpkts"`
-	OutPackets  uint64 `json:"outpkts"`
-	InErrors    uint64 `json:"inerrs"`
-	OutErrors   uint64 `json:"outerrs"`
-	InDropped   uint64 `json:"indrops"`
-	OutDropped  uint64 `json:"outdrops"`
-}
-
-func NewPFSenseCollector(db *data_centralizegg.DB) *PFSenseCollector {
-	return &PFSenseCollector{
-		DB:           db,
-		lastNetStats: make(map[int64]netStats),
+func NewPFSenseCollector(db *data_centralizegg.DB) *PfsenseCollector {
+	return &PfsenseCollector{
+		DB: db,
 	}
 }
 
-func (pc *PFSenseCollector) CollectAll() {
-	servers, err := pc.DB.GetPFSenseServers()
+func (mc *PfsenseCollector) Start(interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				mc.CollectAll()
+			}
+		}
+	}()
+}
+
+func (mc *PfsenseCollector) CollectAll() {
+	servers, err := mc.DB.GetPFSenseServers()
 	if err != nil {
-		log.Printf("Failed to get PFSense servers: %v", err)
+		log.Printf("Failed to get pfsense servers: %v", err)
 		return
 	}
 
 	for _, s := range servers {
-		if err := pc.collectOne(s); err != nil {
-			log.Printf("Failed to collect from PFSense %s (%s): %v", s.Name, s.IPAddress, err)
-			pc.DB.SetPFSenseServerStatus(s.ID, "offline")
+		if err := mc.collectOne(s); err != nil {
+			log.Printf("Failed to collect from pfSense %s (%s): %v", s.Name, s.IPAddress, err)
+			mc.DB.SetPFSenseServerStatus(s.ID, "offline")
 			continue
 		}
-		pc.DB.SetPFSenseServerStatus(s.ID, "online")
+		mc.DB.SetPFSenseServerStatus(s.ID, "online")
 	}
 }
 
-func (pc *PFSenseCollector) collectOne(s data_centralizegg.PFSenseServer) error {
-	// Build API URL
-	port := s.APIPort
-	if port == 0 {
-		port = 443
-	}
-	baseURL := fmt.Sprintf("https://%s:%d/api/v1", s.IPAddress, port)
-
-	// Create HTTP client with TLS skip verify (PFSense often uses self-signed certs)
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := &http.Client{
-		Transport: tr,
-		Timeout:   10 * time.Second,
-	}
-
-	// Get system status
-	status, err := pc.getSystemStatus(client, baseURL, s.APIKey, s.APISecret)
+func (mc *PfsenseCollector) collectOne(s data_centralizegg.PFSenseServer) error {
+	client, err := getSSHClient(s)
 	if err != nil {
-		return fmt.Errorf("system status: %w", err)
+		return err
 	}
+	defer client.Close()
 
-	// Get system load (CPU usage)
-	load, err := pc.getSystemLoad(client, baseURL, s.APIKey, s.APISecret)
+	// 1. Host Info
+	hostname, err := runCommand(client, "hostname")
 	if err != nil {
-		return fmt.Errorf("system load: %w", err)
+		return fmt.Errorf("hostname: %w", err)
 	}
-
-	// Get memory info
-	mem, err := pc.getSystemMemory(client, baseURL, s.APIKey, s.APISecret)
+	uname, err := runCommand(client, "uname -m")
 	if err != nil {
-		return fmt.Errorf("system memory: %w", err)
+		// ignore
+		uname = "unknown"
+	}
+	osRelease, err := runCommand(client, "uname -r")
+	if err == nil {
+		uname += " " + osRelease
 	}
 
-	// Get interface statistics
-	interfaces, err := pc.getInterfaceStats(client, baseURL, s.APIKey, s.APISecret)
+	// 2. CPU & Memory using top (FreeBSD style on pfSense)
+	// top -d 1 -n 1
+	topOut, err := runCommand(client, "top -d 1 -n 1")
 	if err != nil {
-		return fmt.Errorf("interface stats: %w", err)
+		return fmt.Errorf("top: %w", err)
 	}
+	cpuUsage, memTotal, memFree, cpuCores := parseTopOutput(topOut)
 
-	// Calculate CPU usage from load average (1min load * 100 / cores)
-	// For simplicity, we'll use 1min load as percentage (assuming single core equivalent)
-	cpuUsage := load.OneMin * 100.0
-	if cpuUsage > 100 {
-		cpuUsage = 100
-	}
-
-	// Calculate total network traffic
-	var totalRX, totalTX uint64
-	for _, iface := range interfaces {
-		totalRX += iface.InBytes
-		totalTX += iface.OutBytes
-	}
-
-	// Calculate network bytes per second
-	var rxBytesPerSec, txBytesPerSec uint64
-	now := time.Now()
-	if prev, ok := pc.lastNetStats[s.ID]; ok {
-		deltaTime := now.Sub(prev.lastAt).Seconds()
-		if deltaTime > 0 {
-			rxBytesPerSec = uint64(float64(totalRX-prev.rxTotal) / deltaTime)
-			txBytesPerSec = uint64(float64(totalTX-prev.txTotal) / deltaTime)
+	// Get better Total Memory
+	sysctlMem, err := runCommand(client, "sysctl -n hw.physmem")
+	if err == nil {
+		val := strings.TrimSpace(sysctlMem)
+		if parsed, err := strconv.ParseUint(val, 10, 64); err == nil {
+			memTotal = parsed
 		}
 	}
-	pc.lastNetStats[s.ID] = netStats{
-		rxTotal: totalRX,
-		txTotal: totalTX,
-		lastAt:  now,
+
+	// 3. Network Interfaces
+	// netstat -bdi
+	netStats, err := runCommand(client, "netstat -bdi")
+	if err == nil {
+		parseAndStoreInterfaces(mc.DB, s.ID, netStats)
 	}
 
-	// Get CPU info (try to get from system info, default to 1 if not available)
-	cpuCores := 1
-	cpuModel := "Unknown"
-
-	// Create host record
-	host := data_centralizegg.FirewallHost{
-		ServerID:        s.ID,
-		Hostname:        status.Hostname,
-		CPUModel:        cpuModel,
-		CPUCores:        cpuCores,
-		TotalMemory:     mem.Total,
-		FreeMemory:      mem.Free,
-		CPUUsage:        cpuUsage,
-		OSName:          fmt.Sprintf("PFSense %s", status.Version),
-		NetRXTotal:      totalRX,
-		NetTXTotal:      totalTX,
-		NetRXBytesPerSec: rxBytesPerSec,
-		NetTXBytesPerSec: txBytesPerSec,
-	}
-
-	hostID, err := pc.DB.UpsertFirewallHost(host)
+	// Store Host Data
+	hostID, err := mc.DB.UpsertFirewallHost(data_centralizegg.FirewallHost{
+		ServerID:         s.ID,
+		Hostname:         strings.TrimSpace(hostname),
+		CPUModel:         "Generic", // Hard to get reliably without other tools
+		CPUCores:         cpuCores,
+		TotalMemory:      memTotal,
+		FreeMemory:       memFree,
+		CPUUsage:         cpuUsage,
+		OSName:           "pfSense " + strings.TrimSpace(uname),
+		NetRXTotal:       0, // Aggregated from interfaces if needed
+		NetTXTotal:       0,
+		NetRXBytesPerSec: 0,
+		NetTXBytesPerSec: 0,
+	})
 	if err != nil {
 		return fmt.Errorf("upsert host: %w", err)
 	}
 
-	// Upsert interfaces
-	for _, iface := range interfaces {
-		fwIface := data_centralizegg.FirewallInterface{
-			HostID:        hostID,
-			InterfaceName: iface.Name,
-			InterfaceType: iface.Type,
-			Status:        iface.Status,
-			NetRXBytes:    iface.InBytes,
-			NetTXBytes:    iface.OutBytes,
-			NetRXPackets:  iface.InPackets,
-			NetTXPackets:  iface.OutPackets,
-			NetRXErrors:   iface.InErrors,
-			NetTXErrors:   iface.OutErrors,
-			NetRXDropped:  iface.InDropped,
-			NetTXDropped:  iface.OutDropped,
-		}
-		pc.DB.UpsertFirewallInterface(fwIface)
-	}
-
+	_ = hostID
 	return nil
 }
 
-func (pc *PFSenseCollector) makeAPIRequest(client *http.Client, url, apiKey, apiSecret string) ([]byte, error) {
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
+func getSSHClient(s data_centralizegg.PFSenseServer) (*ssh.Client, error) {
+	var authMethods []ssh.AuthMethod
+	if s.Password != "" {
+		authMethods = append(authMethods, ssh.Password(s.Password))
+	}
+	if s.SSHKeyPath != "" {
+		key, err := ioutil.ReadFile(s.SSHKeyPath)
+		if err == nil {
+			signer, err := ssh.ParsePrivateKey(key)
+			if err == nil {
+				authMethods = append(authMethods, ssh.PublicKeys(signer))
+			}
+		}
 	}
 
-	// PFSense API uses basic auth with API key and secret
-	req.SetBasicAuth(apiKey, apiSecret)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := ioutil.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
+	config := &ssh.ClientConfig{
+		User:            s.Username,
+		Auth:            authMethods,
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         10 * time.Second,
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
+	ip := s.IPAddress
+	// Sanitize IP if user included port
+	if host, _, err := net.SplitHostPort(ip); err == nil {
+		ip = host
 	}
+	// Also strip any trailing colon if SplitHostPort didn't catch it (e.g. "1.2.3.4:")
+	ip = strings.TrimRight(ip, ":")
 
-	return body, nil
+	port := s.SSHPort
+	if port == 0 {
+		port = 22
+	}
+	addr := fmt.Sprintf("%s:%d", ip, port)
+	return ssh.Dial("tcp", addr, config)
 }
 
-func (pc *PFSenseCollector) getSystemStatus(client *http.Client, baseURL, apiKey, apiSecret string) (*SystemStatus, error) {
-	url := fmt.Sprintf("%s/system/status", baseURL)
-	body, err := pc.makeAPIRequest(client, url, apiKey, apiSecret)
+func runCommand(client *ssh.Client, cmd string) (string, error) {
+	session, err := client.NewSession()
 	if err != nil {
-		return nil, err
+		return "", err
 	}
+	defer session.Close()
 
-	var response PFSenseAPIResponse
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, err
+	var b bytes.Buffer
+	session.Stdout = &b
+	if err := session.Run(cmd); err != nil {
+		return "", err
 	}
-
-	if response.Status != "ok" {
-		return nil, fmt.Errorf("API returned non-ok status: %s", response.Status)
-	}
-
-	// Parse data
-	dataBytes, err := json.Marshal(response.Data)
-	if err != nil {
-		return nil, err
-	}
-
-	var status SystemStatus
-	if err := json.Unmarshal(dataBytes, &status); err != nil {
-		return nil, err
-	}
-
-	return &status, nil
+	return b.String(), nil
 }
 
-func (pc *PFSenseCollector) getSystemLoad(client *http.Client, baseURL, apiKey, apiSecret string) (*SystemLoad, error) {
-	url := fmt.Sprintf("%s/diagnostics/system/loadavg", baseURL)
-	body, err := pc.makeAPIRequest(client, url, apiKey, apiSecret)
-	if err != nil {
-		return nil, err
+func parseTopOutput(output string) (float64, uint64, uint64, int) {
+	// Simple parser for FreeBSD top output
+	// CPU:  1.2% user,  0.0% nice,  0.4% system,  0.4% interrupt, 98.0% idle
+	// Mem: 68M Active, 2664M Inact, 755M Wired, 545M Buf, 23G Free
+
+	cpuUsage := 0.0
+	memTotal := uint64(0)
+	memFree := uint64(0)
+	cpuCores := 1 // default
+
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "CPU:") {
+			// Extract idle
+			re := regexp.MustCompile(`([\d\.]+)%\s*idle`)
+			matches := re.FindStringSubmatch(line)
+			if len(matches) > 1 {
+				idle, _ := strconv.ParseFloat(matches[1], 64)
+				cpuUsage = 100.0 - idle
+			}
+		} else if strings.HasPrefix(line, "Mem:") {
+			// Parse memory
+			// Re-parse simpler: look for "23G Free"
+			// Actually simpler regex for Free:
+			reFree := regexp.MustCompile(`(\d+[KMG])\s+Free`)
+			freeMatch := reFree.FindStringSubmatch(line)
+			if len(freeMatch) > 1 {
+				memFree = parseBytes(freeMatch[1])
+			}
+		}
 	}
 
-	var response PFSenseAPIResponse
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, err
-	}
-
-	if response.Status != "ok" {
-		return nil, fmt.Errorf("API returned non-ok status: %s", response.Status)
-	}
-
-	dataBytes, err := json.Marshal(response.Data)
-	if err != nil {
-		return nil, err
-	}
-
-	var load SystemLoad
-	if err := json.Unmarshal(dataBytes, &load); err != nil {
-		return nil, err
-	}
-
-	return &load, nil
+	return cpuUsage, memTotal, memFree, cpuCores
 }
 
-func (pc *PFSenseCollector) getSystemMemory(client *http.Client, baseURL, apiKey, apiSecret string) (*SystemMemory, error) {
-	url := fmt.Sprintf("%s/diagnostics/system/memory", baseURL)
-	body, err := pc.makeAPIRequest(client, url, apiKey, apiSecret)
-	if err != nil {
-		return nil, err
-	}
+func parseBytes(s string) uint64 {
+	// 23G, 545M
+	s = strings.ToUpper(s)
+	clean := strings.TrimRight(s, "KMG")
+	val, _ := strconv.ParseFloat(clean, 64)
 
-	var response PFSenseAPIResponse
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, err
+	if strings.HasSuffix(s, "G") {
+		return uint64(val * 1024 * 1024 * 1024)
+	} else if strings.HasSuffix(s, "M") {
+		return uint64(val * 1024 * 1024)
+	} else if strings.HasSuffix(s, "K") {
+		return uint64(val * 1024)
 	}
-
-	if response.Status != "ok" {
-		return nil, fmt.Errorf("API returned non-ok status: %s", response.Status)
-	}
-
-	dataBytes, err := json.Marshal(response.Data)
-	if err != nil {
-		return nil, err
-	}
-
-	var mem SystemMemory
-	if err := json.Unmarshal(dataBytes, &mem); err != nil {
-		return nil, err
-	}
-
-	return &mem, nil
+	return uint64(val)
 }
 
-func (pc *PFSenseCollector) getInterfaceStats(client *http.Client, baseURL, apiKey, apiSecret string) ([]InterfaceStats, error) {
-	url := fmt.Sprintf("%s/diagnostics/interface/statistics", baseURL)
-	body, err := pc.makeAPIRequest(client, url, apiKey, apiSecret)
-	if err != nil {
-		return nil, err
-	}
+func parseAndStoreInterfaces(db *data_centralizegg.DB, hostID int64, output string) {
+	// Header: Name  Mtu   Network       Address            Ipkts Ierrs Idrop    Opkts Oerrs  Coll
+	// em0   1500  <Link#1>      00:50:56:a6:31:3e  3685412     0     0  2835252     0     0
 
-	var response PFSenseAPIResponse
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, err
-	}
-
-	if response.Status != "ok" {
-		return nil, fmt.Errorf("API returned non-ok status: %s", response.Status)
-	}
-
-	dataBytes, err := json.Marshal(response.Data)
-	if err != nil {
-		return nil, err
-	}
-
-	// PFSense returns interface stats as a map, we need to convert to array
-	var ifaceMap map[string]interface{}
-	if err := json.Unmarshal(dataBytes, &ifaceMap); err != nil {
-		return nil, err
-	}
-
-	var interfaces []InterfaceStats
-	for name, data := range ifaceMap {
-		ifaceDataBytes, _ := json.Marshal(data)
-		var iface InterfaceStats
-		if err := json.Unmarshal(ifaceDataBytes, &iface); err != nil {
+	lines := strings.Split(output, "\n")
+	start := false
+	for _, line := range lines {
+		if strings.HasPrefix(line, "Name") {
+			start = true
 			continue
 		}
-		iface.Name = name
-		interfaces = append(interfaces, iface)
-	}
+		if !start {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 5 {
+			continue
+		}
 
-	return interfaces, nil
-}
+		name := fields[0]
 
-func (pc *PFSenseCollector) Start(interval time.Duration) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	pc.CollectAll() // First run
-
-	for range ticker.C {
-		pc.CollectAll()
+		_ = db.UpsertFirewallInterface(data_centralizegg.FirewallInterface{
+			HostID:        hostID,
+			InterfaceName: name,
+			InterfaceType: "ethernet",
+			Status:        "up",
+		})
 	}
 }

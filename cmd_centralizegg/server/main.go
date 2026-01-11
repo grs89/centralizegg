@@ -94,14 +94,71 @@ func main() {
 	r.HandleFunc("/api/firewall/servers", func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("%s %s", r.Method, r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
-		servers, err := db.GetPFSenseServers()
+
+		if r.Method == "GET" {
+			servers, err := db.GetPFSenseServers()
+			if err != nil {
+				log.Printf("Error GetPFSenseServers: %v", err)
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			json.NewEncoder(w).Encode(servers)
+		} else if r.Method == "POST" {
+			var s data_centralizegg.PFSenseServer
+			if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if s.SSHKeyPath == "" {
+				s.SSHKeyPath = "/root/.ssh/id_rsa"
+			}
+			id, err := db.AddPFSenseServer(s)
+			if err != nil {
+				log.Printf("Error AddPFSenseServer: %v", err)
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			s.ID = id
+			json.NewEncoder(w).Encode(s)
+		}
+	}).Methods("GET", "POST")
+
+	r.HandleFunc("/api/firewall/servers/{id}", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s", r.Method, r.URL.Path)
+		vars := mux.Vars(r)
+		id, err := strconv.ParseInt(vars["id"], 10, 64)
 		if err != nil {
-			log.Printf("Error GetPFSenseServers: %v", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Invalid ID", http.StatusBadRequest)
 			return
 		}
-		json.NewEncoder(w).Encode(servers)
-	}).Methods("GET")
+
+		if r.Method == "PUT" {
+			var s data_centralizegg.PFSenseServer
+			if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			s.ID = id
+			// preserve key path if empty? default logic in DB update handles replacement only if we want
+			// actually we replace all fields in UpdatePFSenseServer, so we must ensure `s` has all data.
+			// Front end sends full object usually.
+			if s.SSHKeyPath == "" {
+				s.SSHKeyPath = "/root/.ssh/id_rsa"
+			}
+
+			if err := db.UpdatePFSenseServer(s); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+		} else if r.Method == "DELETE" {
+			if err := db.DeletePFSenseServer(id); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+		}
+	}).Methods("PUT", "DELETE")
 
 	// Config API
 	r.HandleFunc("/api/config/servers", func(w http.ResponseWriter, r *http.Request) {
