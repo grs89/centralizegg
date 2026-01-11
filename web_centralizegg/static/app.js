@@ -381,12 +381,12 @@ searchInput?.addEventListener('input', (e) => {
 
     // Update KVM hosts
     renderHosts();
-    
+
     // Update VMs if KVM tool is active
     if (currentTool === 'kvm') {
         renderVMs();
     }
-    
+
     // Also update generic host nodes container if visible (for other tools)
     const genericContainer = document.getElementById('host-nodes-container-generic');
     if (genericContainer) {
@@ -581,36 +581,16 @@ async function updateConfigButtonVisibility(toolKey) {
     const configBtn = document.getElementById('config-btn');
     if (!configBtn) return;
 
-    // Tools that support configuration
-    const configurableTools = ['kvm', 'pfsense'];
-    
+    // All tools support configuration
+    const configurableTools = ['kvm', 'proxmox', 'nas', 'ceph', 'pfsense', 'docker', 'podman'];
+
     if (!configurableTools.includes(toolKey)) {
         configBtn.style.display = 'none';
         return;
     }
 
-    // Check if there are configured servers for this tool
-    try {
-        let hasServers = false;
-        if (toolKey === 'kvm') {
-            const response = await fetch(API_CONFIG_SERVERS);
-            if (response.ok) {
-                const servers = await response.json();
-                hasServers = servers && servers.length > 0;
-            }
-        } else if (toolKey === 'pfsense') {
-            const response = await fetch(API_FIREWALL_SERVERS);
-            if (response.ok) {
-                const servers = await response.json();
-                hasServers = servers && servers.length > 0;
-            }
-        }
-
-        configBtn.style.display = hasServers ? 'block' : 'none';
-    } catch (e) {
-        console.error('Error checking servers:', e);
-        configBtn.style.display = 'none';
-    }
+    // Always show config button for configurable tools (allows adding new servers)
+    configBtn.style.display = 'block';
 }
 
 // Fetch firewall hosts
@@ -631,7 +611,7 @@ async function fetchFirewallHosts() {
             showOSInfo: true,
             showStats: true
         });
-        
+
         // Update config button visibility after fetching hosts
         if (currentTool) {
             updateConfigButtonVisibility(currentTool);
@@ -656,12 +636,12 @@ async function fetchHosts() {
 
         allHostsCache = hosts || [];
         renderHosts();
-        
+
         // Update config button visibility after fetching hosts
         if (currentTool) {
             updateConfigButtonVisibility(currentTool);
         }
-        
+
         // Also update generic host nodes container if visible (for other tools)
         const genericContainer = document.getElementById('host-nodes-container-generic');
         if (genericContainer) {
@@ -702,7 +682,7 @@ function renderHostNodes(containerId = 'host-nodes-container', config = {}) {
 
     // Filter hosts based on search query OR if they contain matching VMs
     let filteredHosts = hostsData;
-    
+
     if (customFilter) {
         filteredHosts = hostsData.filter(customFilter);
     } else {
@@ -995,10 +975,33 @@ const modal = document.getElementById('config-modal');
 const btn = document.getElementById('config-btn');
 const close = document.getElementsByClassName('close-modal')[0];
 
+// Dynamic click handler based on current tool
 btn.onclick = () => {
-    modal.style.display = 'block';
-    loadServers();
-    resetForm();
+    // Map tools to their respective modal IDs and load functions
+    const toolModalMap = {
+        'kvm': { modalId: 'config-modal', loadFn: loadServers, resetFn: resetForm },
+        'proxmox': { modalId: 'config-modal', loadFn: loadServers, resetFn: resetForm },
+        'nas': { modalId: 'config-modal', loadFn: loadServers, resetFn: resetForm },
+        'ceph': { modalId: 'config-modal', loadFn: loadServers, resetFn: resetForm },
+        'pfsense': { modalId: 'config-modal', loadFn: loadServers, resetFn: resetForm },
+        'docker': { modalId: 'config-modal', loadFn: loadServers, resetFn: resetForm },
+        'podman': { modalId: 'config-modal', loadFn: loadServers, resetFn: resetForm }
+    };
+
+    const config = toolModalMap[currentTool];
+    if (config) {
+        const targetModal = document.getElementById(config.modalId);
+        if (targetModal) {
+            targetModal.style.display = 'block';
+            if (config.loadFn) config.loadFn();
+            if (config.resetFn) config.resetFn();
+        }
+    } else {
+        // Fallback to default modal
+        modal.style.display = 'block';
+        loadServers();
+        resetForm();
+    }
 }
 close.onclick = () => modal.style.display = 'none';
 window.onclick = (e) => { if (e.target == modal) modal.style.display = 'none'; }
