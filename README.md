@@ -46,7 +46,11 @@
     - Métricas de sistema (CPU, Memoria, Disco)
     - Información de interfaces de red con estadísticas de tráfico
     - Detección de arquitectura (x86_64, ARM)
-*   **QEMU Guest Agent**: Soporte para obtener IPs de las máquinas virtuales mediante el agente QEMU.
+*   **QEMU Guest Agent**: Integración avanzada para obtener telemetría detallada del sistema invitado:
+    - Nombre y versión del Sistema Operativo
+    - Direcciones IP internas
+*   **Visualización Multi-Disco**: Barras de uso individuales para cada disco virtual adjunto a la VM.
+*   **Sparklines de Red**: Gráficos lineales en tiempo real para visualizar tendencias de tráfico RX/TX.
 *   **Filtrado Inteligente**: Selecciona un host para filtrar instantáneamente su cuadrícula de máquinas virtuales.
 *   **Búsqueda Global**: Búsqueda en tiempo real con sugerencias para hosts y VMs.
 *   **Orden Alfabético**: Organización automática de hosts y VMs para una navegación más rápida.
@@ -161,6 +165,7 @@ Centralizegg/
 *   Docker y Docker Compose
 *   Acceso SSH (vía clave o contraseña) a los servidores KVM
 *   Los servidores KVM deben tener Libvirt configurado y accesible
+*   **Opcional**: Instalar `qemu-guest-agent` en las VMs para detección de SO e IPs.
 
 ### Configuración de Seguridad (SSH)
 
@@ -478,9 +483,9 @@ Almacena estadísticas de interfaces de red de pfSense.
 
 3. **Visualización de VMs**
    - Grid de tarjetas con estado visual
-   - Métricas de CPU, memoria, disco y red
-   - IPs de guest cuando están disponibles
-   - Colores según nivel de uso (verde/amarillo/rojo)
+    - Métricas de CPU, memoria, disco (multi-disco) y red (sparklines)
+    - IPs de guest y Nombre de SO (requiere Guest Agent)
+    - Colores dinámicos y badge de "Power-On" verde o rojo según estado
 
 4. **Configuración**
    - Modal para agregar/editar/eliminar servidores
@@ -666,7 +671,11 @@ go build -o centralizegg ./cmd_centralizegg/server
     - System metrics (CPU, Memory, Disk)
     - Network interface information with traffic stats
     - Architecture detection (x86_64, ARM)
-*   **QEMU Guest Agent**: Support for obtaining VM IPs via QEMU agent.
+*   **QEMU Guest Agent**: Advanced integration for guest system telemetry:
+    - OS Name and Version
+    - Internal IP addresses
+*   **Multi-Disk Visualization**: Individual usage bars for each attached virtual disk.
+*   **Network Sparklines**: Real-time line charts to visualize RX/TX traffic trends.
 *   **Smart Filtering**: Select a host to instantly filter its Virtual Machine grid.
 *   **Global Search**: Real-time search with suggestions for hosts and VMs.
 *   **Alphabetical Sorting**: Automatic organization of hosts and VMs for faster navigation.
@@ -781,6 +790,7 @@ Centralizegg/
 *   Docker and Docker Compose
 *   SSH access (key or password) to KVM servers
 *   KVM servers must have Libvirt configured and accessible
+*   **Optional**: Install `qemu-guest-agent` on VMs for OS and IP detection.
 
 ### Security Setup (SSH)
 
