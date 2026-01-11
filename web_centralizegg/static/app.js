@@ -4,6 +4,20 @@ const API_CONFIG_SERVERS = '/api/config/servers';
 const API_FIREWALL_HOSTS = '/api/firewall/hosts';
 const API_FIREWALL_SERVERS = '/api/firewall/servers';
 
+// Helper function to get config API endpoint for current tool
+function getConfigAPIForTool(toolKey) {
+    const apiMap = {
+        'kvm': API_CONFIG_SERVERS,
+        'pfsense': API_FIREWALL_SERVERS,
+        'proxmox': '/api/config/proxmox',
+        'nas': '/api/config/nas',
+        'ceph': '/api/config/ceph',
+        'docker': '/api/config/docker',
+        'podman': '/api/config/podman'
+    };
+    return apiMap[toolKey] || API_CONFIG_SERVERS;
+}
+
 // Global state
 let currentServers = [];
 let currentFirewallServers = [];
@@ -1007,7 +1021,8 @@ close.onclick = () => modal.style.display = 'none';
 window.onclick = (e) => { if (e.target == modal) modal.style.display = 'none'; }
 
 async function loadServers() {
-    const res = await fetch(API_CONFIG_SERVERS);
+    const apiUrl = getConfigAPIForTool(currentTool);
+    const res = await fetch(apiUrl);
     if (res.ok) {
         const servers = await res.json();
         currentServers = servers || [];
@@ -1037,7 +1052,8 @@ async function loadServers() {
 
 async function deleteServer(id) {
     if (confirm('Delete this server?')) {
-        await fetch(API_CONFIG_SERVERS + '/' + id, { method: 'DELETE' });
+        const apiUrl = getConfigAPIForTool(currentTool);
+        await fetch(apiUrl + '/' + id, { method: 'DELETE' });
         loadServers();
         resetForm(); // if we were editing it
     }
@@ -1131,15 +1147,16 @@ document.getElementById('add-server-btn').onclick = async () => {
             ssh_key_path: sshKeyPath // Empty string will imply "keep current" or "default" based on backend logic
         };
 
+        const apiUrl = getConfigAPIForTool(currentTool);
         if (id) {
             // Update
-            await fetch(API_CONFIG_SERVERS + '/' + id, {
+            await fetch(apiUrl + '/' + id, {
                 method: 'PUT',
                 body: JSON.stringify(payload)
             });
         } else {
             // Create
-            await fetch(API_CONFIG_SERVERS, {
+            await fetch(apiUrl, {
                 method: 'POST',
                 body: JSON.stringify(payload)
             });

@@ -108,3 +108,70 @@ CREATE TABLE IF NOT EXISTS firewall.interfaces (
 -- Indexes for firewall schema
 CREATE INDEX IF NOT EXISTS idx_firewall_hosts_server ON firewall.hosts(server_id);
 CREATE INDEX IF NOT EXISTS idx_firewall_interfaces_host ON firewall.interfaces(host_id);
+
+-- Proxmox Servers (uses virtualization schema)
+CREATE TABLE IF NOT EXISTS virtualization.proxmox_servers (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    ip_address VARCHAR(255) NOT NULL,
+    ssh_port INT DEFAULT 22,
+    username VARCHAR(255) NOT NULL,
+    status VARCHAR(50) DEFAULT 'unknown',
+    password VARCHAR(255),
+    ssh_key_path VARCHAR(255) DEFAULT '/root/.ssh/id_rsa',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Storage Schema
+CREATE SCHEMA IF NOT EXISTS storage;
+
+CREATE TABLE IF NOT EXISTS storage.nas_servers (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    ip_address VARCHAR(255) NOT NULL,
+    ssh_port INT DEFAULT 22,
+    username VARCHAR(255) NOT NULL,
+    status VARCHAR(50) DEFAULT 'unknown',
+    password VARCHAR(255),
+    ssh_key_path VARCHAR(255) DEFAULT '/root/.ssh/id_rsa',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS storage.ceph_servers (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    ip_address VARCHAR(255) NOT NULL,
+    ssh_port INT DEFAULT 22,
+    username VARCHAR(255) NOT NULL,
+    status VARCHAR(50) DEFAULT 'unknown',
+    password VARCHAR(255),
+    ssh_key_path VARCHAR(255) DEFAULT '/root/.ssh/id_rsa',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Containers Schema
+CREATE SCHEMA IF NOT EXISTS containers;
+
+CREATE TABLE IF NOT EXISTS containers.docker_servers (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    ip_address VARCHAR(255) NOT NULL,
+    ssh_port INT DEFAULT 22,
+    username VARCHAR(255) NOT NULL,
+    status VARCHAR(50) DEFAULT 'unknown',
+    password VARCHAR(255),
+    ssh_key_path VARCHAR(255) DEFAULT '/root/.ssh/id_rsa',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS containers.podman_servers (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    ip_address VARCHAR(255) NOT NULL,
+    ssh_port INT DEFAULT 22,
+    username VARCHAR(255) NOT NULL,
+    status VARCHAR(50) DEFAULT 'unknown',
+    password VARCHAR(255),
+    ssh_key_path VARCHAR(255) DEFAULT '/root/.ssh/id_rsa',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

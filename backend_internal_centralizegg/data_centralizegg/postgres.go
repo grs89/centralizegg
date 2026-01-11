@@ -250,21 +250,21 @@ type PFSenseServer struct {
 }
 
 type FirewallHost struct {
-	ID              int64   `json:"id"`
-	ServerID        int64   `json:"server_id"`
-	Hostname        string  `json:"hostname"`
-	ServerName      string  `json:"server_name"`
-	IPAddress       string  `json:"ip_address"`
-	CPUModel        string  `json:"cpu_model"`
-	CPUCores        int     `json:"cpu_cores"`
-	TotalMemory     uint64  `json:"total_memory"`
-	FreeMemory      uint64  `json:"free_memory"`
-	CPUUsage        float64 `json:"cpu_usage"`
-	OSName          string  `json:"os_name"`
-	NetRXTotal      uint64  `json:"net_rx_total"`
-	NetTXTotal      uint64  `json:"net_tx_total"`
-	NetRXBytesPerSec uint64 `json:"net_rx_bytes_per_sec"`
-	NetTXBytesPerSec uint64 `json:"net_tx_bytes_per_sec"`
+	ID               int64   `json:"id"`
+	ServerID         int64   `json:"server_id"`
+	Hostname         string  `json:"hostname"`
+	ServerName       string  `json:"server_name"`
+	IPAddress        string  `json:"ip_address"`
+	CPUModel         string  `json:"cpu_model"`
+	CPUCores         int     `json:"cpu_cores"`
+	TotalMemory      uint64  `json:"total_memory"`
+	FreeMemory       uint64  `json:"free_memory"`
+	CPUUsage         float64 `json:"cpu_usage"`
+	OSName           string  `json:"os_name"`
+	NetRXTotal       uint64  `json:"net_rx_total"`
+	NetTXTotal       uint64  `json:"net_tx_total"`
+	NetRXBytesPerSec uint64  `json:"net_rx_bytes_per_sec"`
+	NetTXBytesPerSec uint64  `json:"net_tx_bytes_per_sec"`
 }
 
 type FirewallInterface struct {
@@ -362,4 +362,112 @@ func (d *DB) GetFirewallHosts() ([]FirewallHost, error) {
 		hosts = append(hosts, h)
 	}
 	return hosts, nil
+}
+
+// GenericServer is used for Proxmox, NAS, Ceph, Docker, Podman servers (same structure as KVMServer)
+type GenericServer struct {
+	ID         int64  `json:"id"`
+	Name       string `json:"name"`
+	IPAddress  string `json:"ip_address"`
+	SSHPort    int    `json:"ssh_port"`
+	Username   string `json:"username"`
+	Password   string `json:"password"`
+	SSHKeyPath string `json:"ssh_key_path"`
+	Status     string `json:"status"`
+}
+
+// Table names for each server type
+var serverTableMap = map[string]string{
+	"proxmox": "virtualization.proxmox_servers",
+	"nas":     "storage.nas_servers",
+	"ceph":    "storage.ceph_servers",
+	"docker":  "containers.docker_servers",
+	"podman":  "containers.podman_servers",
+}
+
+func (d *DB) GetGenericServers(toolType string) ([]GenericServer, error) {
+	table, ok := serverTableMap[toolType]
+	if !ok {
+		return nil, fmt.Errorf("unknown tool type: %s", toolType)
+	}
+
+	query := fmt.Sprintf("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, status FROM %s", table)
+	rows, err := d.Conn.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var servers []GenericServer
+	for rows.Next() {
+		var s GenericServer
+		var pwd sql.NullString
+		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.Status); err != nil {
+			return nil, err
+		}
+		s.Password = pwd.String
+		servers = append(servers, s)
+	}
+	return servers, nil
+}
+
+func (d *DB) AddGenericServer(toolType string, s GenericServer) (int64, error) {
+	table, ok := serverTableMap[toolType]
+	if !ok {
+		return 0, fmt.Errorf("unknown tool type: %s", toolType)
+	}
+
+	if s.SSHPort == 0 {
+		s.SSHPort = 22
+	}
+	if s.SSHKeyPath == "" {
+		s.SSHKeyPath = "/root/.ssh/id_rsa"
+	}
+
+	var id int64
+	query := fmt.Sprintf(`INSERT INTO %s (name, ip_address, ssh_port, username, password, ssh_key_path) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`, table)
+	err := d.Conn.QueryRow(query, s.Name, s.IPAddress, s.SSHPort, s.Username, s.Password, s.SSHKeyPath).Scan(&id)
+	return id, err
+}
+
+func (d *DB) UpdateGenericServer(toolType string, s GenericServer) error {
+	table, ok := serverTableMap[toolType]
+	if !ok {
+		return fmt.Errorf("unknown tool type: %s", toolType)
+	}
+
+	if s.SSHPort == 0 {
+		s.SSHPort = 22
+	}
+
+	if s.Password == "" {
+		query := fmt.Sprintf(`UPDATE %s SET name=$1, ip_address=$2, ssh_port=$3, username=$4, ssh_key_path=$5 WHERE id=$6`, table)
+		_, err := d.Conn.Exec(query, s.Name, s.IPAddress, s.SSHPort, s.Username, s.SSHKeyPath, s.ID)
+		return err
+	}
+	query := fmt.Sprintf(`UPDATE %s SET name=$1, ip_address=$2, ssh_port=$3, username=$4, password=$5, ssh_key_path=$6 WHERE id=$7`, table)
+	_, err := d.Conn.Exec(query, s.Name, s.IPAddress, s.SSHPort, s.Username, s.Password, s.SSHKeyPath, s.ID)
+	return err
+}
+
+func (d *DB) DeleteGenericServer(toolType string, id int64) error {
+	table, ok := serverTableMap[toolType]
+	if !ok {
+		return fmt.Errorf("unknown tool type: %s", toolType)
+	}
+
+	query := fmt.Sprintf("DELETE FROM %s WHERE id=$1", table)
+	_, err := d.Conn.Exec(query, id)
+	return err
+}
+
+func (d *DB) SetGenericServerStatus(toolType string, id int64, status string) error {
+	table, ok := serverTableMap[toolType]
+	if !ok {
+		return fmt.Errorf("unknown tool type: %s", toolType)
+	}
+
+	query := fmt.Sprintf("UPDATE %s SET status=$1 WHERE id=$2", table)
+	_, err := d.Conn.Exec(query, status, id)
+	return err
 }

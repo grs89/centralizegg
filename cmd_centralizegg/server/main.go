@@ -177,6 +177,84 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 	}).Methods("DELETE")
 
+	// Generic Server Config API for Proxmox, NAS, Ceph, Docker, Podman
+	r.HandleFunc("/api/config/{tool}", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		tool := vars["tool"]
+		// Skip "servers" as it's handled by the KVM-specific endpoint above
+		if tool == "servers" {
+			return
+		}
+		servers, err := db.GetGenericServers(tool)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(servers)
+	}).Methods("GET")
+
+	r.HandleFunc("/api/config/{tool}", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		tool := vars["tool"]
+		if tool == "servers" {
+			return
+		}
+		var s data_centralizegg.GenericServer
+		if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		id, err := db.AddGenericServer(tool, s)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		s.ID = id
+		json.NewEncoder(w).Encode(s)
+	}).Methods("POST")
+
+	r.HandleFunc("/api/config/{tool}/{id}", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		tool := vars["tool"]
+		if tool == "servers" {
+			return
+		}
+		id, err := strconv.ParseInt(vars["id"], 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid ID", http.StatusBadRequest)
+			return
+		}
+		var s data_centralizegg.GenericServer
+		if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		s.ID = id
+		if err := db.UpdateGenericServer(tool, s); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}).Methods("PUT")
+
+	r.HandleFunc("/api/config/{tool}/{id}", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		tool := vars["tool"]
+		if tool == "servers" {
+			return
+		}
+		id, err := strconv.ParseInt(vars["id"], 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid ID", http.StatusBadRequest)
+			return
+		}
+		if err := db.DeleteGenericServer(tool, id); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}).Methods("DELETE")
+
 	// Static Files
 	r.PathPrefix("/").Handler(http.FileServer(http.Dir("./web_centralizegg/static/")))
 
