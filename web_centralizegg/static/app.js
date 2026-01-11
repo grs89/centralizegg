@@ -163,12 +163,21 @@ function switchTool(toolKey) {
             console.log('[DEBUG] Showing container-scanner-tool');
 
             // Update placeholder content
-            const icon = containerTool.querySelector('.scanner-section i');
-            const title = containerTool.querySelector('h2');
-            const desc = containerTool.querySelector('p');
-            if (icon) icon.className = tool.icon;
-            if (title) title.textContent = `${tool.name} Management`;
-            if (desc) desc.textContent = `Gestión completa de ${tool.name} próximamente.`;
+            const scannerSection = containerTool.querySelector('.scanner-section');
+            if (scannerSection) {
+                if (toolKey === 'pfsense') {
+                    scannerSection.style.display = 'none';
+                } else {
+                    scannerSection.style.display = 'block';
+                    const icon = containerTool.querySelector('.scanner-section i');
+                    const title = containerTool.querySelectorAll('.scanner-section h2')[0]; // Be precise
+                    const desc = containerTool.querySelector('.scanner-section p');
+
+                    if (icon) icon.className = (tool.icon || 'fa-solid fa-box-open');
+                    if (title) title.textContent = `${tool.name} Management`;
+                    if (desc) desc.textContent = `Gestión completa de ${tool.name} próximamente.`;
+                }
+            }
 
             // Update title for host nodes section
             const hostNodesTitle = document.getElementById('host-nodes-title-generic');
@@ -555,6 +564,13 @@ async function checkAndFetchHostsForTool(toolKey) {
             if (response.ok) {
                 const hosts = await response.json();
                 if (hosts && hosts.length > 0) {
+                    // Sort hosts alphabetically
+                    hosts.sort((a, b) => {
+                        const nameA = a.server_name || a.name || '';
+                        const nameB = b.server_name || b.name || '';
+                        return nameA.localeCompare(nameB);
+                    });
+
                     // Update cache and render
                     if (toolKey === 'pfsense') {
                         allHostsCache = hosts || [];
@@ -915,9 +931,8 @@ function renderVMs() {
                         <div class="vm-subtitle">${vm.vcpu} vCPU</div>
                     </div>
                 </div>
-                <div class="vm-status-badge ${isRunning ? 'running' : 'shutoff'}">
-                    <span class="status-dot ${isRunning ? 'online' : ''}"></span>
-                    ${vm.state}
+                <div class="vm-status-badge ${isRunning ? 'running' : 'shutoff'}" title="${vm.state}">
+                    <i class="fa-solid fa-power-off"></i>
                 </div>
             </div>
 

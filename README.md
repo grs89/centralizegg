@@ -42,6 +42,10 @@
     - Disco: Capacidad, asignación, lectura y escritura
     - Red: Tráfico RX/TX
     - Estado de VMs: Running, Blocked, Paused, Shutdown, Shutoff, Crashed, Suspended
+*   **Monitoreo de Firewall**: Soporte completo para **pfSense** vía SSH.
+    - Métricas de sistema (CPU, Memoria, Disco)
+    - Información de interfaces de red con estadísticas de tráfico
+    - Detección de arquitectura (x86_64, ARM)
 *   **QEMU Guest Agent**: Soporte para obtener IPs de las máquinas virtuales mediante el agente QEMU.
 *   **Filtrado Inteligente**: Selecciona un host para filtrar instantáneamente su cuadrícula de máquinas virtuales.
 *   **Búsqueda Global**: Búsqueda en tiempo real con sugerencias para hosts y VMs.
@@ -131,7 +135,8 @@ Centralizegg/
 │   │   └── postgres.go            # Capa de acceso a datos (PostgreSQL)
 │   ├── virtualization/
 │   │   └── kvm-collector.go       # Colector de métricas KVM
-│   └── firewall/                  # (Reservado para futuras funcionalidades)
+│   └── firewall/
+│       └── pfsense-collector.go   # Colector de métricas pfSense (SSH)
 ├── web_centralizegg/
 │   └── static/
 │       ├── index.html             # Interfaz principal
@@ -215,6 +220,13 @@ Los servidores KVM se configuran a través del dashboard web:
    - **Username**: Usuario SSH
    - **Autenticación**: Clave SSH o contraseña
    - **SSH Key Path**: Ruta a la clave (default: `/root/.ssh/id_rsa`)
+
+### Configuración de Firewall (pfSense)
+
+1. Selecciona la herramienta "Firewall" en el menú
+2. Haz clic en el botón de configuración (⚙️)
+3. Agrega un nuevo servidor con credenciales SSH (similar a KVM)
+   - **Nota**: El usuario debe tener permisos para ejecutar `top`, `sysctl`, `netstat`.
 
 ## 🔌 API REST
 
@@ -349,9 +361,18 @@ Elimina un servidor de la configuración.
 
 **Respuesta**: `200 OK`
 
+#### `GET /api/firewall/servers`
+Obtiene servidores pfSense configurados.
+
+#### `POST /api/firewall/servers`
+Agrega un nuevo servidor pfSense.
+
+#### `PUT/DELETE /api/firewall/servers/{id}`
+Actualiza o elimina servidores pfSense.
+
 ## 🗄️ Base de Datos
 
-Centralizegg utiliza PostgreSQL con un esquema dedicado `virtualization`.
+Centralizegg utiliza PostgreSQL con esquemas dedicados `virtualization` y `firewall`.
 
 ### Esquema
 
@@ -422,6 +443,17 @@ Almacena información de las máquinas virtuales.
 
 - `idx_vms_name` en `vms.name`
 - `idx_hosts_server` en `hosts.server_id`
+
+### Esquema Firewall
+
+#### Tabla: `firewall.pfsense_servers`
+Almacena configuración de servidores pfSense (similar a `kvm_servers`).
+
+#### Tabla: `firewall.hosts`
+Almacena métricas de hosts pfSense.
+
+#### Tabla: `firewall.interfaces`
+Almacena estadísticas de interfaces de red de pfSense.
 
 ## 🎨 Funcionalidades del Frontend
 
@@ -630,6 +662,10 @@ go build -o centralizegg ./cmd_centralizegg/server
     - Disk: Capacity, allocation, read and write
     - Network: RX/TX traffic
     - VM States: Running, Blocked, Paused, Shutdown, Shutoff, Crashed, Suspended
+*   **Firewall Monitoring**: Full support for **pfSense** via SSH.
+    - System metrics (CPU, Memory, Disk)
+    - Network interface information with traffic stats
+    - Architecture detection (x86_64, ARM)
 *   **QEMU Guest Agent**: Support for obtaining VM IPs via QEMU agent.
 *   **Smart Filtering**: Select a host to instantly filter its Virtual Machine grid.
 *   **Global Search**: Real-time search with suggestions for hosts and VMs.
@@ -719,7 +755,8 @@ Centralizegg/
 │   │   └── postgres.go            # Data access layer (PostgreSQL)
 │   ├── virtualization/
 │   │   └── kvm-collector.go       # KVM metrics collector
-│   └── firewall/                  # (Reserved for future features)
+│   └── firewall/
+│       └── pfsense-collector.go   # pfSense metrics collector (SSH)
 ├── web_centralizegg/
 │   └── static/
 │       ├── index.html             # Main interface
@@ -798,11 +835,19 @@ KVM servers are configured through the web dashboard:
 3. Click the configuration button (⚙️)
 4. Add a new server with:
    - **Name**: Descriptive name
-   - **IP Address**: Server IP address
-   - **SSH Port**: SSH port (default: 22)
-   - **Username**: SSH user
-   - **Authentication**: SSH key or password
-   - **SSH Key Path**: Key path (default: `/root/.ssh/id_rsa`)
+   - **IP Address**: Server IP
+   - **SSH Port**: SSH Port (default: 22)
+   - **Username**: SSH User
+   - **Authentication**: Key or Password
+   - **SSH Key Path**: Path to key (default: `/root/.ssh/id_rsa`)
+
+### Firewall Configuration (pfSense)
+
+1. Select "Firewall" tool from the menu
+2. Click configuration button (⚙️)
+3. Add new server using SSH credentials
+   - **Note**: User must have permissions to run `top`, `sysctl`, `netstat`.
+
 
 ## 🔌 REST API
 
