@@ -28,11 +28,8 @@ func NewPFSenseCollector(db *data_centralizegg.DB) *PfsenseCollector {
 func (mc *PfsenseCollector) Start(interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	go func() {
-		for {
-			select {
-			case <-ticker.C:
-				mc.CollectAll()
-			}
+		for range ticker.C {
+			mc.CollectAll()
 		}
 	}()
 }

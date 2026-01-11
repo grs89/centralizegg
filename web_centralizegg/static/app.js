@@ -740,6 +740,12 @@ function renderHostNodes(containerId = 'host-nodes-container', config = {}) {
         // Handle onclick - use the provided function name or default to selectHost
         const onClickHandler = onHostClick || 'selectHost';
 
+        // Detect Architecture
+        let arch = '';
+        const fullInfo = ((host.cpu_model || '') + ' ' + (host.os_name || '')).toLowerCase();
+        if (fullInfo.includes('amd64') || fullInfo.includes('x86_64')) arch = 'x86_64';
+        else if (fullInfo.includes('arm') || fullInfo.includes('aarch64')) arch = 'ARM';
+
         return `
         <div class="host-node-card glass-panel ${isActive}" onclick="${onClickHandler}(${host.id})">
             <div class="host-node-header">
@@ -762,6 +768,7 @@ function renderHostNodes(containerId = 'host-nodes-container', config = {}) {
             <div class="host-os-info" style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
                 <i class="${getOSIcon(host.os_name)} fa-fw" style="font-size: 1rem; color: var(--accent-color);"></i>
                 <span>${host.os_name || 'Linux Generic'}</span>
+                ${arch ? `<span class="arch-badge" style="font-size: 0.7rem; background: rgba(30, 215, 96, 0.15); color: #1ed760; padding: 1px 6px; border-radius: 4px; border: 1px solid rgba(30, 215, 96, 0.3); font-weight: 600;">${arch}</span>` : ''}
             </div>
             ` : ''}
 
