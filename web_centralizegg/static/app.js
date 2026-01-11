@@ -906,7 +906,7 @@ function renderVMs() {
                     </div>
                     <div class="vm-title-group">
                         <h4>${vm.name}</h4>
-                        <div class="vm-subtitle">${vm.vcpu} vCPU | ${isRunning ? 'En ejecución' : 'Apagada'}</div>
+                        <div class="vm-subtitle">${vm.vcpu} vCPU</div>
                     </div>
                 </div>
                 <div class="vm-status-badge ${isRunning ? 'running' : 'shutoff'}">
