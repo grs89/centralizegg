@@ -1557,10 +1557,12 @@ function renderFirewallHostDetails(hostId) {
             <!-- Name & Status -->
             <div style="display: flex; align-items: center; gap: 8px;">
                 <div class="${iface.status === 'up' ? 'status-dot online' : 'status-dot offline'}" title="${iface.status}"></div>
-                <div style="font-weight: 500; font-size: 1rem; color: var(--primary-color); display: flex; align-items: center; gap: 8px;">
-                    <i class="fa-solid fa-network-wired" style="font-size: 0.9em; opacity: 0.7;"></i>
-                    <span>${iface.interface_name}</span>
-                    ${iface.ip_address ? `<span style="font-size: 0.75rem; color: var(--primary-color); background: rgba(var(--primary-rgb), 0.1); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(var(--primary-rgb), 0.2); font-family: monospace;">${iface.ip_address}</span>` : ''}
+                <div style="font-weight: 500; font-size: 1rem; color: var(--primary-color); display: flex; flex-direction: column; gap: 2px;">
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                       <i class="fa-solid fa-network-wired" style="font-size: 0.8em; opacity: 0.7;"></i>
+                       <span>${iface.interface_name}</span>
+                    </div>
+                    ${iface.ip_address ? `<span style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.8; font-family: monospace; margin-left: 2px;">${iface.ip_address}</span>` : ''}
                 </div>
             </div>
             
@@ -1825,8 +1827,16 @@ async function initTrafficMap(connsJSON) {
     mapMarkers.forEach(m => mapInstance.removeLayer(m));
     mapMarkers = [];
 
+    // Debug: Check plugin
+    if (typeof L.polyline.antPath === 'undefined') {
+        console.error('[AntPath] Plugin NOT loaded.');
+    } else {
+        console.log('[AntPath] Plugin loaded successfully.');
+    }
+
     // Queue requests
-    const topConns = connections.slice(0, 50); // Increased to 50 since queue handles limits
+    const topConns = connections.slice(0, 50);
+    console.log(`[AntPath] Processing ${topConns.length} connections for map.`);
 
     topConns.forEach(conn => {
         const ip = conn.remote_ip;
@@ -1889,6 +1899,7 @@ if (window.currentFirewallHost && window.currentFirewallHost.interfaces) {
     for (const iface of window.currentFirewallHost.interfaces) {
         if (iface.ip_address && !isPrivate(iface.ip_address)) {
             homeIP = iface.ip_address;
+            console.log('[AntPath] Found public Home IP from interfaces:', homeIP);
             break;
         }
     }
@@ -1898,17 +1909,20 @@ if (window.currentFirewallHost && window.currentFirewallHost.interfaces) {
 if (!homeIP) {
     // Use special key for "Self"
     homeIP = 'self';
+    console.log('[AntPath] No public IP found in interfaces. Defaulting to "self".');
 }
 
 // Resolve Home Geo
 const cachedHome = localStorage.getItem('geoip_' + homeIP);
 if (cachedHome) {
     homeGeo = JSON.parse(cachedHome);
+    console.log('[AntPath] Loaded Home Geo from cache:', homeGeo);
     drawLines();
 } else {
     if (!geoQueue.some(item => item.ip === (homeIP === 'self' ? '' : homeIP))) {
         // For 'self', ip-api expects no path or just empty string? `http://ip-api.com/json/` returns requester IP.
         const queryIP = homeIP === 'self' ? '' : homeIP;
+        console.log(`[AntPath] Queuing Home IP resolution for: "${queryIP}"`);
         geoQueue.unshift({ // Priority!
             ip: queryIP,
             callback: (geoData) => {
@@ -1916,7 +1930,10 @@ if (cachedHome) {
                     homeGeo = geoData;
                     // Cache using our internal key
                     localStorage.setItem('geoip_' + homeIP, JSON.stringify(geoData));
+                    console.log('[AntPath] Resolved Home Geo:', homeGeo);
                     drawLines();
+                } else {
+                    console.error('[AntPath] Failed to resolve Home Geo.');
                 }
             }
         });
@@ -1951,7 +1968,11 @@ function addMarker(conn, geoData) {
 }
 
 function drawSingleLine(conn, remoteGeo) {
-    if (!homeGeo || !homeGeo.lat || !remoteGeo || !remoteGeo.lat) return;
+    if (!homeGeo || !homeGeo.lat) {
+        // console.warn('[AntPath] Skipping line: Home Geo not ready.');
+        return;
+    }
+    if (!remoteGeo || !remoteGeo.lat) return;
 
     // Don't draw if same location
     if (homeGeo.lat === remoteGeo.lat && homeGeo.lon === remoteGeo.lon) return;
@@ -1967,21 +1988,31 @@ function drawSingleLine(conn, remoteGeo) {
         : [[homeGeo.lat, homeGeo.lon], [remoteGeo.lat, remoteGeo.lon]];
 
     // Create AntPath
-    const path = L.polyline.antPath(latlngs, {
-        "delay": 1000,
-        "dashArray": [10, 20],
-        "weight": 2,
-        "color": color,
-        "pulseColor": "#ffffff",
-        "paused": false,
-        "reverse": false,
-        "hardwareAccelerated": true
-    });
+    try {
+        const path = L.polyline.antPath(latlngs, {
+            "delay": 1000,
+            "dashArray": [10, 20],
+            "weight": 2,
+            "color": color,
+            "pulseColor": "#ffffff",
+            "paused": false,
+            "reverse": false,
+            "hardwareAccelerated": true
+        });
 
-    path.addTo(mapInstance);
-    mapMarkers.push(path); // Add to markers array so it gets cleared on next refresh
+        path.addTo(mapInstance);
+        mapMarkers.push(path); // Add to markers array so it gets cleared on next refresh
+        // console.log('[AntPath] Drawn line for', conn.remote_ip);
+    } catch (e) {
+        console.error('[AntPath] Error creating path:', e);
+    }
 }
 
+
+// Check for plugin availability
+if (typeof L.polyline.antPath !== 'function') {
+    console.error('Leaflet AntPath plugin not loaded! Animations will not work.');
+}
 
 window.selectFirewallHost = selectFirewallHost;
 window.renderFirewallHostDetails = renderFirewallHostDetails;
