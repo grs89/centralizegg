@@ -1666,7 +1666,15 @@ function renderFirewallHostDetails(hostId) {
                                     </div>
                                      <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; gap: 8px;">
                                         <span title="Latency"><i class="fa-solid fa-stopwatch" style="font-size: 0.65rem; opacity: 0.7; margin-right: 3px;"></i>${gw.delay}</span>
-                                        <span title="Packet Loss"><i class="fa-solid fa-chart-simple" style="font-size: 0.65rem; opacity: 0.7; margin-right: 3px;"></i>${gw.loss}</span>
+                                    ${(() => {
+                let lossVal = parseFloat(gw.loss);
+                let lossColor = 'var(--text-secondary)';
+                if (!isNaN(lossVal)) {
+                    if (lossVal > 0) lossColor = '#fb923c'; // Warning (Orange)
+                    if (lossVal >= 10) lossColor = '#ef4444'; // Critical (Red)
+                }
+                return `<span title="Packet Loss"><i class="fa-solid fa-chart-simple" style="font-size: 0.65rem; opacity: 0.7; margin-right: 3px; color:${lossColor}"></i><span style="color:${lossColor}">${gw.loss}</span></span>`;
+            })()}
                                     </div>
                                 </div>
                             `).join('')}
