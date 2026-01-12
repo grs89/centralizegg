@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -310,6 +311,34 @@ func main() {
 		}
 		w.WriteHeader(http.StatusOK)
 	}).Methods("DELETE")
+
+	// GeoIP Proxy API
+	r.HandleFunc("/api/geoip/{ip}", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		ip := vars["ip"]
+
+		// Construct target URL
+		targetURL := "http://ip-api.com/json/" + ip
+		if ip == "self" {
+			targetURL = "http://ip-api.com/json/"
+		}
+
+		// Make request
+		resp, err := http.Get(targetURL)
+		if err != nil {
+			log.Printf("Error proxying GeoIP for %s: %v", ip, err)
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+
+		// Copy headers and body
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(resp.StatusCode)
+		if _, err := io.Copy(w, resp.Body); err != nil {
+			log.Printf("Error copying GeoIP response: %v", err)
+		}
+	}).Methods("GET")
 
 	// Static Files
 	r.PathPrefix("/").Handler(http.FileServer(http.Dir("./web_centralizegg/static/")))

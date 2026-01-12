@@ -8,7 +8,7 @@
   <img src="web_centralizegg/static/image/1.png" alt="Centralizegg Dashboard" width="800">
 </div>
 
-[🇨🇴 Español](#español) | [🇺🇸 English](#english)
+[🇨🇴 Español](#español) | 
 
 ---
 

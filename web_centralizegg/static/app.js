@@ -1864,179 +1864,13 @@ function renderFirewallHostDetails(hostId) {
     }
 
     // Initialize Map after DOM update
+    // Initialize Map or Update
     setTimeout(() => {
-        initTrafficMap(host.active_connections);
+        if (!window.currentFirewallMap) {
+            window.currentFirewallMap = new NetworkMap('trafficMap');
+        }
+        window.currentFirewallMap.render(host.active_connections);
     }, 100);
-}
-
-// Global GeoIP Queue System
-const geoQueue = [];
-let isProcessingQueue = false;
-let isRateLimited = false;
-
-// Process Queue Loop
-async function processGeoQueue() {
-    if (isProcessingQueue || isRateLimited || geoQueue.length === 0) return;
-
-    isProcessingQueue = true;
-    const { ip, callback } = geoQueue.shift();
-
-    try {
-        const cached = localStorage.getItem('geoip_' + ip);
-        if (cached) {
-            callback(JSON.parse(cached));
-        } else {
-            console.log(`Fetching GeoIP for ${ ip }...`);
-            const res = await fetch(`http://ip-api.com/json/${ip}`);
-
-if (!res.ok) {
-    if (res.status === 429 || res.status === 409) {
-        console.warn(`Rate limit hit for ${ip}. Backing off for 60s.`);
-        isRateLimited = true;
-        geoQueue.unshift({ ip, callback }); // Return to front
-        setTimeout(() => { isRateLimited = false; processGeoQueue(); }, 60000);
-    } else {
-        console.error(`GeoIP Error ${res.status}: ${res.statusText}`);
-        localStorage.setItem('geoip_' + ip, JSON.stringify({ error: true })); // Cache error to avoid retry
-        callback(null);
-    }
-} else {
-    const data = await res.json();
-    if (data.status === 'success') {
-        const geoData = { lat: data.lat, lon: data.lon, city: data.city, country: data.country };
-        localStorage.setItem('geoip_' + ip, JSON.stringify(geoData));
-        callback(geoData);
-    } else {
-        localStorage.setItem('geoip_' + ip, JSON.stringify({ error: true }));
-        callback(null);
-    }
-}
-        }
-    } catch (e) {
-    console.error("GeoIP Fetch Exception:", e);
-    // Put back in queue if network error? No, just skip to avoid blocking
-    callback(null);
-} finally {
-    isProcessingQueue = false;
-    // Strict 2s delay between processing next item
-    setTimeout(processGeoQueue, 2000);
-}
-}
-
-// Map variables
-let mapInstance = null;
-let mapMarkers = [];
-
-async function initTrafficMap(connsJSON) {
-    if (!document.getElementById('trafficMap')) return;
-
-    let connections = [];
-    try {
-        connections = typeof connsJSON === 'string' ? JSON.parse(connsJSON) : connsJSON;
-    } catch (e) { return; }
-
-    // Init Map
-    const container = document.getElementById('trafficMap');
-    let lastCenter = [20, 0];
-    let lastZoom = 2;
-
-    if (mapInstance) {
-        // If container element has changed (due to innerHTML refresh), we must re-init
-        if (mapInstance.getContainer() !== container) {
-            lastCenter = mapInstance.getCenter();
-            lastZoom = mapInstance.getZoom();
-            mapInstance.remove();
-            mapInstance = null;
-        } else {
-            mapInstance.invalidateSize();
-        }
-    }
-
-    if (!mapInstance) {
-        mapInstance = L.map('trafficMap').setView(lastCenter, lastZoom);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy;OpenStreetMap, &copy;CartoDB',
-            subdomains: 'abcd',
-            maxZoom: 19
-        }).addTo(mapInstance);
-    }
-
-    // Clear markers
-    mapMarkers.forEach(m => mapInstance.removeLayer(m));
-    mapMarkers = [];
-
-    // Debug: Check plugin
-    if (typeof L.polyline.antPath === 'undefined') {
-        console.error('[AntPath] Plugin NOT loaded.');
-    } else {
-        console.log('[AntPath] Plugin loaded successfully.');
-    }
-
-    // Queue requests
-    const topConns = connections.slice(0, 50);
-    console.log(`[AntPath] Processing ${topConns.length} connections for map.`);
-
-    // Expose for redraw
-    window.activeMapConnections = topConns;
-
-    // Detect/Update Home Location (now that we might have Host data)
-    updateHomeLocation();
-
-    // Debug: Force overlay update
-    updateDebugOverlay();
-
-    topConns.forEach(conn => {
-        const ip = conn.remote_ip;
-
-        // Check cache synchronously first to avoid queue if possible (optimization)
-        const cached = localStorage.getItem('geoip_' + ip);
-        if (cached) {
-            addMarker(conn, JSON.parse(cached));
-        } else {
-            // Add to queue
-            // Check if already in queue to avoid duplicates
-            if (!geoQueue.some(item => item.ip === ip)) {
-                geoQueue.push({
-                    ip: ip,
-                    callback: (geoData) => {
-                        if (geoData && !geoData.error) {
-                            addMarker(conn, geoData);
-                        }
-                    }
-                });
-            }
-        }
-    });
-
-}
-
-// Start processing if not already
-processGeoQueue();
-
-// Define global drawLines function to handle Home IP resolution callback
-function drawLines() {
-    updateDebugOverlay(); // Update status
-    console.log('[AntPath] drawLines() called.');
-    if (!window.activeMapConnections) {
-        console.warn('[AntPath] No active connections to draw.');
-        return;
-    }
-
-    if (!homeGeo) {
-        console.warn('[AntPath] homeGeo is not ready yet.');
-        return;
-    }
-
-    console.log(`[AntPath] Attempting to draw lines for ${window.activeMapConnections.length} connections. HomeGeo:`, homeGeo);
-
-    window.activeMapConnections.forEach(conn => {
-        const ip = conn.remote_ip;
-        const cached = localStorage.getItem('geoip_' + ip);
-        if (cached) {
-            const remoteGeo = JSON.parse(cached);
-            drawSingleLine(conn, remoteGeo);
-        }
-    });
 }
 
 // Helper to check for private IP
@@ -2044,267 +1878,351 @@ const isPrivate = (ip) => {
     return ip.startsWith('10.') || ip.startsWith('192.168.') || ip.startsWith('127.') || (ip.startsWith('172.') && parseInt(ip.split('.')[1]) >= 16 && parseInt(ip.split('.')[1]) <= 31);
 };
 
-// --- HOME LOCATION LOGIC ---
-let homeIP = null;
-let homeGeo = null;
+class NetworkMap {
+    constructor(containerId) {
+        this.containerId = containerId;
+        this.mapInstance = null;
+        this.markers = [];
+        this.geoQueue = [];
+        this.isProcessingQueue = false;
+        this.homeIP = null;
+        this.homeGeo = null;
+        this.activeMapConnections = [];
 
-function updateHomeLocation() {
-    let newHomeIP = null;
+        // Restore Debug Mode from Persistent Storage
+        if (localStorage.getItem('mapDebugMode') === 'true') {
+            this.updateDebugOverlay();
+        }
+    }
 
-    // 1. Try to find public IP from host interfaces
-    if (window.currentFirewallHost && window.currentFirewallHost.interfaces) {
-        for (const iface of window.currentFirewallHost.interfaces) {
-            if (iface.ip_address && !isPrivate(iface.ip_address)) {
-                newHomeIP = iface.ip_address;
-                // console.log('[AntPath] Found public Home IP from interfaces:', newHomeIP);
-                break;
+    destroy() {
+        if (this.mapInstance) {
+            this.mapInstance.remove();
+            this.mapInstance = null;
+        }
+        // Clear debug overlay
+        const debugDiv = document.getElementById('antpath-debug');
+        if (debugDiv) debugDiv.remove();
+    }
+
+    render(connsJSON) {
+        // Parse conns
+        let connections = [];
+        try {
+            connections = connsJSON ? JSON.parse(connsJSON) : [];
+        } catch (e) {
+            console.error('[NetworkMap] Error parsing connections:', e);
+            return;
+        }
+
+        const container = document.getElementById(this.containerId);
+        if (!container) return; // Wait for DOM
+
+        // Init Map if needed
+        if (!this.mapInstance) {
+            this.mapInstance = L.map(this.containerId).setView([20, 0], 2);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy;OpenStreetMap, &copy;CartoDB',
+                subdomains: 'abcd',
+                maxZoom: 19
+            }).addTo(this.mapInstance);
+        } else {
+            this.mapInstance.invalidateSize();
+        }
+
+        // Clear markers
+        this.markers.forEach(m => this.mapInstance.removeLayer(m));
+        this.markers = [];
+
+        // Filter top connections
+        this.activeMapConnections = connections.slice(0, 50);
+        console.log(`[NetworkMap] Processing ${this.activeMapConnections.length} connections.`);
+
+        // Determine Home
+        this.updateHomeLocation();
+        this.updateDebugOverlay();
+
+        // Process Connections
+        this.activeMapConnections.forEach(conn => {
+            const ip = conn.remote_ip;
+            const cached = localStorage.getItem('geoip_' + ip);
+            if (cached) {
+                this.addMarker(conn, JSON.parse(cached));
+            } else {
+                if (!this.geoQueue.some(item => item.ip === ip)) {
+                    this.geoQueue.push({
+                        ip: ip,
+                        callback: (geoData) => {
+                            if (geoData && !geoData.error) {
+                                this.addMarker(conn, geoData);
+                            }
+                        }
+                    });
+                }
+            }
+        });
+
+        // Trigger Queue Processing
+        this.processGeoQueue();
+    }
+
+    updateHomeLocation() {
+        let newHomeIP = null;
+        // 1. Try public IP from host interfaces
+        if (window.currentFirewallHost && window.currentFirewallHost.interfaces) {
+            const candidates = window.currentFirewallHost.interfaces
+                .filter(i => i.ip_address && !isPrivate(i.ip_address))
+                .map(i => i.ip_address.trim());
+            const better = candidates.find(ip => !ip.startsWith('172.'));
+            newHomeIP = better || candidates[0];
+        }
+
+        // 2. Fallback
+        if (!newHomeIP) newHomeIP = 'self';
+
+        const safeNew = newHomeIP.trim();
+        const safeOld = this.homeIP ? this.homeIP.trim() : null;
+
+        if (safeNew !== safeOld) {
+            // Check if actually changed
+            if (safeNew === safeOld) return;
+
+            console.log(`[NetworkMap] Home IP changed: ${safeOld} -> ${safeNew}`);
+            this.homeIP = safeNew;
+            this.homeGeo = null;
+
+            // Check Cache
+            const cachedHome = localStorage.getItem('geoip_' + this.homeIP);
+            if (cachedHome) {
+                const parsed = JSON.parse(cachedHome);
+                if (!parsed.error && parsed.lat) {
+                    this.homeGeo = parsed;
+                    this.drawLines(); // Redraw all lines with new home
+                } else {
+                    localStorage.removeItem('geoip_' + this.homeIP);
+                    this.queueHomeResolution(this.homeIP);
+                }
+            } else {
+                this.queueHomeResolution(this.homeIP);
+            }
+        } else {
+            // IP same, retry geo if missing
+            if (!this.homeGeo) {
+                const cachedHome = localStorage.getItem('geoip_' + this.homeIP);
+                if (cachedHome) {
+                    this.homeGeo = JSON.parse(cachedHome);
+                    this.drawLines();
+                } else {
+                    this.queueHomeResolution(this.homeIP);
+                }
             }
         }
     }
 
-    // 2. Fallback to 'self'
-    if (!newHomeIP) {
-        newHomeIP = 'self';
-        // console.log('[AntPath] Defaulting Home IP to "self".');
-    }
-
-    // Helper to queue Home IP resolution
-    const queueHomeResolution = (targetIP) => {
-        const queryIP = targetIP === 'self' ? '' : targetIP;
-        // Avoid adding duplicates to queue if already pending? 
-        // We will allow check because we might be retrying.
-
-        console.log(`[AntPath] Queuing Home IP resolution for: "${targetIP}"`);
-        geoQueue.unshift({
+    queueHomeResolution(targetIP) {
+        const queryIP = targetIP === 'self' ? 'self' : targetIP;
+        // console.log(`[NetworkMap] Queuing Home IP: ${targetIP}`);
+        this.geoQueue.unshift({
             ip: queryIP,
             callback: (geoData) => {
                 if (geoData && !geoData.error) {
-                    homeGeo = geoData;
+                    this.homeGeo = geoData;
                     localStorage.setItem('geoip_' + targetIP, JSON.stringify(geoData));
-                    console.log(`[AntPath] Resolved Home Geo for ${targetIP}:`, homeGeo);
-                    drawLines();
+                    // console.log(`[NetworkMap] Resolved Home:`, this.homeGeo);
+                    this.drawLines();
                 } else {
-                    console.error(`[AntPath] Failed to resolve Home Geo for ${targetIP}.`);
-
-                    // FALLBACK STRATEGY
+                    // Fallback to self logic if specific IP failed?
                     if (targetIP !== 'self') {
-                        console.warn('[AntPath] Falling back to "self" for Home IP.');
-                        homeIP = 'self';
-                        queueHomeResolution('self');
+                        this.homeIP = 'self';
+                        this.queueHomeResolution('self');
                     }
                 }
             }
         });
-    };
+        this.processGeoQueue();
+    }
 
-    // If Home IP changed
-    if (newHomeIP !== homeIP) {
-        // Improved Selection Heuristic:
-        // Try to find a BETTER public IP if the current one is 172.x (often confused with Docker/Carrier NAT)
-        // scan window.currentFirewallHost.interfaces again
-        let bestIP = newHomeIP;
-        if (window.currentFirewallHost && window.currentFirewallHost.interfaces) {
-            const candidates = window.currentFirewallHost.interfaces
-                .filter(i => i.ip_address && !isPrivate(i.ip_address))
-                .map(i => i.ip_address);
+    async processGeoQueue() {
+        if (this.isProcessingQueue || this.geoQueue.length === 0) return;
 
-            // Prefer non-172 IPs
-            const better = candidates.find(ip => !ip.startsWith('172.'));
-            if (better) bestIP = better;
-        }
-        newHomeIP = bestIP;
+        this.isProcessingQueue = true;
+        const { ip, callback } = this.geoQueue.shift();
 
-        console.log(`[AntPath] Home IP changed: ${homeIP} -> ${newHomeIP}`);
-        homeIP = newHomeIP;
-        homeGeo = null; // Reset geo
-
-        // Check cache
-        const cachedHome = localStorage.getItem('geoip_' + homeIP);
-        let loadedFromCache = false;
-        if (cachedHome) {
-            const parsed = JSON.parse(cachedHome);
-            if (!parsed.error && parsed.lat) {
-                homeGeo = parsed;
-                console.log('[AntPath] Loaded Home Geo from cache:', homeGeo);
-                drawLines();
-                loadedFromCache = true;
+        try {
+            const cached = localStorage.getItem('geoip_' + ip);
+            if (cached) {
+                callback(JSON.parse(cached));
             } else {
-                console.warn('[AntPath] Cached Home Geo is invalid/error. Clearing and retrying.');
-                localStorage.removeItem('geoip_' + homeIP);
-            }
-        }
-
-        if (!loadedFromCache) {
-            queueHomeResolution(homeIP);
-        }
-    } else {
-        // IP didn't change (e.g. still 'self' or same public IP)
-        if (homeGeo && !homeGeo.error) {
-            // Already resolved: force redraw
-            setTimeout(drawLines, 100);
-        } else {
-            // CRITICAL FIX: IP matches, but Geo is missing or invalid! 
-            const cachedHome = localStorage.getItem('geoip_' + homeIP);
-            let isValidCache = false;
-            if (cachedHome) {
-                const parsed = JSON.parse(cachedHome);
-                if (!parsed.error && parsed.lat) {
-                    homeGeo = parsed;
-                    drawLines();
-                    isValidCache = true;
+                // Proxy Fetch
+                const res = await fetch(`/api/geoip/${ip}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.status === 'success') {
+                        const geoData = { lat: data.lat, lon: data.lon, city: data.city, country: data.country };
+                        localStorage.setItem('geoip_' + ip, JSON.stringify(geoData));
+                        callback(geoData);
+                    } else {
+                        localStorage.setItem('geoip_' + ip, JSON.stringify({ error: true }));
+                        callback(null);
+                    }
+                } else {
+                    // 429 etc
+                    if (res.status === 429) {
+                        this.geoQueue.unshift({ ip, callback });
+                        console.warn('[NetworkMap] Rate limited. Pausing.');
+                        await new Promise(r => setTimeout(r, 5000));
+                    } else {
+                        localStorage.setItem('geoip_' + ip, JSON.stringify({ error: true }));
+                        callback(null);
+                    }
                 }
             }
-
-            if (!isValidCache) {
-                console.warn('[AntPath] Home IP set but Geo missing/invalid. Retrying resolution.');
-                queueHomeResolution(homeIP);
+        } catch (e) {
+            console.error('[NetworkMap] Fetch error:', e);
+            callback(null);
+        } finally {
+            this.isProcessingQueue = false;
+            if (this.geoQueue.length > 0) {
+                setTimeout(() => this.processGeoQueue(), 200); // 200ms delay
             }
         }
     }
-}
 
-function addMarker(conn, geoData) {
-    if (!geoData || !geoData.lat) return;
+    addMarker(conn, geoData) {
+        if (!geoData || !geoData.lat) return;
 
-    const color = conn.inbound > conn.outbound ? '#ef4444' : '#22c55e';
-    const type = conn.inbound > conn.outbound ? 'Entrante' : 'Saliente';
+        const color = conn.inbound > conn.outbound ? '#ef4444' : '#22c55e';
+        const type = conn.inbound > conn.outbound ? 'Entrante' : 'Saliente';
 
-    const circle = L.circleMarker([geoData.lat, geoData.lon], {
-        radius: 5,
-        fillColor: color,
-        color: "#fff",
-        weight: 1,
-        opacity: 0.8,
-        fillOpacity: 0.8
-    }).addTo(mapInstance);
+        const circle = L.circleMarker([geoData.lat, geoData.lon], {
+            radius: 5,
+            fillColor: color,
+            color: "#fff",
+            weight: 1,
+            opacity: 0.8,
+            fillOpacity: 0.8
+        }).addTo(this.mapInstance);
 
-    circle.bindPopup(`
+        circle.bindPopup(`
             <b>${conn.remote_ip}</b><br>
             ${geoData.city}, ${geoData.country}<br>
             Tipo: <span style="color:${color}">${type}</span><br>
             Conexiones: In: ${conn.inbound} / Out: ${conn.outbound}
         `);
-    mapMarkers.push(circle);
+        this.markers.push(circle);
 
-    // Attempt to draw line if Home is ready
-    drawSingleLine(conn, geoData);
-}
-
-function drawSingleLine(conn, remoteGeo) {
-    if (!homeGeo || !homeGeo.lat) {
-        // console.warn('[AntPath] Skipping line: Home Geo not ready.');
-        return;
-    }
-    if (!remoteGeo || !remoteGeo.lat) return;
-
-    // Ensure coordinates are numbers
-    const hLat = parseFloat(homeGeo.lat);
-    const hLon = parseFloat(homeGeo.lon);
-    const rLat = parseFloat(remoteGeo.lat);
-    const rLon = parseFloat(remoteGeo.lon);
-
-    console.log(`[AntPath] Check Line: Home[${hLat},${hLon}] <-> Remote[${rLat},${rLon}]`);
-
-    // Don't draw if same location
-    if (Math.abs(hLat - rLat) < 0.0001 && Math.abs(hLon - rLon) < 0.0001) {
-        console.debug('[AntPath] Skipping line: Same location.');
-        return;
+        this.drawSingleLine(conn, geoData);
     }
 
-    const isInbound = conn.inbound > conn.outbound;
-    const color = isInbound ? '#ef4444' : '#22c55e';
+    drawSingleLine(conn, remoteGeo) {
+        if (!this.homeGeo || !this.homeGeo.lat) return;
 
-    // Define path points
-    const latlngs = isInbound
-        ? [[rLat, rLon], [hLat, hLon]]
-        : [[hLat, hLon], [rLat, rLon]];
+        const hLat = parseFloat(this.homeGeo.lat);
+        const hLon = parseFloat(this.homeGeo.lon);
+        const rLat = parseFloat(remoteGeo.lat);
+        const rLon = parseFloat(remoteGeo.lon);
 
-    // Create AntPath
-    try {
-        // Use 'new' constructor or factory? 
-        // L.polyline.antPath is the factory. Use standard options.
-        const path = L.polyline.antPath(latlngs, {
-            "delay": 1000,
-            "dashArray": [10, 20],
-            "weight": 4, // Increased weight again
-            "color": color,
-            "pulseColor": "#ffffff",
-            "paused": false,
-            "reverse": false,
-            "hardwareAccelerated": false // Disable for compatibility
+        if (Math.abs(hLat - rLat) < 0.0001 && Math.abs(hLon - rLon) < 0.0001) return;
+
+        const isInbound = conn.inbound > conn.outbound;
+        const color = isInbound ? '#ef4444' : '#22c55e';
+        const latlngs = isInbound ? [[rLat, rLon], [hLat, hLon]] : [[hLat, hLon], [rLat, rLon]];
+
+        try {
+            // AntPath
+            if (L.polyline.antPath) {
+                const path = L.polyline.antPath(latlngs, {
+                    "delay": 1000,
+                    "dashArray": [10, 20],
+                    "weight": 3,
+                    "color": color,
+                    "pulseColor": "#ffffff",
+                    "paused": false,
+                    "reverse": false,
+                    "hardwareAccelerated": false
+                });
+                path.addTo(this.mapInstance);
+                this.markers.push(path);
+            } else {
+                // Fallback
+                const line = L.polyline(latlngs, { color: color, weight: 2, opacity: 0.6 }).addTo(this.mapInstance);
+                this.markers.push(line);
+            }
+        } catch (e) {
+            console.error('[NetworkMap] Draw error:', e);
+        }
+    }
+
+    drawLines() {
+        this.updateDebugOverlay();
+        // Redraw lines for all existing markers?
+        // Actually slightly complex to re-bind lines to existing circle markers if we don't store relation.
+        // Simplest: If Home resolve late, we might miss lines.
+        // But `render` loop calls `addMarker` which calls `drawSingleLine`.
+        // If `homeGeo` is null during loop, `drawSingleLine` exits.
+        // So we need to re-iterate `activeMapConnections`.
+
+        if (!this.homeGeo) return;
+
+        // We don't want to double draw. 
+        // Actually `markers` has circles AND lines.
+        // Clean approach: clear all lines from markers array?
+        // Or just re-run the render loop logic for lines?
+        // Let's just iterate activeMapConnections and draw lines if missing?
+        // Easier: Just re-render? No, expensive.
+        // Pragmantic: Iterate connections, look up cached geo, draw line. 
+        // Note: This might duplicate lines if called multiple times.
+        // But `render` clears all markers first.
+        // So `drawLines` is only called when Home resolves late.
+        // Risk of duplication matches existing logic.
+
+        this.activeMapConnections.forEach(conn => {
+            const cached = localStorage.getItem('geoip_' + conn.remote_ip);
+            if (cached) this.drawSingleLine(conn, JSON.parse(cached));
         });
-
-        path.addTo(mapInstance);
-        mapMarkers.push(path);
-        // console.log('[AntPath] SUCCESS: Line drawn for ' + conn.remote_ip);
-    } catch (e) {
-        console.error('[AntPath] Error creating path:', e);
     }
 
-    // FALLBACK: Draw a standard gray line to confirm coordinates are correct
-    try {
-        const fallback = L.polyline(latlngs, {
-            color: '#666',
-            weight: 1,
-            dashArray: '5, 5',
-            opacity: 0.5
-        }).addTo(mapInstance);
-        mapMarkers.push(fallback);
-    } catch (e) { }
+    updateDebugOverlay() {
+        const isDebug = localStorage.getItem('mapDebugMode') === 'true';
+        let debugDiv = document.getElementById('antpath-debug');
+
+        if (!debugDiv && isDebug) {
+            debugDiv = document.createElement('div');
+            debugDiv.id = 'antpath-debug';
+            // ... styles ...
+            debugDiv.style.cssText = "position:absolute; bottom:10px; left:10px; background:rgba(0,0,0,0.7); color:#fff; padding:5px; font-size:10px; z-index:9999; pointer-events:none;";
+            const wrapper = document.getElementById('fw-map-wrapper');
+            if (wrapper) { wrapper.style.position = 'relative'; wrapper.appendChild(debugDiv); }
+        }
+
+        if (debugDiv) {
+            debugDiv.style.display = isDebug ? 'block' : 'none';
+            debugDiv.innerHTML = `
+                <b>Debug:</b> Home: ${this.homeIP || '?'} (${this.homeGeo ? 'OK' : 'Pending'})<br>
+                Conns: ${this.activeMapConnections.length}
+            `;
+        }
+    }
 }
 
-// DEBUG: Status Overlay
+// Global toggle for debug
 window.toggleMapDebug = function () {
     const current = localStorage.getItem('mapDebugMode') === 'true';
     localStorage.setItem('mapDebugMode', !current);
-    updateDebugOverlay();
+    // Try to find instance? Global?
+    if (window.currentFirewallMap) {
+        window.currentFirewallMap.updateDebugOverlay();
+    }
 };
 
-function updateDebugOverlay() {
-    let debugDiv = document.getElementById('antpath-debug');
-    const isDebug = localStorage.getItem('mapDebugMode') === 'true';
-
-    if (!debugDiv) {
-        debugDiv = document.createElement('div');
-        debugDiv.id = 'antpath-debug';
-        debugDiv.style.position = 'absolute';
-        debugDiv.style.bottom = '10px';
-        debugDiv.style.left = '10px';
-        debugDiv.style.backgroundColor = 'rgba(0,0,0,0.7)';
-        debugDiv.style.color = '#fff';
-        debugDiv.style.padding = '5px';
-        debugDiv.style.fontSize = '10px';
-        debugDiv.style.zIndex = '9999';
-        debugDiv.style.pointerEvents = 'none';
-        debugDiv.style.display = isDebug ? 'block' : 'none'; // Initial state
-
-        // Find map wrapper
-        const wrapper = document.getElementById('fw-map-wrapper');
-        if (wrapper) wrapper.style.position = 'relative';
-        if (wrapper) wrapper.appendChild(debugDiv);
-    } else {
-        debugDiv.style.display = isDebug ? 'block' : 'none';
-    }
-
-    debugDiv.innerHTML = `
-        <b>Debug Status:</b><br>
-        HomeIP: ${homeIP || 'Unknown'}<br>
-        GeoReady: ${homeGeo ? 'Yes' : 'No'}<br>
-        Connections: ${window.activeMapConnections ? window.activeMapConnections.length : 0}<br>
-        AntPath Loaded: ${typeof L.polyline.antPath !== 'undefined' ? 'Yes' : 'NO'}
-    `;
-}
+window.NetworkMap = NetworkMap;
 
 
-
-// Check for plugin availability
-if (typeof L.polyline.antPath !== 'function') {
-    console.error('Leaflet AntPath plugin not loaded! Animations will not work.');
-}
-
+// Restore global exports needed for HTML event handlers
 window.selectFirewallHost = selectFirewallHost;
 window.renderFirewallHostDetails = renderFirewallHostDetails;
 
+// Restore Helper Functions
 function getStatusColor(percent) {
     const val = parseFloat(percent);
     if (val <= 60) return '#22c55e'; // Success Green
