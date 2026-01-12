@@ -2126,20 +2126,23 @@ class NetworkMap {
 
         const isInbound = conn.inbound > conn.outbound;
         const color = isInbound ? '#ef4444' : '#22c55e';
-        const latlngs = isInbound ? [[rLat, rLon], [hLat, hLon]] : [[hLat, hLon], [rLat, rLon]];
+        const pulse = isInbound ? '#fca5a5' : '#86efac'; // Lighter shades for pulse
+
+        // Generate Curved Path (Bezier)
+        const latlngs = this.getCurvedPath([rLat, rLon], [hLat, hLon], isInbound);
 
         try {
             // AntPath
             if (L.polyline.antPath) {
                 const path = L.polyline.antPath(latlngs, {
-                    "delay": 1000,
+                    "delay": 800,
                     "dashArray": [10, 20],
-                    "weight": 3,
+                    "weight": 2, // Finer line
                     "color": color,
-                    "pulseColor": "#ffffff",
+                    "pulseColor": pulse,
                     "paused": false,
                     "reverse": false,
-                    "hardwareAccelerated": false
+                    "hardwareAccelerated": false // Keep false for compatibility
                 });
                 path.addTo(this.mapInstance);
                 this.markers.push(path);
@@ -2151,6 +2154,45 @@ class NetworkMap {
         } catch (e) {
             console.error('[NetworkMap] Draw error:', e);
         }
+    }
+
+    // Helper: Quadratic Bezier Curve
+    getCurvedPath(start, end, inbound) {
+        const lat1 = start[0], lon1 = start[1];
+        const lat2 = end[0], lon2 = end[1];
+
+        // Midpoint
+        const midLat = (lat1 + lat2) / 2;
+        const midLon = (lon1 + lon2) / 2;
+
+        // Distance (approx) to scale arc height
+        const dist = Math.sqrt(Math.pow(lat2 - lat1, 2) + Math.pow(lon2 - lon1, 2));
+
+        // Control Point: Perpendicular offset? 
+        // Simple Arc: Offset latitude (y-axis) based on distance
+        // Giving it a "flight path" look (arching up/north usually looks good)
+        // Let's offset Latitude proportional to distance.
+        const arcHeight = dist * 0.25;
+
+        // Adjust control point. 
+        // We simply add to Latitude to make it curve "North". 
+        // Or we could curve based on direction.
+        const controlLat = midLat + arcHeight;
+        const controlLon = midLon + (Math.random() * 5 - 2.5); // Slight random wobble for distinctness
+
+        const points = [];
+        const numPoints = 60; // Resolution
+
+        for (let i = 0; i <= numPoints; i++) {
+            const t = i / numPoints;
+            // Quadratic Bezier Formula: B(t) = (1-t)^2 * P0 + 2(1-t)t * P1 + t^2 * P2
+            const lat = (1 - t) * (1 - t) * lat1 + 2 * (1 - t) * t * controlLat + t * t * lat2;
+            const lon = (1 - t) * (1 - t) * lon1 + 2 * (1 - t) * t * controlLon + t * t * lon2;
+            points.push([lat, lon]);
+        }
+
+        // Return ordered based on direction
+        return inbound ? points : points.reverse();
     }
 
     drawLines() {
