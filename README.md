@@ -45,17 +45,20 @@
 *   **Monitoreo de Firewall**: Soporte completo para **pfSense** vía SSH.
     - Métricas de sistema (CPU, Memoria, Disco)
     - Información de interfaces de red con estadísticas de tráfico
-    - Detección de arquitectura (x86_64, ARM)
+    - Detección de arquitectura multi-plataforma (x86_64, ARM/AArch64) con insignias visuales.
 *   **QEMU Guest Agent**: Integración avanzada para obtener telemetría detallada del sistema invitado:
     - Nombre y versión del Sistema Operativo
     - Direcciones IP internas
 *   **Visualización Multi-Disco**: Barras de uso individuales para cada disco virtual adjunto a la VM.
-*   **Mapa de Tráfico Mundial**: Visualización geográfica animada (AntPath) de las conexiones entrantes y salientes en tiempo real.
-    - Ubicación automática basada en IP pública
-    - Líneas de flujo animado (Rojo: Entrante, Verde: Saliente)
+*   **Mapa de Tráfico Mundial**: Visualización geográfica premium con animaciones "Flight Path" (Bezier curvos).
+    - **GeoIP Proxy Integrado**: Resolución de IPs backend para privacidad y seguridad (evita Mixed Content).
+    - **Animaciones Fluidas**: Líneas curvas con pulso dinámico (Rojo: Entrante, Verde: Saliente).
+    - **Modo Depuración**: Overlay accesible desde la UI para diagnosticar la resolución de IPs.
 *   **Monitoreo de Gateways**: Estado en tiempo real de los gateways de pfSense (WAN/VPN).
-    - Métricas de Latencia (RTT), Pérdida de paquetes y Desviación estándar
-    - Indicadores de estado visuales (Online, Warn, Offline)
+    - **Alertas Visuales**: 
+        - ⚠️ Advertencia (>0% Pérdida de paquetes): Resaltado ámbar.
+        - 🚨 Crítico (>10% Pérdida de paquetes): **Animación de pulso rojo** y sombras dinámicas para atención inmediata.
+    - Métricas precisas de RTT y Desviación estándar.
 *   **Sparklines de Red**: Gráficos lineales en tiempo real para visualizar tendencias de tráfico RX/TX.
 *   **Filtrado Inteligente**: Selecciona un host para filtrar instantáneamente su cuadrícula de máquinas virtuales.
 *   **Búsqueda Global**: Búsqueda en tiempo real con sugerencias para hosts y VMs.
@@ -80,7 +83,7 @@ graph TD
     
     subgraph Backend["Backend (Go)"]
         API[API REST<br/>Gorilla Mux]
-        Collector[Colector KVM<br/>Multi-Collector]
+        Collector[Colector Unificado<br/>KVM + pfSense]
         Libvirt[Libvirt Client]
         SSH[SSH Client]
         pfSense[pfSense Client]
@@ -186,12 +189,14 @@ Centralizegg/
 *   **Opcional**: Instalar `qemu-guest-agent` en las VMs para detección de SO e IPs.
 
 ### Configuración de Seguridad (SSH)
+1. Asegúrate de que tu clave está en `~/.ssh/id_rsa`.
+2. El contenedor monta este directorio como solo lectura por defecto.
 
-Para que **Centralizegg** se conecte a tus servidores, necesita tu clave privada SSH.
-
-1. Asegúrate de que tu clave está en `~/.ssh/id_rsa`
-2. El contenedor monta este directorio como solo lectura por defecto
-3. Si usas una clave diferente, puedes especificarla en la configuración del servidor
+> [!IMPORTANT]
+> **Permisos de Archivo**: Asegúrate de que tu clave privada tenga permisos estrictos (chmod 600), o el cliente SSH rechazará usarla por seguridad.
+> ```bash
+> chmod 600 ~/.ssh/id_rsa
+> ```
 
 ### Despliegue
 
@@ -248,8 +253,10 @@ Los servidores KVM se configuran a través del dashboard web:
 
 1. Selecciona la herramienta "Firewall" en el menú
 2. Haz clic en el botón de configuración (⚙️)
-3. Agrega un nuevo servidor con credenciales SSH (similar a KVM)
-   - **Nota**: El usuario debe tener permisos para ejecutar `top`, `sysctl`, `netstat`.
+3. Agrega un nuevo servidor con credenciales SSH (similar a KVM).
+   - **Autenticación**: Soporta Clave SSH (RSA/Ed25519) o Contraseña.
+   - **Requisitos**: El usuario debe tener acceso al shell (`/bin/sh` o `/bin/tcsh`) y permisos para ejecutar `top`, `sysctl`, `netstat`, `pfctl`.
+   - **No requiere agentes**: Todo se recopila de forma remota y segura.
 
 ## 🔌 API REST
 
@@ -651,12 +658,11 @@ go build -o centralizegg ./cmd_centralizegg/server
     - `golang.org/x/crypto/ssh` - Cliente SSH
     - `github.com/gorilla/mux` - Router HTTP
     - `github.com/lib/pq` - Driver PostgreSQL
-    - `github.com/lib/pq` - Driver PostgreSQL
     - `github.com/beevik/etree` - Parser XML
     - **Frontend Libs**:
-        - `Leaflet.js` - Mapas interactivos
-        - `leaflet-ant-path` - Animaciones de tráfico
-        - `Chart.js` (planificado)
+        - `Leaflet.js` - Mapas interactivos con soporte táctil
+        - `leaflet-ant-path` - Animaciones de tráfico fluidas (Bezier/Flight-Path)
+        - `Custom Sparklines` - Renderizado SVG ultraligero para métricas en tiempo real
 
 ### Debugging AntPath Map
 Si el mapa no muestra líneas de tráfico:
