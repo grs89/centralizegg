@@ -84,6 +84,8 @@ func NewPostgresDB(connStr string) (*DB, error) {
 	_, _ = db.Exec("ALTER TABLE firewall.hosts ADD COLUMN IF NOT EXISTS update_status VARCHAR(255) DEFAULT 'Unknown'")
 	_, _ = db.Exec("ALTER TABLE firewall.hosts ADD COLUMN IF NOT EXISTS dns_servers TEXT DEFAULT ''")
 	_, _ = db.Exec("ALTER TABLE firewall.hosts ADD COLUMN IF NOT EXISTS active_connections TEXT DEFAULT '[]'")
+	_, _ = db.Exec("ALTER TABLE firewall.hosts ADD COLUMN IF NOT EXISTS state_table_size BIGINT DEFAULT 0")
+	_, _ = db.Exec("ALTER TABLE firewall.hosts ADD COLUMN IF NOT EXISTS state_table_limit BIGINT DEFAULT 0")
 
 	return &DB{Conn: db}, nil
 }
@@ -120,7 +122,10 @@ func ensureSchema(db *sql.DB) {
 			net_rx_total BIGINT DEFAULT 0,
 			net_tx_total BIGINT DEFAULT 0,
 			net_rx_bytes_per_sec BIGINT DEFAULT 0,
+			net_rx_bytes_per_sec BIGINT DEFAULT 0,
 			net_tx_bytes_per_sec BIGINT DEFAULT 0,
+			state_table_size BIGINT DEFAULT 0,
+			state_table_limit BIGINT DEFAULT 0,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE TABLE IF NOT EXISTS firewall.interfaces (
@@ -411,6 +416,8 @@ type FirewallHost struct {
 	NetTXBytesPerSec  uint64              `json:"net_tx_bytes_per_sec"`
 	Uptime            string              `json:"uptime"`
 	UpdateStatus      string              `json:"update_status"`
+	StateTableSize    int64               `json:"state_table_size"`
+	StateTableLimit   int64               `json:"state_table_limit"`
 	DNSServers        string              `json:"dns_servers"`
 	ActiveConnections string              `json:"active_connections"`
 	Interfaces        []FirewallInterface `json:"interfaces"`
@@ -452,12 +459,12 @@ func (d *DB) UpsertFirewallHost(h FirewallHost) (int64, error) {
 	err := d.Conn.QueryRow("SELECT id FROM firewall.hosts WHERE server_id = $1", h.ServerID).Scan(&id)
 	if err == sql.ErrNoRows {
 		err = d.Conn.QueryRow(`
-			INSERT INTO firewall.hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, net_rx_total, net_tx_total, net_rx_bytes_per_sec, net_tx_bytes_per_sec, uptime, update_status, dns_servers, active_connections)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
-			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.NetRXTotal, h.NetTXTotal, h.NetRXBytesPerSec, h.NetTXBytesPerSec, h.Uptime, h.UpdateStatus, h.DNSServers, h.ActiveConnections).Scan(&id)
+			INSERT INTO firewall.hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, net_rx_total, net_tx_total, net_rx_bytes_per_sec, net_tx_bytes_per_sec, uptime, update_status, dns_servers, active_connections, state_table_size, state_table_limit)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING id`,
+			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.NetRXTotal, h.NetTXTotal, h.NetRXBytesPerSec, h.NetTXBytesPerSec, h.Uptime, h.UpdateStatus, h.DNSServers, h.ActiveConnections, h.StateTableSize, h.StateTableLimit).Scan(&id)
 	} else if err == nil {
-		_, err = d.Conn.Exec(`UPDATE firewall.hosts SET hostname=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, net_rx_total=$8, net_tx_total=$9, net_rx_bytes_per_sec=$10, net_tx_bytes_per_sec=$11, uptime=$12, update_status=$13, dns_servers=$14, active_connections=$15 WHERE id=$16`,
-			h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.NetRXTotal, h.NetTXTotal, h.NetRXBytesPerSec, h.NetTXBytesPerSec, h.Uptime, h.UpdateStatus, h.DNSServers, h.ActiveConnections, id)
+		_, err = d.Conn.Exec(`UPDATE firewall.hosts SET hostname=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, net_rx_total=$8, net_tx_total=$9, net_rx_bytes_per_sec=$10, net_tx_bytes_per_sec=$11, uptime=$12, update_status=$13, dns_servers=$14, active_connections=$15, state_table_size=$16, state_table_limit=$17 WHERE id=$18`,
+			h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.NetRXTotal, h.NetTXTotal, h.NetRXBytesPerSec, h.NetTXBytesPerSec, h.Uptime, h.UpdateStatus, h.DNSServers, h.ActiveConnections, h.StateTableSize, h.StateTableLimit, id)
 	}
 	return id, err
 }
@@ -546,7 +553,7 @@ func (d *DB) UpsertFirewallGateway(gw FirewallGateway) error {
 
 func (d *DB) GetFirewallHosts() ([]FirewallHost, error) { // Fetch Hosts
 	rows, err := d.Conn.Query(`
-		SELECT fh.id, fh.server_id, fh.hostname, s.name, s.ip_address, fh.cpu_model, fh.cpu_cores, fh.total_memory, fh.free_memory, fh.cpu_usage, fh.os_name, fh.net_rx_total, fh.net_tx_total, fh.net_rx_bytes_per_sec, fh.net_tx_bytes_per_sec, fh.uptime, fh.update_status, COALESCE(fh.dns_servers, ''), COALESCE(fh.active_connections, '[]')
+		SELECT fh.id, fh.server_id, fh.hostname, s.name, s.ip_address, fh.cpu_model, fh.cpu_cores, fh.total_memory, fh.free_memory, fh.cpu_usage, fh.os_name, fh.net_rx_total, fh.net_tx_total, fh.net_rx_bytes_per_sec, fh.net_tx_bytes_per_sec, fh.uptime, fh.update_status, COALESCE(fh.dns_servers, ''), COALESCE(fh.active_connections, '[]'), COALESCE(fh.state_table_size, 0), COALESCE(fh.state_table_limit, 0)
 		FROM firewall.hosts fh
 		JOIN firewall.pfsense_servers s ON fh.server_id = s.id
 	`)
@@ -558,7 +565,7 @@ func (d *DB) GetFirewallHosts() ([]FirewallHost, error) { // Fetch Hosts
 	var hosts []FirewallHost
 	for rows.Next() {
 		var h FirewallHost
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.NetRXTotal, &h.NetTXTotal, &h.NetRXBytesPerSec, &h.NetTXBytesPerSec, &h.Uptime, &h.UpdateStatus, &h.DNSServers, &h.ActiveConnections); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.NetRXTotal, &h.NetTXTotal, &h.NetRXBytesPerSec, &h.NetTXBytesPerSec, &h.Uptime, &h.UpdateStatus, &h.DNSServers, &h.ActiveConnections, &h.StateTableSize, &h.StateTableLimit); err != nil {
 			return nil, err
 		}
 

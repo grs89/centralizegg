@@ -1716,6 +1716,36 @@ function renderFirewallHostDetails(hostId) {
                     <div style="display: flex; flex-direction: column;">
                         ${interfacesRows}
                     </div>
+
+                    <!-- State Table Size -->
+                    <!-- State Table Size -->
+                    <div style="margin-top: 25px;">
+                        <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between; align-items:center;">
+                            <div>State Table Size</div>
+                            <div style="font-size:0.85rem; opacity:0.7;">
+                                ${host.state_table_size.toLocaleString()} / ${(host.state_table_limit > 0 ? host.state_table_limit : 400000).toLocaleString()} ${host.state_table_limit > 0 ? '' : '<span style="opacity:0.6; font-size:0.75em;">(Default)</span>'}
+                            </div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.05); border-radius: 6px; padding: 15px; position: relative; overflow: hidden;">
+                            ${(() => {
+            const limit = host.state_table_limit > 0 ? host.state_table_limit : 400000;
+            const percent = Math.min((host.state_table_size / limit) * 100, 100);
+            let barColor = '#4ade80'; // Green
+            if (percent > 60) barColor = '#facc15'; // Yellow
+            if (percent > 80) barColor = '#ef4444'; // Red
+
+            return `
+                                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9rem; font-weight: 500;">
+                                        <span>Usage</span>
+                                        <span style="color: ${barColor}">${percent.toFixed(1)}%</span>
+                                    </div>
+                                    <div style="height: 10px; background: rgba(255,255,255,0.1); border-radius: 5px; overflow: hidden;">
+                                        <div style="height: 100%; width: ${percent}%; background: ${barColor}; transition: width 0.5s ease;"></div>
+                                    </div>
+                                `;
+        })()}
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

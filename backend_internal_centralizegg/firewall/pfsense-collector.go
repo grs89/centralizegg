@@ -318,6 +318,33 @@ func (mc *PfsenseCollector) collectOne(s data_centralizegg.PFSenseServer) error 
 		activeConnsJSON = string(bytes)
 	}
 
+	// 1g. State Table Size (pfctl -si)
+	stateSize := int64(0)
+	stateLimit := int64(0)
+	pfInfoOut, err := runCommand(client, "pfctl -si")
+	if err == nil {
+		lines := strings.Split(pfInfoOut, "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			// Output example:
+			// current entries      10924        400000
+			if strings.Contains(line, "current entries") {
+				fields := strings.Fields(line)
+				// fields: ["current", "entries", "10924", "400000"]
+				if len(fields) >= 3 {
+					if val, err := strconv.ParseInt(fields[2], 10, 64); err == nil {
+						stateSize = val
+					}
+				}
+				if len(fields) >= 4 {
+					if val, err := strconv.ParseInt(fields[3], 10, 64); err == nil {
+						stateLimit = val
+					}
+				}
+			}
+		}
+	}
+
 	// Store Host Data first to get the correct HostID
 	hostID, err := mc.DB.UpsertFirewallHost(data_centralizegg.FirewallHost{
 		ServerID:          s.ID,
@@ -334,6 +361,8 @@ func (mc *PfsenseCollector) collectOne(s data_centralizegg.PFSenseServer) error 
 		NetTXBytesPerSec:  0,
 		Uptime:            uptime,
 		UpdateStatus:      updateStatus,
+		StateTableSize:    stateSize,
+		StateTableLimit:   stateLimit,
 		DNSServers:        dnsServers,
 		ActiveConnections: activeConnsJSON,
 	})
