@@ -50,6 +50,12 @@
     - Nombre y versión del Sistema Operativo
     - Direcciones IP internas
 *   **Visualización Multi-Disco**: Barras de uso individuales para cada disco virtual adjunto a la VM.
+*   **Mapa de Tráfico Mundial**: Visualización geográfica animada (AntPath) de las conexiones entrantes y salientes en tiempo real.
+    - Ubicación automática basada en IP pública
+    - Líneas de flujo animado (Rojo: Entrante, Verde: Saliente)
+*   **Monitoreo de Gateways**: Estado en tiempo real de los gateways de pfSense (WAN/VPN).
+    - Métricas de Latencia (RTT), Pérdida de paquetes y Desviación estándar
+    - Indicadores de estado visuales (Online, Warn, Offline)
 *   **Sparklines de Red**: Gráficos lineales en tiempo real para visualizar tendencias de tráfico RX/TX.
 *   **Filtrado Inteligente**: Selecciona un host para filtrar instantáneamente su cuadrícula de máquinas virtuales.
 *   **Búsqueda Global**: Búsqueda en tiempo real con sugerencias para hosts y VMs.
@@ -633,7 +639,20 @@ go build -o centralizegg ./cmd_centralizegg/server
     - `golang.org/x/crypto/ssh` - Cliente SSH
     - `github.com/gorilla/mux` - Router HTTP
     - `github.com/lib/pq` - Driver PostgreSQL
+    - `github.com/lib/pq` - Driver PostgreSQL
     - `github.com/beevik/etree` - Parser XML
+    - **Frontend Libs**:
+        - `Leaflet.js` - Mapas interactivos
+        - `leaflet-ant-path` - Animaciones de tráfico
+        - `Chart.js` (planificado)
+
+### Debugging AntPath Map
+Si el mapa no muestra líneas de tráfico:
+1. Abre la consola del navegador (F12).
+2. Busca mensajes con el prefijo `[AntPath]`.
+3. Verifica el estado en la esquina inferior izquierda del mapa:
+   - **GeoReady**: Debe ser "Yes".
+   - **HomeIP**: Debe mostrar tu IP pública.
 
 ---
 
@@ -674,6 +693,12 @@ go build -o centralizegg ./cmd_centralizegg/server
 *   **QEMU Guest Agent**: Advanced integration for guest system telemetry:
     - OS Name and Version
     - Internal IP addresses
+*   **World Traffic Map**: Animated geographic visualization (AntPath) of real-time inbound and outbound connections.
+    - Automatic location based on public IP
+    - Animated flow lines (Red: Inbound, Green: Outbound)
+*   **Gateway Monitoring**: Real-time status of pfSense gateways (WAN/VPN).
+    - Latency (RTT), Packet Loss, and Standard Deviation metrics
+    - Visual status indicators (Online, Warn, Offline)
 *   **Multi-Disk Visualization**: Individual usage bars for each attached virtual disk.
 *   **Network Sparklines**: Real-time line charts to visualize RX/TX traffic trends.
 *   **Smart Filtering**: Select a host to instantly filter its Virtual Machine grid.
@@ -684,51 +709,7 @@ go build -o centralizegg ./cmd_centralizegg/server
 *   **Web-Based Config**: Add, edit, or remove KVM servers directly from the dashboard.
 *   **Security**: Support for custom SSH ports and robust authentication (Key/Password).
 *   **Auto-refresh**: Automatic data update every 5 seconds in the frontend.
-
-## 🏗️ Architecture
-
-Centralizegg follows a three-layer architecture: Frontend, Backend API, and Database, with a background data collector.
-
-```mermaid
-graph TB
-    subgraph Frontend["Frontend (Vanilla JS)"]
-        UI[Dashboard Web]
-        Search[Global Search]
-        Config[Configuration UI]
-    end
-    
-    subgraph Backend["Backend (Go)"]
-        API[REST API<br/>Gorilla Mux]
-        Collector[KVM Collector<br/>Multi-Collector]
-        Libvirt[Libvirt Client]
-        SSH[SSH Client]
-    end
-    
-    subgraph Database["Database"]
-        PG[(PostgreSQL)]
-        Schema[virtualization Schema]
-    end
-    
-    subgraph Remote["Remote KVM Servers"]
-        KVM1[KVM Server 1]
-        KVM2[KVM Server 2]
-        KVMN[KVM Server N]
-    end
-    
-    UI -->|HTTP Requests| API
-    Search -->|HTTP Requests| API
-    Config -->|HTTP Requests| API
-    API -->|Query/Insert/Update| PG
-    Collector -->|Query| PG
-    Collector -->|SSH Tunnel| SSH
-    SSH -->|Unix Socket| Libvirt
-    Libvirt -->|Libvirt Protocol| KVM1
-    Libvirt -->|Libvirt Protocol| KVM2
-    Libvirt -->|Libvirt Protocol| KVMN
-    Collector -->|Upsert Data| PG
-    PG -->|Response| API
-    API -->|JSON Response| UI
-```
+*   **Multi-Language Support**: English and Spanish.
 
 ### Data Flow
 
