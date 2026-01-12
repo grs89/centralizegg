@@ -1553,35 +1553,35 @@ function renderFirewallHostDetails(hostId) {
         }
 
         return `
-        <div style="display: grid; grid-template-columns: 1.5fr 2fr 2fr 0.5fr; gap: 15px; align-items: center; padding: 12px 10px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+        <div style="display: grid; grid-template-columns: 1.5fr 2fr 2fr 0.5fr; gap: 15px; align-items: center; padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,0.05);">
             <!-- Name & Status -->
             <div style="display: flex; align-items: center; gap: 8px;">
                 <div class="${iface.status === 'up' ? 'status-dot online' : 'status-dot offline'}" title="${iface.status}"></div>
-                <div style="font-weight: 500; font-size: 1rem; color: var(--primary-color); display: flex; flex-direction: column; gap: 2px;">
+                <div style="font-weight: 500; font-size: 0.95rem; color: var(--primary-color); display: flex; flex-direction: column; gap: 0px;">
                     <div style="display: flex; align-items: center; gap: 5px;">
                        <i class="fa-solid fa-network-wired" style="font-size: 0.8em; opacity: 0.7;"></i>
                        <span>${iface.interface_name}</span>
                     </div>
-                    ${iface.ip_address ? `<span style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.8; font-family: monospace; margin-left: 2px;">${iface.ip_address}</span>` : ''}
+                    ${iface.ip_address ? `<span style="font-size: 0.7rem; color: var(--text-secondary); opacity: 0.8; font-family: monospace; margin-left: 2px;">${iface.ip_address}</span>` : ''}
                 </div>
             </div>
             
             <!-- RX -->
             <div>
-                 <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 2px;">
+                 <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 0px;">
                     <span style="color: var(--text-secondary);">RX</span>
                     <span style="font-weight: 500;">${rxCurrent}</span>
                  </div>
-                 <div style="height: 30px; opacity: 0.8;">${rxSpark}</div>
+                 <div style="height: 20px; opacity: 0.8;">${rxSpark}</div>
             </div>
 
             <!-- TX -->
             <div>
-                 <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 2px;">
+                 <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 0px;">
                     <span style="color: var(--text-secondary);">TX</span>
                     <span style="font-weight: 500;">${txCurrent}</span>
                  </div>
-                 <div style="height: 30px; opacity: 0.8;">${txSpark}</div>
+                 <div style="height: 20px; opacity: 0.8;">${txSpark}</div>
             </div>
 
              <!-- Type -->
@@ -1593,7 +1593,7 @@ function renderFirewallHostDetails(hostId) {
     }).join('');
 
     const statsHTML = `
-        <div style="margin-bottom: 2rem;">
+        <div style="margin-bottom: 0.5rem;">
             <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 8px;">
                 <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;">Resumen</h2>
             </div>
@@ -1838,6 +1838,12 @@ async function initTrafficMap(connsJSON) {
     const topConns = connections.slice(0, 50);
     console.log(`[AntPath] Processing ${topConns.length} connections for map.`);
 
+    // Expose for redraw
+    window.activeMapConnections = topConns;
+
+    // Detect/Update Home Location (now that we might have Host data)
+    updateHomeLocation();
+
     topConns.forEach(conn => {
         const ip = conn.remote_ip;
 
@@ -1866,77 +1872,88 @@ async function initTrafficMap(connsJSON) {
 // Start processing if not already
 processGeoQueue();
 
-// --- HOME LOCATION LOGIC ---
-// Try to find a public IP for the Firewall itself to draw lines FROM/TO
-let homeIP = null;
-let homeGeo = null;
+// Define global drawLines function to handle Home IP resolution callback
+function drawLines() {
+    console.log('[AntPath] Redrawing all lines (Home Geo ready).');
+    if (!window.activeMapConnections) return;
+
+    window.activeMapConnections.forEach(conn => {
+        const ip = conn.remote_ip;
+        const cached = localStorage.getItem('geoip_' + ip);
+        if (cached) {
+            const remoteGeo = JSON.parse(cached);
+            drawSingleLine(conn, remoteGeo);
+        }
+    });
+}
 
 // Helper to check for private IP
 const isPrivate = (ip) => {
     return ip.startsWith('10.') || ip.startsWith('192.168.') || ip.startsWith('127.') || (ip.startsWith('172.') && parseInt(ip.split('.')[1]) >= 16 && parseInt(ip.split('.')[1]) <= 31);
 };
 
-// 1. Check Gateways for WAN IP
-if (window.currentFirewallHost && window.currentFirewallHost.gateways) {
-    // Usually monitor IP is remote, but source might be local. 
-    // Let's check interfaces from the host object stored in window (need to ensure we pass it or access it)
-    // Accessing via closure/global might be flaky. Let's rely on finding *any* public IP in the interfaces we just rendered?
-    // Actually, initTrafficMap receives `connsJSON`. It doesn't receive the full host object easily unless we pass it.
-    // But `renderFirewallHostDetails` calls `initTrafficMap`. Let's assume we can pass `host` to `initTrafficMap` in the future.
-    // For now, let's look at the global `allHostsCache`.
-}
+// --- HOME LOCATION LOGIC ---
+let homeIP = null;
+let homeGeo = null;
 
-// Better strategy: Look at the connections.
-// If we have "OUT" connections, the left side (local) is us.
-// But pfctl output parsing in backend stripped local IP.
+function updateHomeLocation() {
+    let newHomeIP = null;
 
-// Alternative: Just query "my ip" from the browser's perspective via check-ip API if we can't find one.
-// OR: iterate `connections` and find the *local* IP if the backend preserved it? 
-// Backend dropped it.
-
-// Let's try to get it from `allHostsCache` if possible.
-if (window.currentFirewallHost && window.currentFirewallHost.interfaces) {
-    for (const iface of window.currentFirewallHost.interfaces) {
-        if (iface.ip_address && !isPrivate(iface.ip_address)) {
-            homeIP = iface.ip_address;
-            console.log('[AntPath] Found public Home IP from interfaces:', homeIP);
-            break;
+    // 1. Try to find public IP from host interfaces
+    if (window.currentFirewallHost && window.currentFirewallHost.interfaces) {
+        for (const iface of window.currentFirewallHost.interfaces) {
+            if (iface.ip_address && !isPrivate(iface.ip_address)) {
+                newHomeIP = iface.ip_address;
+                // console.log('[AntPath] Found public Home IP from interfaces:', newHomeIP);
+                break;
+            }
         }
     }
-}
 
-// If still no Home IP, fallback to user's current IP (via empty API call to ip-api)
-if (!homeIP) {
-    // Use special key for "Self"
-    homeIP = 'self';
-    console.log('[AntPath] No public IP found in interfaces. Defaulting to "self".');
-}
+    // 2. Fallback to 'self'
+    if (!newHomeIP) {
+        newHomeIP = 'self';
+        // console.log('[AntPath] Defaulting Home IP to "self".');
+    }
 
-// Resolve Home Geo
-const cachedHome = localStorage.getItem('geoip_' + homeIP);
-if (cachedHome) {
-    homeGeo = JSON.parse(cachedHome);
-    console.log('[AntPath] Loaded Home Geo from cache:', homeGeo);
-    drawLines();
-} else {
-    if (!geoQueue.some(item => item.ip === (homeIP === 'self' ? '' : homeIP))) {
-        // For 'self', ip-api expects no path or just empty string? `http://ip-api.com/json/` returns requester IP.
-        const queryIP = homeIP === 'self' ? '' : homeIP;
-        console.log(`[AntPath] Queuing Home IP resolution for: "${queryIP}"`);
-        geoQueue.unshift({ // Priority!
-            ip: queryIP,
-            callback: (geoData) => {
-                if (geoData && !geoData.error) {
-                    homeGeo = geoData;
-                    // Cache using our internal key
-                    localStorage.setItem('geoip_' + homeIP, JSON.stringify(geoData));
-                    console.log('[AntPath] Resolved Home Geo:', homeGeo);
-                    drawLines();
-                } else {
-                    console.error('[AntPath] Failed to resolve Home Geo.');
+    // If Home IP changed, or not set, resolve it
+    if (newHomeIP !== homeIP) {
+        console.log(`[AntPath] Home IP changed: ${homeIP} -> ${newHomeIP}`);
+        homeIP = newHomeIP;
+        homeGeo = null; // Reset geo
+
+        // Check cache
+        const cachedHome = localStorage.getItem('geoip_' + homeIP);
+        if (cachedHome) {
+            homeGeo = JSON.parse(cachedHome);
+            console.log('[AntPath] Loaded Home Geo from cache:', homeGeo);
+            // We can draw lines now if connections exist
+            drawLines();
+        } else {
+            // Queue resolution
+            // Avoid queueing 'self' if it's already there? 
+            // Ideally we just queue it.
+            const queryIP = homeIP === 'self' ? '' : homeIP;
+            geoQueue.unshift({
+                ip: queryIP,
+                callback: (geoData) => {
+                    if (geoData && !geoData.error) {
+                        homeGeo = geoData;
+                        localStorage.setItem('geoip_' + homeIP, JSON.stringify(geoData));
+                        console.log('[AntPath] Resolved Home Geo:', homeGeo);
+                        drawLines();
+                    } else {
+                        console.error('[AntPath] Failed to resolve Home Geo.');
+                    }
                 }
-            }
-        });
+            });
+        }
+    } else {
+        // IP didn't change. If we have geo, ensure lines are drawn (in case this is a re-init)
+        if (homeGeo) {
+            // Force redraw because map might have been cleared
+            setTimeout(drawLines, 100);
+        }
     }
 }
 

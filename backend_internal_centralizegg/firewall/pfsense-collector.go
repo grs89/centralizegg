@@ -609,16 +609,34 @@ func parseAndStoreInterfaces(db *data_centralizegg.DB, hostID int64, output stri
 		cleanName := strings.TrimSuffix(finalName, "*")
 
 		var rxBytes, txBytes uint64
-		if len(fields) >= 5 {
-			// Heuristic: usually Ibytes and Obytes are the LAST two columns on pfSense regardless of column count variations in middle.
-			last := fields[len(fields)-1]
-			secondLast := fields[len(fields)-2]
-
-			if rb, err := strconv.ParseUint(secondLast, 10, 64); err == nil {
+		// Standard netstat -bdi output columns for Link:
+		// Name(0) Mtu(1) Network(2) Address(3) Ipkts(4) Ierrs(5) Idrop(6) Ibytes(7) Opkts(8) Oerrs(9) Obytes(10) Coll(11)
+		if len(fields) >= 11 {
+			// Ibytes is at index 7
+			if rb, err := strconv.ParseUint(fields[7], 10, 64); err == nil {
 				rxBytes = rb
 			}
-			if tb, err := strconv.ParseUint(last, 10, 64); err == nil {
-				txBytes = tb
+
+			// Obytes is at index 10.
+			// However, sometimes Idrop column might be missing on older versions?
+			// Safe bet: Obytes is 2nd to last if Coll is last?
+			// But if Coll is last (index 11), Obytes is index 10.
+			// Let's rely on standard map if len is sufficient.
+			if len(fields) >= 11 {
+				// If fields length is exactly 12, Obytes is 10.
+				// If 11 (missing something), it might vary.
+				// Trusted index for Obytes should be 10 if standard.
+				// Let's check length.
+				targetIdx := 10
+				if len(fields) == 12 {
+					targetIdx = 10
+				}
+
+				if targetIdx < len(fields) {
+					if tb, err := strconv.ParseUint(fields[targetIdx], 10, 64); err == nil {
+						txBytes = tb
+					}
+				}
 			}
 		}
 
