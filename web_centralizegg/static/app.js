@@ -1711,8 +1711,11 @@ function renderFirewallHostDetails(hostId) {
         scannerSection.innerHTML = `
             <div id="fw-stats-wrapper"></div>
             <div id="fw-map-wrapper" class="glass-panel" style="padding: 20px; margin-top: 20px;">
-                <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                    Mapa de Tráfico en Tiempo Real
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 15px; padding-bottom: 10px;">
+                    <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9;">
+                        Mapa de Tráfico en Tiempo Real
+                    </div>
+                    <i class="fa-solid fa-bug" onclick="window.toggleMapDebug()" title="Toggle Debug Mode" style="cursor: pointer; color: var(--text-secondary); font-size: 1rem; opacity: 0.5; transition: opacity 0.2s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5"></i>
                 </div>
                 <div id="trafficMap" style="height: 400px; width: 100%; border-radius: 8px; z-index: 1;"></div>
             </div>
@@ -2116,8 +2119,16 @@ function drawSingleLine(conn, remoteGeo) {
 }
 
 // DEBUG: Status Overlay
+window.toggleMapDebug = function () {
+    const current = localStorage.getItem('mapDebugMode') === 'true';
+    localStorage.setItem('mapDebugMode', !current);
+    updateDebugOverlay();
+};
+
 function updateDebugOverlay() {
     let debugDiv = document.getElementById('antpath-debug');
+    const isDebug = localStorage.getItem('mapDebugMode') === 'true';
+
     if (!debugDiv) {
         debugDiv = document.createElement('div');
         debugDiv.id = 'antpath-debug';
@@ -2130,11 +2141,14 @@ function updateDebugOverlay() {
         debugDiv.style.fontSize = '10px';
         debugDiv.style.zIndex = '9999';
         debugDiv.style.pointerEvents = 'none';
+        debugDiv.style.display = isDebug ? 'block' : 'none'; // Initial state
 
         // Find map wrapper
         const wrapper = document.getElementById('fw-map-wrapper');
         if (wrapper) wrapper.style.position = 'relative';
         if (wrapper) wrapper.appendChild(debugDiv);
+    } else {
+        debugDiv.style.display = isDebug ? 'block' : 'none';
     }
 
     debugDiv.innerHTML = `
