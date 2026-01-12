@@ -1,0 +1,24 @@
+<div class="doc-content">
+    <h3><i class="fa-solid fa-microchip"></i> Virtualización (KVM & Proxmox)</h3>
+
+    <div class="doc-section">
+        <h4>🚀 Cómo Iniciar</h4>
+        <ol>
+            <li>Navega al menú <strong>Virtualización > KVM</strong>.</li>
+            <li>Haz clic en el botón de configuración <i class="fa-solid fa-gear"></i>.</li>
+            <li>Añade tu servidor proporcionando la IP, Usuario y Clave SSH.</li>
+        </ol>
+    </div>
+
+    <div class="doc-section">
+        <h4>📋 Requerimientos Mínimos</h4>
+        <ul>
+            <li><strong>Sistema Operativo:</strong> Linux con Libvirt/QEMU instalado.</li>
+            <li><strong>Acceso SSH:</strong> Clave pública configurada (`authorized_keys`).</li>
+            <li><strong>Permisos:</strong> El usuario SSH debe pertenecer al grupo `libvirt` o tener acceso rw al socket
+                `/var/run/libvirt/libvirt-sock`.</li>
+            <li><strong>Guest Agent (Opcional):</strong> Instalar `qemu-guest-agent` en las VMs para ver IPs y nombres
+                de SO.</li>
+        </ul>
+    </div>
+</div>

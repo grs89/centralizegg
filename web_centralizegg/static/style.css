@@ -1358,3 +1358,166 @@ header {
         box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
     }
 }
+
+/* Slide Over Drawer */
+.modal.slide-over {
+    justify-content: flex-end;
+    /* Align to right */
+    align-items: stretch;
+    /* Full height */
+    display: none;
+    /* Hidden by default */
+    /* Flex display will be toggled via JS */
+}
+
+.modal.slide-over.active {
+    display: flex !important;
+}
+
+.slide-over-content {
+    width: 500px;
+    max-width: 90vw;
+    height: 100%;
+    margin: 0;
+    /* Reset modal margin */
+    border-radius: 0;
+    /* Squared edges */
+    border-left: 1px solid var(--glass-border);
+    border-top: none;
+    border-bottom: none;
+    border-right: none;
+    background: var(--bg-color);
+    /* Solid bg for readability */
+    /* Glass effect on top */
+    background: rgba(15, 23, 42, 0.95);
+    backdrop-filter: blur(15px);
+
+    transform: translateX(100%);
+    animation: slideInRight 0.3s forwards;
+    display: flex;
+    flex-direction: column;
+    padding: 2rem;
+}
+
+.slide-over-content.closing {
+    animation: slideOutRight 0.3s forwards;
+}
+
+@keyframes slideInRight {
+    to {
+        transform: translateX(0);
+    }
+}
+
+@keyframes slideOutRight {
+    from {
+        transform: translateX(0);
+    }
+
+    to {
+        transform: translateX(100%);
+    }
+}
+
+.doc-body-scroll {
+    overflow-y: auto;
+    flex: 1;
+    padding-right: 10px;
+    /* Space for scrollbar */
+}
+
+/* Documentation Typography */
+.doc-content {
+    padding: 0 1rem;
+}
+
+.doc-content h3 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 2rem;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--glass-border);
+    padding-bottom: 1rem;
+}
+
+.doc-content h3 i {
+    color: var(--accent-color);
+}
+
+.doc-section {
+    margin-bottom: 2.5rem;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 1.5rem;
+}
+
+.doc-section h4 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 1.2rem;
+    color: var(--accent-color);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.doc-section ol {
+    padding-left: 20px;
+    list-style: none;
+    /* Custom counter */
+    counter-reset: doc-step;
+}
+
+.doc-section ol li {
+    margin-bottom: 12px;
+    position: relative;
+    padding-left: 15px;
+    color: var(--text-primary);
+}
+
+.doc-section ol li::before {
+    counter-increment: doc-step;
+    content: counter(doc-step);
+    position: absolute;
+    left: -20px;
+    top: 2px;
+    background: var(--accent-color);
+    color: #0f172a;
+    font-size: 0.75rem;
+    font-weight: 700;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.doc-section ul {
+    list-style: none;
+    padding-left: 0;
+}
+
+.doc-section ul li {
+    margin-bottom: 10px;
+    padding-left: 20px;
+    position: relative;
+    color: var(--text-secondary);
+}
+
+.doc-section ul li::before {
+    content: "•";
+    color: var(--text-secondary);
+    font-size: 1.2rem;
+    position: absolute;
+    left: 0;
+    top: -4px;
+}
+
+.doc-section strong {
+    color: var(--text-primary);
+    font-weight: 600;
+}

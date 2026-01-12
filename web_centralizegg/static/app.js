@@ -2282,3 +2282,58 @@ function getStatusColor(percent) {
     if (val <= 80) return '#eab308'; // Warning Yellow/Amber
     return '#ef4444'; // Danger Red
 }
+
+// Documentation System
+function closeDocDrawer() {
+    const modal = document.getElementById('doc-modal');
+    // Optional: Add closing class for animation, then remove active
+    modal.classList.remove('active');
+}
+window.closeDocDrawer = closeDocDrawer;
+
+function initDocSystem() {
+    const badges = document.querySelectorAll('.badge[data-doc]');
+    const modal = document.getElementById('doc-modal');
+    const body = document.getElementById('doc-body');
+
+    badges.forEach(badge => {
+        badge.addEventListener('click', () => {
+            const docKey = badge.getAttribute('data-doc');
+            if (!docKey) return;
+
+            // Use 'active' class for flex display (Slide Over)
+            modal.classList.add('active');
+
+            body.innerHTML = '<div style="text-align: center; padding: 2rem;"><i class="fa-solid fa-circle-notch fa-spin"></i> Cargando...</div>';
+
+            fetch(`docs/${docKey}.html`)
+                .then(res => {
+                    if (!res.ok) throw new Error('Documento no encontrado: ' + docKey);
+                    return res.text();
+                })
+                .then(html => {
+                    body.innerHTML = html;
+                })
+                .catch(err => {
+                    body.innerHTML = `<div style="color: #ef4444; text-align: center; padding: 2rem;">
+                        <i class="fa-solid fa-triangle-exclamation"></i> Error: ${err.message}
+                    </div>`;
+                });
+        });
+    });
+
+    // Close modal on click outside
+    window.onclick = function (event) {
+        if (event.target == modal) {
+            closeDocDrawer();
+        }
+        // Keep existing config modal logic (standard modal)
+        const configModal = document.getElementById('config-modal');
+        if (event.target == configModal) {
+            configModal.style.display = "none";
+        }
+    }
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', initDocSystem);
