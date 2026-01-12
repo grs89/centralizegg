@@ -2,11 +2,13 @@ package firewall
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -193,23 +195,147 @@ func (mc *PfsenseCollector) collectOne(s data_centralizegg.PFSenseServer) error 
 
 	// ... [Other collection code] ...
 
+	// 1f. Active Connections (pfctl -ss) - Aggregated
+	activeConnsJSON := "[]"
+	pfctlOut, err := runCommand(client, "pfctl -ss")
+	if err == nil {
+		// Aggregate by Remote IP
+		type ConnStat struct {
+			RemoteIP string `json:"remote_ip"`
+			Inbound  int    `json:"inbound"`
+			Outbound int    `json:"outbound"`
+		}
+		statsMap := make(map[string]*ConnStat)
+
+		lines := strings.Split(pfctlOut, "\n")
+		for _, line := range lines {
+			// Example line: all tcp 192.168.1.105:51944 -> 1.1.1.1:853       ESTABLISHED:ESTABLISHED
+			// Or: all udp 192.168.1.1:53 <- 8.8.8.8:53       NO_TRAFFIC:SINGLE
+			// Direction arrows: -> (out), <- (in)
+
+			// Simple parsing strategy: look for -> or <-
+			direction := "" // "in" or "out"
+			if strings.Contains(line, "->") {
+				direction = "out"
+			} else if strings.Contains(line, "<-") {
+				direction = "in"
+			} else {
+				continue // Skip lines without clear direction
+			}
+
+			fields := strings.Fields(line)
+			if len(fields) < 5 {
+				continue
+			}
+
+			// Extract IPs based on arrow position?
+			// Usually "LeftIP arrow RightIP"
+			// If out (->): Left=Local, Right=Remote
+			// If in (<-): Left=Local(Dest), Right=Remote(Src) - Wait, pfctl usually shows "RealSrc -> RealDest" or similar.
+			// Let's rely on standard pfctl state output format:
+			// "intf proto src -> dst state"
+			// Actually pfctl -ss output varies.
+			// Typically: "all tcp 192.168.1.5:1234 -> 1.2.3.4:80       ESTABLISHED:ESTABLISHED"
+
+			// We need to robustly find the IPs.
+			// Let's assume the arrow is the pivot.
+			arrowIdx := -1
+			for i, f := range fields {
+				if f == "->" || f == "<-" {
+					arrowIdx = i
+					break
+				}
+			}
+
+			if arrowIdx == -1 || arrowIdx == 0 || arrowIdx >= len(fields)-1 {
+				continue
+			}
+
+			// left := fields[arrowIdx-1]
+			right := fields[arrowIdx+1]
+
+			// Remove ports (everything after last colon)
+			removePort := func(s string) string {
+				lastColon := strings.LastIndex(s, ":")
+				if lastColon != -1 {
+					return s[:lastColon]
+				}
+				return s
+			}
+
+			// leftIP := removePort(left)
+			rightIP := removePort(right)
+
+			var remoteIP string
+			if direction == "out" {
+				remoteIP = rightIP
+			} else {
+				remoteIP = rightIP // In "left <- right", right is typically the source (remote)
+			}
+
+			// Filter Private IPs (exclude 10., 192.168., 172.16-31., 127.)
+			isPrivate := func(ip string) bool {
+				return strings.HasPrefix(ip, "10.") ||
+					strings.HasPrefix(ip, "192.168.") ||
+					strings.HasPrefix(ip, "127.") ||
+					(strings.HasPrefix(ip, "172.") && len(ip) > 6) // Simplified check for 172.16-31
+			}
+
+			if isPrivate(remoteIP) {
+				continue
+			}
+
+			if _, exists := statsMap[remoteIP]; !exists {
+				statsMap[remoteIP] = &ConnStat{RemoteIP: remoteIP}
+			}
+
+			if direction == "out" {
+				statsMap[remoteIP].Outbound++
+			} else {
+				statsMap[remoteIP].Inbound++
+			}
+		}
+
+		// Convert map to slice
+		var statsList []ConnStat
+		for _, s := range statsMap {
+			statsList = append(statsList, *s)
+		}
+
+		// Sort by total connections (descending) and limit to top 100
+		sort.Slice(statsList, func(i, j int) bool {
+			totalI := statsList[i].Inbound + statsList[i].Outbound
+			totalJ := statsList[j].Inbound + statsList[j].Outbound
+			return totalI > totalJ
+		})
+
+		if len(statsList) > 100 {
+			statsList = statsList[:100]
+		}
+
+		// Marshal (ignore error, empty list is fine)
+		bytes, _ := json.Marshal(statsList)
+		activeConnsJSON = string(bytes)
+	}
+
 	// Store Host Data first to get the correct HostID
 	hostID, err := mc.DB.UpsertFirewallHost(data_centralizegg.FirewallHost{
-		ServerID:         s.ID,
-		Hostname:         strings.TrimSpace(hostname),
-		CPUModel:         cpuModel,
-		CPUCores:         cpuCores,
-		TotalMemory:      memTotal,
-		FreeMemory:       memFree,
-		CPUUsage:         cpuUsage,
-		OSName:           "pfSense " + pfVersion + " (" + strings.TrimSpace(uname) + ")",
-		NetRXTotal:       0, // Aggregated from interfaces if needed
-		NetTXTotal:       0,
-		NetRXBytesPerSec: 0,
-		NetTXBytesPerSec: 0,
-		Uptime:           uptime,
-		UpdateStatus:     updateStatus,
-		DNSServers:       dnsServers,
+		ServerID:          s.ID,
+		Hostname:          strings.TrimSpace(hostname),
+		CPUModel:          cpuModel,
+		CPUCores:          cpuCores,
+		TotalMemory:       memTotal,
+		FreeMemory:        memFree,
+		CPUUsage:          cpuUsage,
+		OSName:            "pfSense " + pfVersion + " (" + strings.TrimSpace(uname) + ")",
+		NetRXTotal:        0, // Aggregated from interfaces if needed
+		NetTXTotal:        0,
+		NetRXBytesPerSec:  0,
+		NetTXBytesPerSec:  0,
+		Uptime:            uptime,
+		UpdateStatus:      updateStatus,
+		DNSServers:        dnsServers,
+		ActiveConnections: activeConnsJSON,
 	})
 	if err != nil {
 		return fmt.Errorf("upsert host: %w", err)

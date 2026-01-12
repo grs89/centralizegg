@@ -1520,6 +1520,7 @@ function renderFirewallHostDetails(hostId) {
      */
 
     const host = allHostsCache.find(h => h.id === hostId);
+    if (host) window.currentFirewallHost = host; // Expose for map logic
     if (!host) {
         scannerSection.innerHTML = `<div class="glass-panel"><div class="loading-state">Host not found</div></div>`;
         return;
@@ -1589,7 +1590,7 @@ function renderFirewallHostDetails(hostId) {
         `;
     }).join('');
 
-    scannerSection.innerHTML = `
+    const statsHTML = `
         <div style="margin-bottom: 2rem;">
             <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 8px;">
                 <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;">Resumen</h2>
@@ -1691,6 +1692,7 @@ function renderFirewallHostDetails(hostId) {
                         <div>Outbound Traffic (TX)</div>
                         <div style="text-align: right;">Type</div>
                     </div>
+
                     <div style="display: flex; flex-direction: column;">
                         ${interfacesRows}
                     </div>
@@ -1698,7 +1700,288 @@ function renderFirewallHostDetails(hostId) {
             </div>
         </div>
     `;
+
+    // Ensure persistent containers exist
+    let statsWrapper = document.getElementById('fw-stats-wrapper');
+    let mapWrapper = document.getElementById('fw-map-wrapper');
+
+    if (!statsWrapper) {
+        scannerSection.innerHTML = `
+            <div id="fw-stats-wrapper"></div>
+            <div id="fw-map-wrapper" class="glass-panel" style="padding: 20px; margin-top: 20px;">
+                <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    Mapa de Tráfico en Tiempo Real
+                </div>
+                <div id="trafficMap" style="height: 400px; width: 100%; border-radius: 8px; z-index: 1;"></div>
+            </div>
+        `;
+        statsWrapper = document.getElementById('fw-stats-wrapper');
+    }
+
+    // Update Stats Content ONLY
+    if (statsWrapper) {
+        statsWrapper.innerHTML = statsHTML;
+    }
+
+    // Initialize Map after DOM update
+    setTimeout(() => {
+        initTrafficMap(host.active_connections);
+    }, 100);
 }
+
+// Global GeoIP Queue System
+const geoQueue = [];
+let isProcessingQueue = false;
+let isRateLimited = false;
+
+// Process Queue Loop
+async function processGeoQueue() {
+    if (isProcessingQueue || isRateLimited || geoQueue.length === 0) return;
+
+    isProcessingQueue = true;
+    const { ip, callback } = geoQueue.shift();
+
+    try {
+        const cached = localStorage.getItem('geoip_' + ip);
+        if (cached) {
+            callback(JSON.parse(cached));
+        } else {
+            console.log(`Fetching GeoIP for ${ip}...`);
+            const res = await fetch(`http://ip-api.com/json/${ip}`);
+
+            if (!res.ok) {
+                if (res.status === 429 || res.status === 409) {
+                    console.warn(`Rate limit hit for ${ip}. Backing off for 60s.`);
+                    isRateLimited = true;
+                    geoQueue.unshift({ ip, callback }); // Return to front
+                    setTimeout(() => { isRateLimited = false; processGeoQueue(); }, 60000);
+                } else {
+                    console.error(`GeoIP Error ${res.status}: ${res.statusText}`);
+                    localStorage.setItem('geoip_' + ip, JSON.stringify({ error: true })); // Cache error to avoid retry
+                    callback(null);
+                }
+            } else {
+                const data = await res.json();
+                if (data.status === 'success') {
+                    const geoData = { lat: data.lat, lon: data.lon, city: data.city, country: data.country };
+                    localStorage.setItem('geoip_' + ip, JSON.stringify(geoData));
+                    callback(geoData);
+                } else {
+                    localStorage.setItem('geoip_' + ip, JSON.stringify({ error: true }));
+                    callback(null);
+                }
+            }
+        }
+    } catch (e) {
+        console.error("GeoIP Fetch Exception:", e);
+        // Put back in queue if network error? No, just skip to avoid blocking
+        callback(null);
+    } finally {
+        isProcessingQueue = false;
+        // Strict 2s delay between processing next item
+        setTimeout(processGeoQueue, 2000);
+    }
+}
+
+// Map variables
+let mapInstance = null;
+let mapMarkers = [];
+
+async function initTrafficMap(connsJSON) {
+    if (!document.getElementById('trafficMap')) return;
+
+    let connections = [];
+    try {
+        connections = typeof connsJSON === 'string' ? JSON.parse(connsJSON) : connsJSON;
+    } catch (e) { return; }
+
+    // Init Map
+    const container = document.getElementById('trafficMap');
+    let lastCenter = [20, 0];
+    let lastZoom = 2;
+
+    if (mapInstance) {
+        // If container element has changed (due to innerHTML refresh), we must re-init
+        if (mapInstance.getContainer() !== container) {
+            lastCenter = mapInstance.getCenter();
+            lastZoom = mapInstance.getZoom();
+            mapInstance.remove();
+            mapInstance = null;
+        } else {
+            mapInstance.invalidateSize();
+        }
+    }
+
+    if (!mapInstance) {
+        mapInstance = L.map('trafficMap').setView(lastCenter, lastZoom);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy;OpenStreetMap, &copy;CartoDB',
+            subdomains: 'abcd',
+            maxZoom: 19
+        }).addTo(mapInstance);
+    }
+
+    // Clear markers
+    mapMarkers.forEach(m => mapInstance.removeLayer(m));
+    mapMarkers = [];
+
+    // Queue requests
+    const topConns = connections.slice(0, 50); // Increased to 50 since queue handles limits
+
+    topConns.forEach(conn => {
+        const ip = conn.remote_ip;
+
+        // Check cache synchronously first to avoid queue if possible (optimization)
+        const cached = localStorage.getItem('geoip_' + ip);
+        if (cached) {
+            addMarker(conn, JSON.parse(cached));
+        } else {
+            // Add to queue
+            // Check if already in queue to avoid duplicates
+            if (!geoQueue.some(item => item.ip === ip)) {
+                geoQueue.push({
+                    ip: ip,
+                    callback: (geoData) => {
+                        if (geoData && !geoData.error) {
+                            addMarker(conn, geoData);
+                        }
+                    }
+                });
+            }
+        }
+    });
+
+}
+
+// Start processing if not already
+processGeoQueue();
+
+// --- HOME LOCATION LOGIC ---
+// Try to find a public IP for the Firewall itself to draw lines FROM/TO
+let homeIP = null;
+let homeGeo = null;
+
+// Helper to check for private IP
+const isPrivate = (ip) => {
+    return ip.startsWith('10.') || ip.startsWith('192.168.') || ip.startsWith('127.') || (ip.startsWith('172.') && parseInt(ip.split('.')[1]) >= 16 && parseInt(ip.split('.')[1]) <= 31);
+};
+
+// 1. Check Gateways for WAN IP
+if (window.currentFirewallHost && window.currentFirewallHost.gateways) {
+    // Usually monitor IP is remote, but source might be local. 
+    // Let's check interfaces from the host object stored in window (need to ensure we pass it or access it)
+    // Accessing via closure/global might be flaky. Let's rely on finding *any* public IP in the interfaces we just rendered?
+    // Actually, initTrafficMap receives `connsJSON`. It doesn't receive the full host object easily unless we pass it.
+    // But `renderFirewallHostDetails` calls `initTrafficMap`. Let's assume we can pass `host` to `initTrafficMap` in the future.
+    // For now, let's look at the global `allHostsCache`.
+}
+
+// Better strategy: Look at the connections.
+// If we have "OUT" connections, the left side (local) is us.
+// But pfctl output parsing in backend stripped local IP.
+
+// Alternative: Just query "my ip" from the browser's perspective via check-ip API if we can't find one.
+// OR: iterate `connections` and find the *local* IP if the backend preserved it? 
+// Backend dropped it.
+
+// Let's try to get it from `allHostsCache` if possible.
+if (window.currentFirewallHost && window.currentFirewallHost.interfaces) {
+    for (const iface of window.currentFirewallHost.interfaces) {
+        if (iface.ip_address && !isPrivate(iface.ip_address)) {
+            homeIP = iface.ip_address;
+            break;
+        }
+    }
+}
+
+// If still no Home IP, fallback to user's current IP (via empty API call to ip-api)
+if (!homeIP) {
+    // Use special key for "Self"
+    homeIP = 'self';
+}
+
+// Resolve Home Geo
+const cachedHome = localStorage.getItem('geoip_' + homeIP);
+if (cachedHome) {
+    homeGeo = JSON.parse(cachedHome);
+    drawLines();
+} else {
+    if (!geoQueue.some(item => item.ip === (homeIP === 'self' ? '' : homeIP))) {
+        // For 'self', ip-api expects no path or just empty string? `http://ip-api.com/json/` returns requester IP.
+        const queryIP = homeIP === 'self' ? '' : homeIP;
+        geoQueue.unshift({ // Priority!
+            ip: queryIP,
+            callback: (geoData) => {
+                if (geoData && !geoData.error) {
+                    homeGeo = geoData;
+                    // Cache using our internal key
+                    localStorage.setItem('geoip_' + homeIP, JSON.stringify(geoData));
+                    drawLines();
+                }
+            }
+        });
+    }
+}
+
+function addMarker(conn, geoData) {
+    if (!geoData || !geoData.lat) return;
+
+    const color = conn.inbound > conn.outbound ? '#ef4444' : '#22c55e';
+    const type = conn.inbound > conn.outbound ? 'Entrante' : 'Saliente';
+
+    const circle = L.circleMarker([geoData.lat, geoData.lon], {
+        radius: 5,
+        fillColor: color,
+        color: "#fff",
+        weight: 1,
+        opacity: 0.8,
+        fillOpacity: 0.8
+    }).addTo(mapInstance);
+
+    circle.bindPopup(`
+            <b>${conn.remote_ip}</b><br>
+            ${geoData.city}, ${geoData.country}<br>
+            Tipo: <span style="color:${color}">${type}</span><br>
+            Conexiones: In: ${conn.inbound} / Out: ${conn.outbound}
+        `);
+    mapMarkers.push(circle);
+
+    // Attempt to draw line if Home is ready
+    drawSingleLine(conn, geoData);
+}
+
+function drawSingleLine(conn, remoteGeo) {
+    if (!homeGeo || !homeGeo.lat || !remoteGeo || !remoteGeo.lat) return;
+
+    // Don't draw if same location
+    if (homeGeo.lat === remoteGeo.lat && homeGeo.lon === remoteGeo.lon) return;
+
+    const isInbound = conn.inbound > conn.outbound;
+    const color = isInbound ? '#ef4444' : '#22c55e';
+
+    // Define path points
+    // Inbound: Remote -> Home
+    // Outbound: Home -> Remote
+    const latlngs = isInbound
+        ? [[remoteGeo.lat, remoteGeo.lon], [homeGeo.lat, homeGeo.lon]]
+        : [[homeGeo.lat, homeGeo.lon], [remoteGeo.lat, remoteGeo.lon]];
+
+    // Create AntPath
+    const path = L.polyline.antPath(latlngs, {
+        "delay": 1000,
+        "dashArray": [10, 20],
+        "weight": 2,
+        "color": color,
+        "pulseColor": "#ffffff",
+        "paused": false,
+        "reverse": false,
+        "hardwareAccelerated": true
+    });
+
+    path.addTo(mapInstance);
+    mapMarkers.push(path); // Add to markers array so it gets cleared on next refresh
+}
+
 
 window.selectFirewallHost = selectFirewallHost;
 window.renderFirewallHostDetails = renderFirewallHostDetails;
