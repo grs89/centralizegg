@@ -1678,32 +1678,43 @@ function renderFirewallHostDetails(hostId) {
                             Gateways
                         </div>
                         <div style="display: flex; flex-direction: column; gap: 10px;">
-                            ${host.gateways.map(gw => `
-                                <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px;">
+                            ${host.gateways.map(gw => {
+                let lossVal = parseFloat(gw.loss);
+                let isWarning = !isNaN(lossVal) && lossVal > 0 && lossVal < 10;
+                let isCritical = !isNaN(lossVal) && lossVal >= 10;
+
+                let cardStyle = "background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px;";
+
+                if (isCritical) {
+                    cardStyle = "background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 6px; padding: 10px; box-shadow: 0 0 10px rgba(239, 68, 68, 0.1); animation: pulse-red 2s infinite;";
+                } else if (isWarning) {
+                    cardStyle = "background: rgba(251, 146, 60, 0.1); border: 1px solid rgba(251, 146, 60, 0.3); border-radius: 6px; padding: 10px;";
+                }
+
+                return `
+                                <div style="${cardStyle}">
                                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                                         <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color);">${gw.name}</div>
                                         ${gw.status.toLowerCase() === 'online'
-                    ? '<span style="color: #4ade80; font-size: 0.7rem; background: rgba(34, 197, 94, 0.1); padding: 1px 5px; border-radius: 3px;">Online</span>'
-                    : `<span style="color: #ef4444; font-size: 0.7rem; background: rgba(239, 68, 68, 0.1); padding: 1px 5px; border-radius: 3px;">${gw.status}</span>`
-                }
+                        ? '<span style="color: #4ade80; font-size: 0.7rem; background: rgba(34, 197, 94, 0.1); padding: 1px 5px; border-radius: 3px;">Online</span>'
+                        : `<span style="color: #ef4444; font-size: 0.7rem; background: rgba(239, 68, 68, 0.1); padding: 1px 5px; border-radius: 3px;">${gw.status}</span>`
+                    }
                                     </div>
                                     <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 3px;">
                                         <i class="fa-solid fa-server" style="font-size: 0.65rem; opacity: 0.7; margin-right: 4px;"></i> ${gw.monitor_ip}
                                     </div>
                                      <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; gap: 8px;">
                                         <span title="Latency"><i class="fa-solid fa-stopwatch" style="font-size: 0.65rem; opacity: 0.7; margin-right: 3px;"></i>${gw.delay}</span>
-                                    ${(() => {
-                    let lossVal = parseFloat(gw.loss);
-                    let lossColor = 'var(--text-secondary)';
-                    if (!isNaN(lossVal)) {
-                        if (lossVal > 0) lossColor = '#fb923c'; // Warning (Orange)
-                        if (lossVal >= 10) lossColor = '#ef4444'; // Critical (Red)
-                    }
-                    return `<span title="Packet Loss"><i class="fa-solid fa-chart-simple" style="font-size: 0.65rem; opacity: 0.7; margin-right: 3px; color:${lossColor}"></i><span style="color:${lossColor}">${gw.loss}</span></span>`;
-                })()}
+                                        ${(() => {
+                        let lossColor = 'var(--text-secondary)';
+                        if (isWarning) lossColor = '#fb923c';
+                        if (isCritical) lossColor = '#ef4444';
+                        return `<span title="Packet Loss"><i class="fa-solid fa-chart-simple" style="font-size: 0.65rem; opacity: 0.7; margin-right: 3px; color:${lossColor}"></i><span style="color:${lossColor}; font-weight:${isCritical ? '700' : '400'}">${gw.loss}</span></span>`;
+                    })()}
                                     </div>
                                 </div>
-                            `).join('')}
+                            `;
+            }).join('')}
                         </div>
                     ` : ''}
 
