@@ -346,23 +346,38 @@ func (mc *PfsenseCollector) collectOne(s data_centralizegg.PFSenseServer) error 
 	}
 
 	// 1h. Temperature (sysctl -n hw.sensors.cpu0.temp0 or dev.cpu.0.temperature)
+	// 1h. Temperature Check (Multiple OIDs)
 	temperature := 0
-	// Try hw.sensors first (common on physical hardware/some drivers)
-	tempOut, err := runCommand(client, "sysctl -n hw.sensors.cpu0.temp0")
-	if err != nil || tempOut == "" {
-		// Fallback to dev.cpu.0.temperature
-		tempOut, _ = runCommand(client, "sysctl -n dev.cpu.0.temperature")
+	thermalOIDs := []string{
+		"hw.sensors.cpu0.temp0",            // Common Intel/BSD
+		"dev.cpu.0.temperature",            // Fallback standard
+		"hw.acpi.thermal.tz0.temperature",  // ACPI Thermal Zone 0
+		"hw.acpi.thermal.tz1.temperature",  // ACPI Thermal Zone 1
+		"dev.amdtemp.0.sensor0",            // AMD CPUs
+		"dev.amdtemp.0.core0.sensor0",      // Newer AMD
+		"dev.armada_thermal.0.temperature", // Netgate ARM (SG-1100/2100)
 	}
 
-	if tempOut != "" {
-		// Output format typically "45.0C" or similar
-		tempOut = strings.TrimSpace(tempOut)
-		tempOut = strings.TrimSuffix(tempOut, "C")
-		tempOut = strings.TrimSuffix(tempOut, "F") // Unlikely but safe
+	for _, oid := range thermalOIDs {
+		tempOut, err := runCommand(client, "sysctl -n "+oid)
+		if err == nil && tempOut != "" {
+			tempOut = strings.TrimSpace(tempOut)
+			// Check if output is valid (sometimes returns "unknown" or empty lines)
+			if tempOut == "unknown" || tempOut == "" {
+				continue
+			}
 
-		// Parse float and convert to int
-		if val, err := strconv.ParseFloat(tempOut, 64); err == nil {
-			temperature = int(val)
+			// Clean up output "45.0C" -> "45.0"
+			tempOut = strings.TrimSuffix(tempOut, "C")
+			tempOut = strings.TrimSuffix(tempOut, "F")
+
+			if val, err := strconv.ParseFloat(tempOut, 64); err == nil {
+				// Sanity check: If temp is 0 or extremely high/low, ignore
+				if val > 0 && val < 150 {
+					temperature = int(val)
+					break // Found a valid temp, stop searching
+				}
+			}
 		}
 	}
 
