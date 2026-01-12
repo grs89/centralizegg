@@ -563,14 +563,14 @@ func (d *DB) GetFirewallHosts() ([]FirewallHost, error) { // Fetch Hosts
 		}
 
 		// Fetch Interfaces
-		ifacesRows, err := d.Conn.Query(`SELECT id, host_id, interface_name, interface_type, status, net_rx_bytes, net_tx_bytes, ip_address FROM firewall.interfaces WHERE host_id = $1 ORDER BY interface_name ASC`, h.ID)
+		ifacesRows, err := d.Conn.Query(`SELECT id, host_id, interface_name, interface_type, status, net_rx_bytes, net_tx_bytes, ip_address, net_rx_errors, net_tx_errors, net_rx_dropped, net_tx_dropped FROM firewall.interfaces WHERE host_id = $1 ORDER BY interface_name ASC`, h.ID)
 		if err == nil {
 			var ifaces []FirewallInterface
 			for ifacesRows.Next() {
 				var iface FirewallInterface
 				var ipAddr sql.NullString
-				// We act as if checking error, but for listing we might just skip
-				if err := ifacesRows.Scan(&iface.ID, &iface.HostID, &iface.InterfaceName, &iface.InterfaceType, &iface.Status, &iface.NetRXBytes, &iface.NetTXBytes, &ipAddr); err == nil {
+				// Scan all columns
+				if err := ifacesRows.Scan(&iface.ID, &iface.HostID, &iface.InterfaceName, &iface.InterfaceType, &iface.Status, &iface.NetRXBytes, &iface.NetTXBytes, &ipAddr, &iface.NetRXErrors, &iface.NetTXErrors, &iface.NetRXDropped, &iface.NetTXDropped); err == nil {
 					iface.IPAddress = ipAddr.String
 					ifaces = append(ifaces, iface)
 				}

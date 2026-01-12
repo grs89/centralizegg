@@ -1553,14 +1553,14 @@ function renderFirewallHostDetails(hostId) {
         }
 
         return `
-        <div style="display: grid; grid-template-columns: 1.5fr 2fr 2fr 0.5fr; gap: 15px; align-items: center; padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+        <div style="display: grid; grid-template-columns: 1.5fr 2fr 2fr 1.2fr; gap: 15px; align-items: center; padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,0.05);">
             <!-- Name & Status -->
             <div style="display: flex; align-items: center; gap: 8px;">
                 <div class="${iface.status === 'up' ? 'status-dot online' : 'status-dot offline'}" title="${iface.status}"></div>
                 <div style="font-weight: 500; font-size: 0.95rem; color: var(--primary-color); display: flex; flex-direction: column; gap: 0px;">
                     <div style="display: flex; align-items: center; gap: 5px;">
                        <i class="fa-solid fa-network-wired" style="font-size: 0.8em; opacity: 0.7;"></i>
-                       <span>${iface.interface_name}</span>
+                       <span title="${iface.interface_name}">${iface.interface_name.length > 8 ? iface.interface_name.substring(0, 8) + '..' : iface.interface_name}</span>
                     </div>
                     ${iface.ip_address ? `<span style="font-size: 0.7rem; color: var(--text-secondary); opacity: 0.8; font-family: monospace; margin-left: 2px;">${iface.ip_address}</span>` : ''}
                 </div>
@@ -1584,10 +1584,20 @@ function renderFirewallHostDetails(hostId) {
                  <div style="height: 20px; opacity: 0.8;">${txSpark}</div>
             </div>
 
-             <!-- Type -->
-             <div style="font-size: 0.75rem; color: var(--text-secondary); text-align: right; opacity: 0.6;">
-                ${iface.interface_type || 'Eth'}
-             </div>
+             <!-- Info (Type + Errors/Drops) -->
+             <div style="display:flex; flex-direction:column; align-items:flex-end; gap:2px;">
+                 <div style="font-size: 0.7rem; color: var(--text-secondary); opacity: 0.6;">${iface.interface_type || 'Eth'}</div>
+                 <div style="font-size: 0.65rem; display: flex; gap: 8px; align-items: center;">
+                    ${(iface.net_rx_errors + iface.net_tx_errors) > 0
+                ? `<span style="color:#ef4444; display:flex; align-items:center; gap:3px;" title="Errors (RX+TX): ${iface.net_rx_errors + iface.net_tx_errors}"><i class="fa-solid fa-triangle-exclamation"></i> ${iface.net_rx_errors + iface.net_tx_errors}</span>`
+                : `<span style="color:rgba(255,255,255,0.15);" title="No Errors"><i class="fa-solid fa-check"></i></span>`
+            }
+                    ${(iface.net_rx_dropped + iface.net_tx_dropped) > 0
+                ? `<span style="color:#f97316; display:flex; align-items:center; gap:3px;" title="Drops (RX+TX): ${iface.net_rx_dropped + iface.net_tx_dropped}"><i class="fa-solid fa-filter"></i> ${iface.net_rx_dropped + iface.net_tx_dropped}</span>`
+                : `<span style="color:rgba(255,255,255,0.15);" title="No Drops"><i class="fa-solid fa-filter-circle-xmark"></i></span>`
+            }
+                 </div>
+            </div>
         </div>
         `;
     }).join('');
