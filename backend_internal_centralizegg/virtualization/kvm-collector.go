@@ -8,6 +8,8 @@ import (
 	"net"
 	"time"
 
+	"strings"
+
 	"github.com/beevik/etree"
 	"github.com/digitalocean/go-libvirt"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/data_centralizegg"
@@ -173,15 +175,127 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 		}
 	}
 
+	// New session for Public IP
+	var publicIP string
+	sessionPub, err := sshClient.NewSession()
+	if err == nil {
+		defer sessionPub.Close()
+		// Get Public IP
+		pubOutput, err := sessionPub.Output("curl -s https://ifconfig.me || wget -qO- https://ifconfig.me || echo 'N/A'")
+		if err == nil {
+			publicIP = string(pubOutput)
+			if len(publicIP) > 0 && publicIP[len(publicIP)-1] == '\n' {
+				publicIP = publicIP[:len(publicIP)-1]
+			}
+		}
+	}
+
+	// New session for DNS
+	var dnsServers string
+	sessionDNS, err := sshClient.NewSession()
+	if err == nil {
+		defer sessionDNS.Close()
+		// Get DNS Servers
+		dnsOutput, err := sessionDNS.Output("grep nameserver /etc/resolv.conf | awk '{print $2}' | xargs")
+		if err == nil {
+			dnsServers = string(dnsOutput)
+			if len(dnsServers) > 0 && dnsServers[len(dnsServers)-1] == '\n' {
+				dnsServers = dnsServers[:len(dnsServers)-1]
+			}
+		}
+	}
+
+	// New session for Uptime
+	var uptime string
+	sessionUptime, err := sshClient.NewSession()
+	if err == nil {
+		defer sessionUptime.Close()
+		// Get Uptime
+		upOutput, err := sessionUptime.Output("uptime -p")
+		if err == nil {
+			uptime = string(upOutput)
+			if len(uptime) > 0 && uptime[len(uptime)-1] == '\n' {
+				uptime = uptime[:len(uptime)-1]
+			}
+		}
+	}
+
+	// New session for Update Status
+	var updateStatus = "Up to Date"
+	sessionUpd, err := sshClient.NewSession()
+	if err == nil {
+		defer sessionUpd.Close()
+		// Try apt first, then dnf
+		cmd := "apt-get -s upgrade 2>/dev/null | grep -P '^\\d+ upgraded' | cut -d' ' -f1 || dnf check-update -q 2>/dev/null | grep -c '^[a-zA-Z0-9]' || echo 0"
+		updOutput, err := sessionUpd.Output(cmd)
+		if err == nil {
+			var count int
+			fmt.Sscanf(string(updOutput), "%d", &count)
+			if count > 0 {
+				updateStatus = fmt.Sprintf("%d Updates Available", count)
+			} else {
+				updateStatus = "Up to Date"
+			}
+		}
+	}
+
+	// New session for Temperature
+	var temperature float64
+	sessionTemp, err := sshClient.NewSession()
+	if err == nil {
+		defer sessionTemp.Close()
+		tempOutput, err := sessionTemp.Output("cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null | head -n 1 || echo 0")
+		if err == nil {
+			var tempRaw int64
+			fmt.Sscanf(string(tempOutput), "%d", &tempRaw)
+			temperature = float64(tempRaw) / 1000.0
+		}
+	}
+
+	// New session for Disks
+	var disksJSON = "[]"
+	sessionDisks, err := sshClient.NewSession()
+	if err == nil {
+		defer sessionDisks.Close()
+		// Get Disks (mount points starting with /)
+		diskOutput, err := sessionDisks.Output("df -B1 --output=target,size,used,pcent | grep '^/'")
+		if err == nil {
+			output := string(diskOutput)
+			lines := strings.Split(strings.TrimSpace(output), "\n")
+			var disks []DiskStat
+			for _, line := range lines {
+				parts := strings.Fields(line)
+				if len(parts) >= 3 {
+					var size, used uint64
+					fmt.Sscanf(parts[1], "%d", &size)
+					fmt.Sscanf(parts[2], "%d", &used)
+					disks = append(disks, DiskStat{
+						Device:     parts[0],
+						Capacity:   size,
+						Allocation: used,
+					})
+				}
+			}
+			b, _ := json.Marshal(disks)
+			disksJSON = string(b)
+		}
+	}
+
 	h := data_centralizegg.Host{
-		ServerID:    s.ID,
-		Hostname:    hostName,
-		CPUModel:    int8ToString(model[:]),
-		CPUCores:    int(cpus),
-		TotalMemory: uint64(memory) * 1024,
-		FreeMemory:  freeMem,
-		CPUUsage:    cpuUsage,
-		OSName:      osName,
+		ServerID:     s.ID,
+		Hostname:     hostName,
+		CPUModel:     int8ToString(model[:]),
+		CPUCores:     int(cpus),
+		TotalMemory:  uint64(memory) * 1024,
+		FreeMemory:   freeMem,
+		CPUUsage:     cpuUsage,
+		OSName:       osName,
+		PublicIP:     publicIP,
+		DNSServers:   dnsServers,
+		Uptime:       uptime,
+		UpdateStatus: updateStatus,
+		Temperature:  temperature,
+		Disks:        disksJSON,
 	}
 
 	hostID, err := mc.DB.UpsertHost(h)

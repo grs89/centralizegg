@@ -62,7 +62,7 @@ function updateNetworkHistory(vms) {
                 if (vm.net_rx >= entry.lastRx) {
                     rxRate = (vm.net_rx - entry.lastRx) / timeDelta;
                 }
-                if (vm.net_tx >= entry.net_tx) {
+                if (vm.net_tx >= entry.lastTx) {
                     txRate = (vm.net_tx - entry.lastTx) / timeDelta;
                 }
 
@@ -1043,7 +1043,167 @@ function renderVMs() {
         return;
     }
 
-    grid.innerHTML = filteredVMs.map(vm => {
+    // Render Host Info (Left Card)
+    const hostInfoContainer = document.getElementById('vm-host-info');
+    if (hostInfoContainer) {
+        const host = allHostsCache.find(h => h.id === selectedHostId);
+        if (host) {
+            hostInfoContainer.innerHTML = `
+                <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    Información
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <!-- OS Card -->
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <div style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">Sistema Operativo</div>
+                            ${host.update_status && host.update_status.includes('Updates Available')
+                    ? `<span style="color: #facc15; font-size: 0.65rem; background: rgba(234, 179, 8, 0.1); border: 1px solid rgba(234, 179, 8, 0.2); padding: 1px 6px; border-radius: 4px; font-weight: 600; display: flex; align-items: center; gap: 4px;"><i class="fa-solid fa-circle-exclamation"></i> ${host.update_status.replace('Updates Available', 'Actualizaciones')}</span>`
+                    : '<span style="color: #4ade80; font-size: 0.65rem; background: rgba(34, 197, 94, 0.05); border: 1px solid rgba(34, 197, 94, 0.1); padding: 1px 6px; border-radius: 4px; font-weight: 600;">Actualizado</span>'
+                }
+                        </div>
+                        <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 6px;">
+                            <i class="${getOSIcon(host.os_name)} fa-fw" style="font-size: 0.8rem; opacity: 0.8;"></i> ${host.os_name || 'Generic Linux'}
+                        </div>
+                    </div>
+
+                    <!-- Uptime Card -->
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <div style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">Tiempo de Actividad</div>
+                        </div>
+                        <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 6px;">
+                            <i class="fa-solid fa-clock-rotate-left fa-fw" style="font-size: 0.8rem; opacity: 0.8;"></i> ${host.uptime || 'Desconocido'}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Temperature Section -->
+                <div style="margin-top: 15px;">
+                    <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                        Temperatura
+                    </div>
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px; display: flex; align-items: center; justify-content: space-between;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <i class="fa-solid fa-temperature-three-quarters" style="color: var(--text-secondary);"></i>
+                            <span style="font-size: 0.9rem; color: var(--text-secondary);">CPU / Sistema</span>
+                        </div>
+                        ${(() => {
+                    const temp = host.temperature;
+                    if (!temp || temp <= 0) {
+                        return `<div style="font-weight: 500; font-size: 0.9rem; color: var(--text-secondary); opacity: 0.7;">Unknown</div>`;
+                    }
+                    let color = '#4ade80'; // Green
+                    if (temp >= 50) color = '#facc15'; // Yellow
+                    if (temp >= 70) color = '#ef4444'; // Red
+                    return `<div style="font-weight: 600; font-size: 1.1rem; color: ${color};">${temp}°C</div>`;
+                })()}
+                    </div>
+                </div>
+
+
+                <!-- Red y DNS Section -->
+                <div style="margin-top: 15px;">
+                    <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                        Red y DNS
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <!-- Private IP Card -->
+                        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px; display: flex; align-items: center; justify-content: space-between;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <i class="fa-solid fa-network-wired" style="color: var(--text-secondary); font-size: 0.8rem;"></i>
+                                <span style="font-size: 0.85rem; color: var(--text-secondary);">IP Local</span>
+                            </div>
+                            <div style="font-weight: 600; font-size: 0.85rem; color: var(--accent-color); font-family: monospace;">${host.ip_address || 'N/A'}</div>
+                        </div>
+                        <!-- Public IP Card -->
+                        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px; display: flex; align-items: center; justify-content: space-between;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <i class="fa-solid fa-globe" style="color: var(--text-secondary); font-size: 0.8rem;"></i>
+                                <span style="font-size: 0.85rem; color: var(--text-secondary);">IP Pública</span>
+                            </div>
+                            <div style="font-weight: 600; font-size: 0.85rem; color: #38bdf8; font-family: monospace;">${host.public_ip || 'N/A'}</div>
+                        </div>
+                        <!-- DNS Servers -->
+                        ${(host.dns_servers || '').split(' ').filter(dns => dns).map(dns => `
+                            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px; display: flex; align-items: center; justify-content: space-between;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <i class="fa-solid fa-server" style="color: var(--text-secondary); font-size: 0.8rem;"></i>
+                                    <span style="font-size: 0.85rem; color: var(--text-secondary);">DNS</span>
+                                </div>
+                                <div style="font-weight: 500; font-size: 0.85rem; color: var(--text-primary); font-family: monospace;">${dns}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <!-- Disks Section -->
+                <div style="margin-top: 15px;">
+                    <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                        Discos
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        ${(() => {
+                    let disks = [];
+                    try {
+                        if (host.disks) disks = JSON.parse(host.disks);
+                    } catch (e) { console.error("Error parsing host disks", e); }
+
+                    if (disks.length === 0) return '<div style="opacity:0.5; font-size:0.85rem; padding: 5px;">No storage data</div>';
+
+                    return disks.map(disk => {
+                        const usedGB = (disk.allocation / (1024 * 1024 * 1024)).toFixed(1);
+                        const totalGB = (disk.capacity / (1024 * 1024 * 1024)).toFixed(1);
+                        const percent = disk.capacity > 0 ? ((disk.allocation / disk.capacity) * 100).toFixed(0) : 0;
+                        return `
+                                    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px;">
+                                        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
+                                            <div style="display: flex; align-items: center; gap: 6px;">
+                                                <i class="fa-solid fa-hard-drive" style="color: var(--text-secondary); font-size: 0.8rem;"></i>
+                                                <span style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary);">${disk.device}</span>
+                                            </div>
+                                            <span style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.7;">${usedGB}/${totalGB} GB</span>
+                                        </div>
+                                        <div style="display: flex; align-items: center; gap: 10px;">
+                                            <div class="host-progress-container" style="flex: 1; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px;">
+                                                <div class="host-progress-fill" style="width: ${percent}%; background: ${getStatusColor(percent)}; border-radius: 2px;"></div>
+                                            </div>
+                                            <span style="font-size: 0.75rem; font-weight: 700; color: ${getStatusColor(percent)}; min-width: 35px; text-align: right;">${percent}%</span>
+                                        </div>
+                                    </div>
+                                `;
+                    }).join('');
+                })()}
+                    </div>
+                </div>
+            `;
+        }
+        else {
+            hostInfoContainer.innerHTML = '<div style="opacity: 0.5; font-size: 0.9rem;">No host data available</div>';
+        }
+    }
+
+    // Grid header with fixed minimum widths for stability
+    const gridCols = "minmax(250px, 1.2fr) 60px minmax(80px, 0.6fr) minmax(120px, 1fr) minmax(140px, 1fr) minmax(180px, 1.2fr)";
+
+    let html = `
+        <div style="overflow-x: auto; width: 100%; padding-bottom: 10px;">
+            <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); width: 100%; min-width: 1060px;">
+                Máquinas Virtuales
+            </div>
+            <div class="vm-list-header" style="display: grid; grid-template-columns: ${gridCols}; gap: 15px; padding: 10px 10px; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 8px; min-width: 1060px;">
+                <div>Nombre / Sistema</div>
+                <div style="text-align: center;">Estado</div>
+                <div>CPU</div>
+                <div>Memoria</div>
+                <div>Disco</div>
+                <div>Tráfico (RX/TX)</div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px; min-width: 1100px;">
+    `;
+
+    html += filteredVMs.map(vm => {
+        // ... (rest of stats calculation remains the same)
         const memTotalGB = (vm.max_memory / (1024 * 1024 * 1024)).toFixed(1);
         const memUsedGB = (vm.memory_usage / (1024 * 1024 * 1024)).toFixed(1);
         const memPercent = vm.max_memory > 0 ? ((vm.memory_usage / vm.max_memory) * 100).toFixed(0) : 0;
@@ -1060,137 +1220,117 @@ function renderVMs() {
         } catch (e) { console.error("Error parsing disks JSON", e); }
 
         const isRunning = vm.state.toLowerCase() === 'running';
+        const osName = (vm.os_name && vm.os_name.trim() !== "") ? vm.os_name : "Unknown OS";
+        const primaryIp = vm.guest_ips ? vm.guest_ips.split(' ')[0] : 'N/A';
+
+        // Network data
+        const net = vmNetworkHistory[vm.id] || { rx: [], tx: [] };
+        const currentRx = net.rx.length > 0 ? net.rx[net.rx.length - 1] : 0;
+        const currentTx = net.tx.length > 0 ? net.tx[net.tx.length - 1] : 0;
 
         return `
-        <div class="vm-card glass-panel state-${vm.state}">
-            <div class="vm-header">
-                <div class="vm-identity">
-                    <div class="vm-icon-box">
-                        <i class="fa-solid fa-desktop"></i>
-                    </div>
-                    <div class="vm-title-group">
-                        <h4>${vm.name}</h4>
-                        <div class="vm-subtitle" style="font-size: 0.8rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px;" title="${vm.os_name || 'Unknown OS'}">
-                            ${(vm.os_name && vm.os_name.trim() !== "") ? vm.os_name : "Unknown OS"}
-                        </div>
-                        <div class="vm-subtitle" style="font-size: 0.75rem; color: var(--accent-color); margin-top: 1px;" title="${vm.guest_ips || 'N/A'}">
-                            ${vm.guest_ips ? vm.guest_ips.split(' ')[0] : 'N/A'}
-                        </div>
-                    </div>
+        <div class="vm-row state-${vm.state.toLowerCase()}" style="display: grid; grid-template-columns: ${gridCols}; gap: 12px; padding: 12px 15px; align-items: center; border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; background: rgba(255,255,255,0.015); transition: all 0.2s ease; margin-bottom: 4px; min-width: 1060px;">
+            <!-- Name & OS / IP Unified -->
+            <div style="display: flex; align-items: center; gap: 12px; font-weight: 600; overflow: hidden;">
+                <div style="width: 38px; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.1);">
+                    <i class="fa-solid fa-desktop" style="opacity: 0.8; font-size: 1.1rem; color: var(--accent-color);"></i>
                 </div>
-                <div class="vm-status-badge ${isRunning ? 'running' : 'shutoff'}" title="${vm.state}">
-                    <i class="fa-solid fa-power-off"></i>
+                <div style="display: flex; flex-direction: column; gap: 2px; overflow: hidden;">
+                    <span style="font-size: 1rem; line-height: 1.2; word-break: break-word; color: var(--text-primary);">${vm.name}</span>
+                    <div style="display: flex; align-items: center; gap: 8px; font-size: 0.75rem; font-weight: 400; color: var(--text-secondary); opacity: 0.8;">
+                        <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px;" title="${osName}">${osName}</span>
+                        <span style="opacity: 0.4;">•</span>
+                        <span style="color: var(--accent-color); font-family: monospace;">${primaryIp}</span>
+                    </div>
                 </div>
             </div>
 
-            <div class="vm-stats-grid" style="margin-top: 5px;">
-                <!-- VM Memory -->
-                <div class="vm-stat-item">
-                    <div class="vm-stat-label">
-                        <i class="fa-solid fa-memory"></i>
-                        <span>Memoria</span>
-                    </div>
-                    <div class="stat-value-display">
-                        <div class="vm-stat-value" style="color: ${getStatusColor(memPercent)};">
-                            ${memPercent}% <span class="vm-stat-sub">(${memUsedGB}/${memTotalGB}GB)</span>
-                        </div>
-                        <div class="host-progress-container" style="height: 4px;">
-                            <div class="host-progress-fill" style="width: ${memPercent}%; background: ${getStatusColor(memPercent)};"></div>
-                        </div>
-                    </div>
+            <!-- Status -->
+            <div style="text-align: center;">
+                <div style="display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 6px; background: ${isRunning ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; color: ${isRunning ? '#4ade80' : '#ef4444'}; border: 1px solid ${isRunning ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'};" title="${vm.state}">
+                    <i class="fa-solid fa-power-off" style="font-size: 0.95rem;"></i>
                 </div>
+            </div>
 
-                <!-- VM CPU Usage -->
-                <div class="vm-stat-item">
-                    <div class="vm-stat-label">
-                        <i class="fa-solid fa-microchip"></i>
-                        <span>CPU Usage</span>
-                    </div>
-                    <div class="stat-value-display">
-                        <div class="vm-stat-value" style="color: ${getStatusColor(cpuPercent)};">${cpuPercent}%</div>
-                        <div class="host-progress-container" style="height: 4px;">
-                            <div class="host-progress-fill" style="width: ${cpuPercent}%; background: ${getStatusColor(cpuPercent)};"></div>
-                        </div>
-                    </div>
+            <!-- CPU -->
+            <div>
+                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+                    <span style="font-size: 0.9rem; font-weight: 700; color: ${getStatusColor(cpuPercent)};">${cpuPercent}%</span>
+                    <span style="font-size: 0.75rem; font-weight: 400; opacity: 0.6;">CPU</span>
                 </div>
+                <div class="host-progress-container" style="height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px;">
+                    <div class="host-progress-fill" style="width: ${cpuPercent}%; background: ${getStatusColor(cpuPercent)}; border-radius: 2px;"></div>
+                </div>
+            </div>
 
-                <!-- VM Disk -->
-                <div class="vm-stat-item">
-                    <div class="vm-stat-label">
-                        <i class="fa-solid fa-hard-drive"></i>
-                        <span>Disco${disks.length > 1 ? 's' : ''}</span>
-                    </div>
-                    <div class="stat-value-display">
-                        ${disks.length > 1 ?
-                disks.map(d => {
-                    const dCap = (d.capacity / (1024 * 1024 * 1024)).toFixed(1);
-                    const dAlloc = (d.allocation / (1024 * 1024 * 1024)).toFixed(1);
-                    const dPct = d.capacity > 0 ? ((d.allocation / d.capacity) * 100).toFixed(0) : 0;
-                    return `
-                                <div style="margin-bottom: 4px;">
-                                    <div class="vm-stat-value" style="font-size: 0.7rem; color: var(--text-secondary); display: flex; justify-content: space-between;">
-                                        <span>${d.device}</span>
-                                        <span style="color: ${getStatusColor(dPct)};">${dPct}% (${dAlloc}/${dCap}GB)</span>
+            <!-- Memory -->
+            <div>
+                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+                    <span style="font-size: 0.9rem; font-weight: 700; color: ${getStatusColor(memPercent)};">${memPercent}%</span>
+                    <span style="font-size: 0.75rem; font-weight: 400; opacity: 0.6;">${memUsedGB}/${memTotalGB}G</span>
+                </div>
+                <div class="host-progress-container" style="height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px;">
+                    <div class="host-progress-fill" style="width: ${memPercent}%; background: ${getStatusColor(memPercent)}; border-radius: 2px;"></div>
+                </div>
+            </div>
+
+            <!-- Disk -->
+            <div>
+                ${disks.length > 1 ? `
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                        ${disks.map(d => {
+            const dCap = (d.capacity / (1024 * 1024 * 1024)).toFixed(1);
+            const dAlloc = (d.allocation / (1024 * 1024 * 1024)).toFixed(1);
+            const dPct = d.capacity > 0 ? ((d.allocation / d.capacity) * 100).toFixed(0) : 0;
+            return `
+                                <div style="display: flex; flex-direction: column;">
+                                    <div style="font-size: 0.65rem; color: var(--text-secondary); display: flex; justify-content: space-between; margin-bottom: 2px;">
+                                        <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60px; font-weight: 500;">${d.device}</span>
+                                        <span style="color: ${getStatusColor(dPct)}; font-weight: 600;">${dPct}%</span>
                                     </div>
-                                    <div class="host-progress-container" style="height: 3px;">
-                                        <div class="host-progress-fill" style="width: ${dPct}%; background: ${getStatusColor(dPct)};"></div>
+                                    <div class="host-progress-container" style="height: 3px; background: rgba(255,255,255,0.05); border-radius: 1.5px;">
+                                        <div class="host-progress-fill" style="width: ${dPct}%; background: ${getStatusColor(dPct)}; border-radius: 1.5px;"></div>
                                     </div>
-                                </div>`;
-                }).join('')
-                :
-                `<div class="vm-stat-value" style="color: ${getStatusColor(diskPercent)};">
-                                ${diskPercent}% <span class="vm-stat-sub">(${diskUsedGB}/${diskTotalGB}GB)</span>
-                            </div>
-                            <div class="host-progress-container" style="height: 4px;">
-                                <div class="host-progress-fill" style="width: ${diskPercent}%; background: ${getStatusColor(diskPercent)};"></div>
-                            </div>`
-            }
+                                </div>
+                            `;
+        }).join('')}
+                    </div>` : `
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+                        <span style="font-size: 0.9rem; font-weight: 700; color: ${getStatusColor(diskPercent)};">${diskPercent}%</span>
+                        <span style="font-size: 0.75rem; font-weight: 400; opacity: 0.6;">${diskUsedGB}/${diskTotalGB}G</span>
+                    </div>
+                    <div class="host-progress-container" style="height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px;">
+                        <div class="host-progress-fill" style="width: ${diskPercent}%; background: ${getStatusColor(diskPercent)}; border-radius: 2px;"></div>
+                    </div>
+                `}
+            </div>
+
+            <!-- Tráfico (Network) -->
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; font-size: 0.65rem; color: #4ade80; font-weight: 600;">
+                        <span>RX</span>
+                        <span>${formatBytes(currentRx, 1)}/s</span>
+                    </div>
+                    <div style="height: 18px; opacity: 0.8;">
+                        ${renderSparkline(net.rx, '#4ade80', 70, 18)}
                     </div>
                 </div>
-
-                <!-- Network info with Sparklines -->
-                <div class="vm-stat-item">
-                    <div class="vm-stat-label">
-                        <i class="fa-solid fa-network-wired"></i>
-                        <span>Network</span>
+                <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; font-size: 0.65rem; color: #fb923c; font-weight: 600;">
+                        <span>TX</span>
+                        <span>${formatBytes(currentTx, 1)}/s</span>
                     </div>
-                    <div class="stat-value-display">
-                        <div style="display: flex; gap: 10px; align-items: flex-end; justify-content: space-between;">
-                            
-                            <!-- RX Column -->
-                            <div style="flex: 1; display: flex; flex-direction: column; gap: 2px;">
-                                <div style="font-size: 0.65rem; color: var(--text-secondary); display: flex; justify-content: space-between;">
-                                    <span>RX</span>
-                                    <span>${vmNetworkHistory[vm.id] ? formatBytes(vmNetworkHistory[vm.id].rx[vmNetworkHistory[vm.id].rx.length - 1], 1) + '/s' : '0 B/s'}</span>
-                                </div>
-                                <div style="height: 25px; overflow: hidden; opacity: 0.8;">
-                                    ${vmNetworkHistory[vm.id] ? renderSparkline(vmNetworkHistory[vm.id].rx, '#4ade80', 60, 25) : ''}
-                                </div>
-                            </div>
-
-                            <!-- TX Column -->
-                            <div style="flex: 1; display: flex; flex-direction: column; gap: 2px;">
-                                <div style="font-size: 0.65rem; color: var(--text-secondary); display: flex; justify-content: space-between;">
-                                    <span>TX</span>
-                                    <span>${vmNetworkHistory[vm.id] ? formatBytes(vmNetworkHistory[vm.id].tx[vmNetworkHistory[vm.id].tx.length - 1], 1) + '/s' : '0 B/s'}</span>
-                                </div>
-                                <div style="height: 25px; overflow: hidden; opacity: 0.8;">
-                                     ${vmNetworkHistory[vm.id] ? renderSparkline(vmNetworkHistory[vm.id].tx, '#fb923c', 60, 25) : ''}
-                                </div>
-                            </div>
-
-                        </div>
-                         ${vm.guest_ips ? `<div class="vm-stat-sub" style="font-size: 0.70rem; color: var(--accent-color); margin-top:4px; text-align: right;">${vm.guest_ips.split(' ')[0]}</div>` : ''}
+                    <div style="height: 18px; opacity: 0.8;">
+                        ${renderSparkline(net.tx, '#fb923c', 70, 18)}
                     </div>
                 </div>
             </div>
-        </div>
-        `;
+        </div>`;
     }).join('');
 
-    const now = new Date();
-    const lastUpdated = document.getElementById('last-updated');
-    if (lastUpdated) lastUpdated.textContent = now.toLocaleTimeString();
+    html += `</div></div>`;
+    grid.innerHTML = html;
 }
 
 // Config Modal Logic

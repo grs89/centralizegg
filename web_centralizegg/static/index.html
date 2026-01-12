@@ -266,17 +266,28 @@
                     </div>
                 </section>
 
-                <!-- VM Section -->
+                <!-- VM Section (Resumen) -->
                 <section class="vm-section">
-                    <div class="section-header">
-                        <h2><i class="fa-solid fa-desktop"></i> Virtual Machines</h2>
-                        <div class="refresh-timer">Updated: <span id="last-updated">Just now</span></div>
+                    <div class="section-header" style="margin-bottom: 1.5rem;">
+                        <h2><i class="fa-solid fa-list-ul"></i> Resumen</h2>
                     </div>
 
-                    <div class="vm-grid" id="vm-grid">
-                        <!-- VMs will be injected here -->
-                        <div class="loading-state">
-                            <i class="fa-solid fa-circle-notch fa-spin"></i> Loading infrastructure...
+                    <div class="glass-panel" style="padding: 24px;">
+                        <div style="display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start;">
+                            <!-- Host Info Card (Left, Fixed Width) -->
+                            <div id="vm-host-info"
+                                style="flex: 0 0 300px; display: flex; flex-direction: column; gap: 15px;">
+                                <!-- Will be injected by JS -->
+                            </div>
+
+                            <!-- VM Grid (Right, Flex Grow) -->
+                            <div style="flex: 1; min-width: 600px;">
+                                <div class="vm-grid" id="vm-grid" style="margin-top: 0;">
+                                    <div class="loading-state">
+                                        <i class="fa-solid fa-circle-notch fa-spin"></i> Loading infrastructure...
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </section>

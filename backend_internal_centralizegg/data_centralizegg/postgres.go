@@ -37,17 +37,23 @@ type VM struct {
 }
 
 type Host struct {
-	ID          int64   `json:"id"`
-	ServerID    int64   `json:"server_id"`
-	Hostname    string  `json:"hostname"`
-	ServerName  string  `json:"server_name"`
-	IPAddress   string  `json:"ip_address"`
-	CPUModel    string  `json:"cpu_model"`
-	CPUCores    int     `json:"cpu_cores"`
-	TotalMemory uint64  `json:"total_memory"`
-	FreeMemory  uint64  `json:"free_memory"`
-	CPUUsage    float64 `json:"cpu_usage"`
-	OSName      string  `json:"os_name"`
+	ID           int64   `json:"id"`
+	ServerID     int64   `json:"server_id"`
+	Hostname     string  `json:"hostname"`
+	ServerName   string  `json:"server_name"`
+	IPAddress    string  `json:"ip_address"`
+	PublicIP     string  `json:"public_ip"`
+	DNSServers   string  `json:"dns_servers"`
+	Uptime       string  `json:"uptime"`
+	UpdateStatus string  `json:"update_status"`
+	Temperature  float64 `json:"temperature"`
+	Disks        string  `json:"disks"`
+	CPUModel     string  `json:"cpu_model"`
+	CPUCores     int     `json:"cpu_cores"`
+	TotalMemory  uint64  `json:"total_memory"`
+	FreeMemory   uint64  `json:"free_memory"`
+	CPUUsage     float64 `json:"cpu_usage"`
+	OSName       string  `json:"os_name"`
 }
 
 type KVMServer struct {
@@ -229,6 +235,12 @@ func ensureSchema(db *sql.DB) {
 		"ALTER TABLE virtualization.vms ADD COLUMN IF NOT EXISTS guest_fs_usage TEXT DEFAULT ''",
 		"ALTER TABLE virtualization.vms ADD COLUMN IF NOT EXISTS disks TEXT DEFAULT '[]'",
 		"ALTER TABLE virtualization.vms ADD COLUMN IF NOT EXISTS os_name VARCHAR(255) DEFAULT ''",
+		"ALTER TABLE virtualization.hosts ADD COLUMN IF NOT EXISTS public_ip VARCHAR(255) DEFAULT ''",
+		"ALTER TABLE virtualization.hosts ADD COLUMN IF NOT EXISTS dns_servers TEXT DEFAULT ''",
+		"ALTER TABLE virtualization.hosts ADD COLUMN IF NOT EXISTS uptime VARCHAR(255) DEFAULT ''",
+		"ALTER TABLE virtualization.hosts ADD COLUMN IF NOT EXISTS update_status VARCHAR(50) DEFAULT 'Unknown'",
+		"ALTER TABLE virtualization.hosts ADD COLUMN IF NOT EXISTS temperature DOUBLE PRECISION DEFAULT 0",
+		"ALTER TABLE virtualization.hosts ADD COLUMN IF NOT EXISTS disks TEXT DEFAULT '[]'",
 	}
 
 	for _, q := range queries {
@@ -244,12 +256,12 @@ func (d *DB) UpsertHost(h Host) (int64, error) {
 	err := d.Conn.QueryRow("SELECT id FROM virtualization.hosts WHERE server_id = $1", h.ServerID).Scan(&id)
 	if err == sql.ErrNoRows {
 		err = d.Conn.QueryRow(`
-			INSERT INTO virtualization.hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName).Scan(&id)
+			INSERT INTO virtualization.hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, public_ip, dns_servers, uptime, update_status, temperature, disks)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
+			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.PublicIP, h.DNSServers, h.Uptime, h.UpdateStatus, h.Temperature, h.Disks).Scan(&id)
 	} else if err == nil {
-		_, err = d.Conn.Exec(`UPDATE virtualization.hosts SET hostname=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7 WHERE id=$8`,
-			h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, id)
+		_, err = d.Conn.Exec(`UPDATE virtualization.hosts SET hostname=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, public_ip=$8, dns_servers=$9, uptime=$10, update_status=$11, temperature=$12, disks=$13 WHERE id=$14`,
+			h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.PublicIP, h.DNSServers, h.Uptime, h.UpdateStatus, h.Temperature, h.Disks, id)
 	}
 	return id, err
 }
@@ -366,7 +378,7 @@ func (d *DB) DeleteServer(id int64) error {
 
 func (d *DB) GetHosts() ([]Host, error) {
 	rows, err := d.Conn.Query(`
-		SELECT h.id, h.server_id, h.hostname, s.name, s.ip_address, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name
+		SELECT h.id, h.server_id, h.hostname, s.name, s.ip_address, h.public_ip, h.dns_servers, h.uptime, h.update_status, h.temperature, h.disks, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name
 		FROM virtualization.hosts h
 		JOIN virtualization.kvm_servers s ON h.server_id = s.id`)
 	if err != nil {
@@ -378,7 +390,7 @@ func (d *DB) GetHosts() ([]Host, error) {
 	for rows.Next() {
 		var h Host
 		var osName sql.NullString
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &osName); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.PublicIP, &h.DNSServers, &h.Uptime, &h.UpdateStatus, &h.Temperature, &h.Disks, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &osName); err != nil {
 			return nil, err
 		}
 		h.OSName = osName.String
