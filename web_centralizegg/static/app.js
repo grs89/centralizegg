@@ -1844,6 +1844,9 @@ async function initTrafficMap(connsJSON) {
     // Detect/Update Home Location (now that we might have Host data)
     updateHomeLocation();
 
+    // Debug: Force overlay update
+    updateDebugOverlay();
+
     topConns.forEach(conn => {
         const ip = conn.remote_ip;
 
@@ -1874,8 +1877,19 @@ processGeoQueue();
 
 // Define global drawLines function to handle Home IP resolution callback
 function drawLines() {
-    console.log('[AntPath] Redrawing all lines (Home Geo ready).');
-    if (!window.activeMapConnections) return;
+    updateDebugOverlay(); // Update status
+    console.log('[AntPath] drawLines() called.');
+    if (!window.activeMapConnections) {
+        console.warn('[AntPath] No active connections to draw.');
+        return;
+    }
+
+    if (!homeGeo) {
+        console.warn('[AntPath] homeGeo is not ready yet.');
+        return;
+    }
+
+    console.log(`[AntPath] Attempting to draw lines for ${window.activeMapConnections.length} connections. HomeGeo:`, homeGeo);
 
     window.activeMapConnections.forEach(conn => {
         const ip = conn.remote_ip;
@@ -1916,43 +1930,97 @@ function updateHomeLocation() {
         // console.log('[AntPath] Defaulting Home IP to "self".');
     }
 
-    // If Home IP changed, or not set, resolve it
+    // Helper to queue Home IP resolution
+    const queueHomeResolution = (targetIP) => {
+        const queryIP = targetIP === 'self' ? '' : targetIP;
+        // Avoid adding duplicates to queue if already pending? 
+        // We will allow check because we might be retrying.
+
+        console.log(`[AntPath] Queuing Home IP resolution for: "${targetIP}"`);
+        geoQueue.unshift({
+            ip: queryIP,
+            callback: (geoData) => {
+                if (geoData && !geoData.error) {
+                    homeGeo = geoData;
+                    localStorage.setItem('geoip_' + targetIP, JSON.stringify(geoData));
+                    console.log(`[AntPath] Resolved Home Geo for ${targetIP}:`, homeGeo);
+                    drawLines();
+                } else {
+                    console.error(`[AntPath] Failed to resolve Home Geo for ${targetIP}.`);
+
+                    // FALLBACK STRATEGY
+                    if (targetIP !== 'self') {
+                        console.warn('[AntPath] Falling back to "self" for Home IP.');
+                        homeIP = 'self';
+                        queueHomeResolution('self');
+                    }
+                }
+            }
+        });
+    };
+
+    // If Home IP changed
     if (newHomeIP !== homeIP) {
+        // Improved Selection Heuristic:
+        // Try to find a BETTER public IP if the current one is 172.x (often confused with Docker/Carrier NAT)
+        // scan window.currentFirewallHost.interfaces again
+        let bestIP = newHomeIP;
+        if (window.currentFirewallHost && window.currentFirewallHost.interfaces) {
+            const candidates = window.currentFirewallHost.interfaces
+                .filter(i => i.ip_address && !isPrivate(i.ip_address))
+                .map(i => i.ip_address);
+
+            // Prefer non-172 IPs
+            const better = candidates.find(ip => !ip.startsWith('172.'));
+            if (better) bestIP = better;
+        }
+        newHomeIP = bestIP;
+
         console.log(`[AntPath] Home IP changed: ${homeIP} -> ${newHomeIP}`);
         homeIP = newHomeIP;
         homeGeo = null; // Reset geo
 
         // Check cache
         const cachedHome = localStorage.getItem('geoip_' + homeIP);
+        let loadedFromCache = false;
         if (cachedHome) {
-            homeGeo = JSON.parse(cachedHome);
-            console.log('[AntPath] Loaded Home Geo from cache:', homeGeo);
-            // We can draw lines now if connections exist
-            drawLines();
-        } else {
-            // Queue resolution
-            // Avoid queueing 'self' if it's already there? 
-            // Ideally we just queue it.
-            const queryIP = homeIP === 'self' ? '' : homeIP;
-            geoQueue.unshift({
-                ip: queryIP,
-                callback: (geoData) => {
-                    if (geoData && !geoData.error) {
-                        homeGeo = geoData;
-                        localStorage.setItem('geoip_' + homeIP, JSON.stringify(geoData));
-                        console.log('[AntPath] Resolved Home Geo:', homeGeo);
-                        drawLines();
-                    } else {
-                        console.error('[AntPath] Failed to resolve Home Geo.');
-                    }
-                }
-            });
+            const parsed = JSON.parse(cachedHome);
+            if (!parsed.error && parsed.lat) {
+                homeGeo = parsed;
+                console.log('[AntPath] Loaded Home Geo from cache:', homeGeo);
+                drawLines();
+                loadedFromCache = true;
+            } else {
+                console.warn('[AntPath] Cached Home Geo is invalid/error. Clearing and retrying.');
+                localStorage.removeItem('geoip_' + homeIP);
+            }
+        }
+
+        if (!loadedFromCache) {
+            queueHomeResolution(homeIP);
         }
     } else {
-        // IP didn't change. If we have geo, ensure lines are drawn (in case this is a re-init)
-        if (homeGeo) {
-            // Force redraw because map might have been cleared
+        // IP didn't change (e.g. still 'self' or same public IP)
+        if (homeGeo && !homeGeo.error) {
+            // Already resolved: force redraw
             setTimeout(drawLines, 100);
+        } else {
+            // CRITICAL FIX: IP matches, but Geo is missing or invalid! 
+            const cachedHome = localStorage.getItem('geoip_' + homeIP);
+            let isValidCache = false;
+            if (cachedHome) {
+                const parsed = JSON.parse(cachedHome);
+                if (!parsed.error && parsed.lat) {
+                    homeGeo = parsed;
+                    drawLines();
+                    isValidCache = true;
+                }
+            }
+
+            if (!isValidCache) {
+                console.warn('[AntPath] Home IP set but Geo missing/invalid. Retrying resolution.');
+                queueHomeResolution(homeIP);
+            }
         }
     }
 }
@@ -1991,39 +2059,93 @@ function drawSingleLine(conn, remoteGeo) {
     }
     if (!remoteGeo || !remoteGeo.lat) return;
 
+    // Ensure coordinates are numbers
+    const hLat = parseFloat(homeGeo.lat);
+    const hLon = parseFloat(homeGeo.lon);
+    const rLat = parseFloat(remoteGeo.lat);
+    const rLon = parseFloat(remoteGeo.lon);
+
+    console.log(`[AntPath] Check Line: Home[${hLat},${hLon}] <-> Remote[${rLat},${rLon}]`);
+
     // Don't draw if same location
-    if (homeGeo.lat === remoteGeo.lat && homeGeo.lon === remoteGeo.lon) return;
+    if (Math.abs(hLat - rLat) < 0.0001 && Math.abs(hLon - rLon) < 0.0001) {
+        console.debug('[AntPath] Skipping line: Same location.');
+        return;
+    }
 
     const isInbound = conn.inbound > conn.outbound;
     const color = isInbound ? '#ef4444' : '#22c55e';
 
     // Define path points
-    // Inbound: Remote -> Home
-    // Outbound: Home -> Remote
     const latlngs = isInbound
-        ? [[remoteGeo.lat, remoteGeo.lon], [homeGeo.lat, homeGeo.lon]]
-        : [[homeGeo.lat, homeGeo.lon], [remoteGeo.lat, remoteGeo.lon]];
+        ? [[rLat, rLon], [hLat, hLon]]
+        : [[hLat, hLon], [rLat, rLon]];
 
     // Create AntPath
     try {
+        // Use 'new' constructor or factory? 
+        // L.polyline.antPath is the factory. Use standard options.
         const path = L.polyline.antPath(latlngs, {
             "delay": 1000,
             "dashArray": [10, 20],
-            "weight": 2,
+            "weight": 4, // Increased weight again
             "color": color,
             "pulseColor": "#ffffff",
             "paused": false,
             "reverse": false,
-            "hardwareAccelerated": true
+            "hardwareAccelerated": false // Disable for compatibility
         });
 
         path.addTo(mapInstance);
-        mapMarkers.push(path); // Add to markers array so it gets cleared on next refresh
-        // console.log('[AntPath] Drawn line for', conn.remote_ip);
+        mapMarkers.push(path);
+        // console.log('[AntPath] SUCCESS: Line drawn for ' + conn.remote_ip);
     } catch (e) {
         console.error('[AntPath] Error creating path:', e);
     }
+
+    // FALLBACK: Draw a standard gray line to confirm coordinates are correct
+    try {
+        const fallback = L.polyline(latlngs, {
+            color: '#666',
+            weight: 1,
+            dashArray: '5, 5',
+            opacity: 0.5
+        }).addTo(mapInstance);
+        mapMarkers.push(fallback);
+    } catch (e) { }
 }
+
+// DEBUG: Status Overlay
+function updateDebugOverlay() {
+    let debugDiv = document.getElementById('antpath-debug');
+    if (!debugDiv) {
+        debugDiv = document.createElement('div');
+        debugDiv.id = 'antpath-debug';
+        debugDiv.style.position = 'absolute';
+        debugDiv.style.bottom = '10px';
+        debugDiv.style.left = '10px';
+        debugDiv.style.backgroundColor = 'rgba(0,0,0,0.7)';
+        debugDiv.style.color = '#fff';
+        debugDiv.style.padding = '5px';
+        debugDiv.style.fontSize = '10px';
+        debugDiv.style.zIndex = '9999';
+        debugDiv.style.pointerEvents = 'none';
+
+        // Find map wrapper
+        const wrapper = document.getElementById('fw-map-wrapper');
+        if (wrapper) wrapper.style.position = 'relative';
+        if (wrapper) wrapper.appendChild(debugDiv);
+    }
+
+    debugDiv.innerHTML = `
+        <b>Debug Status:</b><br>
+        HomeIP: ${homeIP || 'Unknown'}<br>
+        GeoReady: ${homeGeo ? 'Yes' : 'No'}<br>
+        Connections: ${window.activeMapConnections ? window.activeMapConnections.length : 0}<br>
+        AntPath Loaded: ${typeof L.polyline.antPath !== 'undefined' ? 'Yes' : 'NO'}
+    `;
+}
+
 
 
 // Check for plugin availability
