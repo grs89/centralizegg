@@ -345,6 +345,27 @@ func (mc *PfsenseCollector) collectOne(s data_centralizegg.PFSenseServer) error 
 		}
 	}
 
+	// 1h. Temperature (sysctl -n hw.sensors.cpu0.temp0 or dev.cpu.0.temperature)
+	temperature := 0
+	// Try hw.sensors first (common on physical hardware/some drivers)
+	tempOut, err := runCommand(client, "sysctl -n hw.sensors.cpu0.temp0")
+	if err != nil || tempOut == "" {
+		// Fallback to dev.cpu.0.temperature
+		tempOut, _ = runCommand(client, "sysctl -n dev.cpu.0.temperature")
+	}
+
+	if tempOut != "" {
+		// Output format typically "45.0C" or similar
+		tempOut = strings.TrimSpace(tempOut)
+		tempOut = strings.TrimSuffix(tempOut, "C")
+		tempOut = strings.TrimSuffix(tempOut, "F") // Unlikely but safe
+
+		// Parse float and convert to int
+		if val, err := strconv.ParseFloat(tempOut, 64); err == nil {
+			temperature = int(val)
+		}
+	}
+
 	// Store Host Data first to get the correct HostID
 	hostID, err := mc.DB.UpsertFirewallHost(data_centralizegg.FirewallHost{
 		ServerID:          s.ID,
@@ -363,6 +384,7 @@ func (mc *PfsenseCollector) collectOne(s data_centralizegg.PFSenseServer) error 
 		UpdateStatus:      updateStatus,
 		StateTableSize:    stateSize,
 		StateTableLimit:   stateLimit,
+		Temperature:       temperature,
 		DNSServers:        dnsServers,
 		ActiveConnections: activeConnsJSON,
 	})

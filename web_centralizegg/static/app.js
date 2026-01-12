@@ -1646,6 +1646,32 @@ function renderFirewallHostDetails(hostId) {
                         </div>
                     </div>
 
+                    <!-- Temperature Card (Above Gateways) -->
+                    ${true ? `
+                        <div style="margin-top: 15px;">
+                            <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                                Temperatura
+                            </div>
+                            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px; display: flex; align-items: center; justify-content: space-between;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <i class="fa-solid fa-temperature-three-quarters" style="color: var(--text-secondary);"></i>
+                                    <span style="font-size: 0.9rem; color: var(--text-secondary);">CPU / Sistema</span>
+                                </div>
+                                ${(() => {
+                const temp = host.temperature;
+                if (!temp || temp <= 0) {
+                    return `<div style="font-weight: 500; font-size: 0.9rem; color: var(--text-secondary); opacity: 0.7;">Unknown</div>`;
+                }
+                let color = '#4ade80'; // Green
+                if (temp >= 50) color = '#facc15'; // Yellow
+                if (temp >= 70) color = '#ef4444'; // Red
+
+                return `<div style="font-weight: 600; font-size: 1.1rem; color: ${color};">${temp}°C</div>`;
+            })()}
+                            </div>
+                        </div>
+                    ` : ''}
+
                     <!-- Gateways Section -->
                     ${(host.gateways && host.gateways.length > 0) ? `
                         <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-top: 10px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
@@ -1657,9 +1683,9 @@ function renderFirewallHostDetails(hostId) {
                                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                                         <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color);">${gw.name}</div>
                                         ${gw.status.toLowerCase() === 'online'
-                ? '<span style="color: #4ade80; font-size: 0.7rem; background: rgba(34, 197, 94, 0.1); padding: 1px 5px; border-radius: 3px;">Online</span>'
-                : `<span style="color: #ef4444; font-size: 0.7rem; background: rgba(239, 68, 68, 0.1); padding: 1px 5px; border-radius: 3px;">${gw.status}</span>`
-            }
+                    ? '<span style="color: #4ade80; font-size: 0.7rem; background: rgba(34, 197, 94, 0.1); padding: 1px 5px; border-radius: 3px;">Online</span>'
+                    : `<span style="color: #ef4444; font-size: 0.7rem; background: rgba(239, 68, 68, 0.1); padding: 1px 5px; border-radius: 3px;">${gw.status}</span>`
+                }
                                     </div>
                                     <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 3px;">
                                         <i class="fa-solid fa-server" style="font-size: 0.65rem; opacity: 0.7; margin-right: 4px;"></i> ${gw.monitor_ip}
@@ -1667,19 +1693,20 @@ function renderFirewallHostDetails(hostId) {
                                      <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; gap: 8px;">
                                         <span title="Latency"><i class="fa-solid fa-stopwatch" style="font-size: 0.65rem; opacity: 0.7; margin-right: 3px;"></i>${gw.delay}</span>
                                     ${(() => {
-                let lossVal = parseFloat(gw.loss);
-                let lossColor = 'var(--text-secondary)';
-                if (!isNaN(lossVal)) {
-                    if (lossVal > 0) lossColor = '#fb923c'; // Warning (Orange)
-                    if (lossVal >= 10) lossColor = '#ef4444'; // Critical (Red)
-                }
-                return `<span title="Packet Loss"><i class="fa-solid fa-chart-simple" style="font-size: 0.65rem; opacity: 0.7; margin-right: 3px; color:${lossColor}"></i><span style="color:${lossColor}">${gw.loss}</span></span>`;
-            })()}
+                    let lossVal = parseFloat(gw.loss);
+                    let lossColor = 'var(--text-secondary)';
+                    if (!isNaN(lossVal)) {
+                        if (lossVal > 0) lossColor = '#fb923c'; // Warning (Orange)
+                        if (lossVal >= 10) lossColor = '#ef4444'; // Critical (Red)
+                    }
+                    return `<span title="Packet Loss"><i class="fa-solid fa-chart-simple" style="font-size: 0.65rem; opacity: 0.7; margin-right: 3px; color:${lossColor}"></i><span style="color:${lossColor}">${gw.loss}</span></span>`;
+                })()}
                                     </div>
                                 </div>
                             `).join('')}
                         </div>
                     ` : ''}
+
 
                     <!-- DNS Servers Section -->
                      ${(host.dns_servers && host.dns_servers.length > 0) ? `
