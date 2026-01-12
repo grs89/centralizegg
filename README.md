@@ -71,7 +71,7 @@
 Centralizegg sigue una arquitectura de tres capas: Frontend, Backend API y Base de Datos, con un colector de datos que se ejecuta en segundo plano.
 
 ```mermaid
-graph TB
+graph TD
     subgraph Frontend["Frontend (Vanilla JS)"]
         UI[Dashboard Web]
         Search[Búsqueda Global]
@@ -83,6 +83,7 @@ graph TB
         Collector[Colector KVM<br/>Multi-Collector]
         Libvirt[Libvirt Client]
         SSH[SSH Client]
+        pfSense[pfSense Client]
     end
     
     subgraph Database["Base de Datos"]
@@ -90,22 +91,33 @@ graph TB
         Schema[Esquema virtualization]
     end
     
-    subgraph Remote["Servidores Remotos KVM"]
+    subgraph Remote["Servidores Remotos"]
         KVM1[Servidor KVM 1]
         KVM2[Servidor KVM 2]
         KVMN[Servidor KVM N]
+        pfSense1[pfSense 1]
+        pfSense2[pfSense 2]
+        pfSenseN[pfSense N]
     end
     
     UI -->|HTTP Requests| API
     Search -->|HTTP Requests| API
     Config -->|HTTP Requests| API
     API -->|Query/Insert/Update| PG
+    
     Collector -->|Query| PG
-    Collector -->|SSH Tunnel| SSH
+    
+    Collector -->|SSH Tunnel (KVM)| SSH
     SSH -->|Unix Socket| Libvirt
     Libvirt -->|Libvirt Protocol| KVM1
     Libvirt -->|Libvirt Protocol| KVM2
     Libvirt -->|Libvirt Protocol| KVMN
+    
+    Collector -->|SSH Tunnel (pfSense)| pfSense
+    pfSense -->|SSH Commands| pfSense1
+    pfSense -->|SSH Commands| pfSense2
+    pfSense -->|SSH Commands| pfSenseN
+    
     Collector -->|Upsert Data| PG
     PG -->|Response| API
     API -->|JSON Response| UI
