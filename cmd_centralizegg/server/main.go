@@ -45,9 +45,8 @@ func main() {
 	col := virtualization.NewMultiCollector(db)
 	go col.Start(10 * time.Second) // Check every 10 seconds
 
-	// Initialize PFSense Collector
 	pfCol := firewall.NewPFSenseCollector(db)
-	go pfCol.Start(10 * time.Second) // Check every 10 seconds
+	go pfCol.Start(3 * time.Second) // Check every 3 seconds
 
 	// Router
 	r := mux.NewRouter()

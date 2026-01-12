@@ -32,7 +32,11 @@ let selectedSuggestionIndex = -1;
 
 // VM Network History Cache
 const vmNetworkHistory = {}; // Key: vmId, Value: { rx: [], tx: [], lastRx, lastTx, lastTime }
+// Firewall Network History Cache
+const pfSenseNetworkHistory = {}; // Key: hostId_ifaceName, Value: { rx: [], tx: [], lastRx, lastTx, lastTime }
 const HISTORY_POINTS = 20;
+
+let selectedFirewallHostId = null;
 
 function updateNetworkHistory(vms) {
     const now = Date.now();
@@ -58,7 +62,7 @@ function updateNetworkHistory(vms) {
                 if (vm.net_rx >= entry.lastRx) {
                     rxRate = (vm.net_rx - entry.lastRx) / timeDelta;
                 }
-                if (vm.net_tx >= entry.lastTx) {
+                if (vm.net_tx >= entry.net_tx) {
                     txRate = (vm.net_tx - entry.lastTx) / timeDelta;
                 }
 
@@ -72,6 +76,54 @@ function updateNetworkHistory(vms) {
                 entry.lastTx = vm.net_tx;
                 entry.lastTime = now;
             }
+        }
+    });
+}
+
+function updateFirewallHistory(hosts) {
+    const now = Date.now();
+    hosts.forEach(host => {
+        if (host.interfaces && Array.isArray(host.interfaces)) {
+            host.interfaces.forEach(iface => {
+                const key = `${host.id}_${iface.interface_name}`;
+                if (!pfSenseNetworkHistory[key]) {
+                    pfSenseNetworkHistory[key] = {
+                        rx: Array(HISTORY_POINTS).fill(0),
+                        tx: Array(HISTORY_POINTS).fill(0),
+                        lastRx: parseFloat(iface.net_rx_bytes),
+                        lastTx: parseFloat(iface.net_tx_bytes),
+                        lastTime: now
+                    };
+                } else {
+                    const entry = pfSenseNetworkHistory[key];
+                    const timeDelta = (now - entry.lastTime) / 1000;
+
+                    if (timeDelta > 0) {
+                        let rxRate = 0;
+                        let txRate = 0;
+
+                        const currentRx = parseFloat(iface.net_rx_bytes);
+                        const currentTx = parseFloat(iface.net_tx_bytes);
+
+                        if (currentRx >= entry.lastRx) {
+                            rxRate = (currentRx - entry.lastRx) / timeDelta;
+                        }
+                        if (currentTx >= entry.lastTx) {
+                            txRate = (currentTx - entry.lastTx) / timeDelta;
+                        }
+
+                        entry.rx.push(rxRate);
+                        entry.tx.push(txRate);
+
+                        if (entry.rx.length > HISTORY_POINTS) entry.rx.shift();
+                        if (entry.tx.length > HISTORY_POINTS) entry.tx.shift();
+
+                        entry.lastRx = currentRx;
+                        entry.lastTx = currentTx;
+                        entry.lastTime = now;
+                    }
+                }
+            });
         }
     });
 }
@@ -229,17 +281,25 @@ function switchTool(toolKey) {
             // Update placeholder content
             const scannerSection = containerTool.querySelector('.scanner-section');
             if (scannerSection) {
-                if (toolKey === 'pfsense') {
-                    scannerSection.style.display = 'none';
-                } else {
-                    scannerSection.style.display = 'block';
-                    const icon = containerTool.querySelector('.scanner-section i');
-                    const title = containerTool.querySelectorAll('.scanner-section h2')[0]; // Be precise
-                    const desc = containerTool.querySelector('.scanner-section p');
+                // Always show scanner section for non-KVM tools, including pfSense
+                scannerSection.style.display = 'block';
+                const icon = containerTool.querySelector('.scanner-section i');
+                const title = containerTool.querySelectorAll('.scanner-section h2')[0]; // Be precise
+                const desc = containerTool.querySelector('.scanner-section p');
+                const containerInner = containerTool.querySelector('.scanner-section .glass-panel');
 
-                    if (icon) icon.className = (tool.icon || 'fa-solid fa-box-open');
-                    if (title) title.textContent = `${tool.name} Management`;
-                    if (desc) desc.textContent = `Gestión completa de ${tool.name} próximamente.`;
+                // Default reset
+                if (containerInner) {
+                    containerInner.style.textAlign = 'center';
+                    containerInner.innerHTML = `
+                        <div style="font-size: 4rem; color: var(--accent-color); margin-bottom: 2rem; opacity: 0.5;">
+                            <i class="${tool.icon || 'fa-solid fa-box-open'}"></i>
+                        </div>
+                        <h2 style="margin-bottom: 1rem;">${toolKey === 'pfsense' ? 'Resumen' : `${tool.name} Management`}</h2>
+                        <p style="color: var(--text-secondary); max-width: 500px; margin: 0 auto 2rem auto;">
+                            ${toolKey === 'pfsense' ? 'Network Interfaces' : `Gestión completa de ${tool.name} próximamente.`}
+                        </p>
+                    `;
                 }
             }
 
@@ -287,6 +347,7 @@ function goHome() {
     console.log('[DEBUG] Navigating to home screen');
     currentTool = null;
     selectedHostId = null; // Reset selection
+    selectedFirewallHostId = null; // Reset firewall selection
 
     // Reset visibility
 
@@ -641,8 +702,12 @@ async function checkAndFetchHostsForTool(toolKey) {
                         renderHostNodes('host-nodes-container-generic', {
                             icon: tools[toolKey].icon,
                             showOSInfo: true,
-                            showStats: true
+                            showStats: true,
+                            onHostClick: 'selectFirewallHost'
                         });
+                        if (selectedFirewallHostId) {
+                            renderFirewallHostDetails(selectedFirewallHostId);
+                        }
                     } else {
                         fetchHosts();
                     }
@@ -700,11 +765,18 @@ async function fetchFirewallHosts() {
         }
 
         allHostsCache = hosts || [];
+        updateFirewallHistory(allHostsCache);
+
         renderHostNodes('host-nodes-container-generic', {
             icon: tools[currentTool]?.icon || 'fa-solid fa-shield-halved',
             showOSInfo: true,
-            showStats: true
+            showStats: true,
+            onHostClick: 'selectFirewallHost' // Custom handler
         });
+
+        if (selectedFirewallHostId) {
+            renderFirewallHostDetails(selectedFirewallHostId);
+        }
 
         // Update config button visibility after fetching hosts
         if (currentTool) {
@@ -713,7 +785,7 @@ async function fetchFirewallHosts() {
     } catch (e) {
         console.error(e);
         const container = document.getElementById('host-nodes-container-generic');
-        if (container) container.innerHTML = '<div class="loading-state" style="color:var(--danger)">Failed to load hosts</div>';
+        if (container) container.innerHTML = `<div class="loading-state" style="color:var(--danger)">Failed to load hosts: ${e.message}</div>`;
     }
 }
 
@@ -811,7 +883,7 @@ function renderHostNodes(containerId = 'host-nodes-container', config = {}) {
         const memPercent = memTotal > 0 ? (((memTotal - memFree) / memTotal) * 100).toFixed(0) : 0;
 
         const cpuPercent = host.cpu_usage ? host.cpu_usage.toFixed(0) : 0;
-        const isActive = selectedHostId === host.id ? 'active' : '';
+        const isActive = (selectedHostId === host.id || selectedFirewallHostId === host.id) ? 'active' : '';
 
         // Find if server is online from currentServers (config)
         const serverConfig = currentServers.find(s => s.id === host.server_id);
@@ -1389,7 +1461,7 @@ function refreshAll() {
     }
 }
 
-setInterval(refreshAll, 5000);
+setInterval(refreshAll, 2000);
 checkServerStatus(); // Run immediately
 
 
@@ -1422,6 +1494,214 @@ function getOSIcon(osName) {
 
     return icon;
 }
+
+function selectFirewallHost(hostId) {
+    selectedFirewallHostId = hostId;
+    // Rerender nodes to update selection state
+    renderHostNodes('host-nodes-container-generic', {
+        icon: tools[currentTool]?.icon || 'fa-solid fa-shield-halved',
+        showOSInfo: true,
+        showStats: true,
+        onHostClick: 'selectFirewallHost'
+    });
+
+    selectedHostId = hostId; // Also update global (though mostly used for KVM)
+    renderFirewallHostDetails(hostId);
+}
+
+function renderFirewallHostDetails(hostId) {
+    const containerTool = document.getElementById('container-scanner-tool');
+    const scannerSection = containerTool.querySelector('.scanner-section');
+    if (!scannerSection) return;
+
+    /*
+     * We replace the inner HTML of the scanner section (which is usually a .glass-panel)
+     * with a detailed grid view of interfaces.
+     */
+
+    const host = allHostsCache.find(h => h.id === hostId);
+    if (!host) {
+        scannerSection.innerHTML = `<div class="glass-panel"><div class="loading-state">Host not found</div></div>`;
+        return;
+    }
+
+    if (!host.interfaces || host.interfaces.length === 0) {
+        scannerSection.innerHTML = `
+            <div class="glass-panel" style="padding: 2rem; text-align: center;">
+                <h2>${host.server_name}</h2>
+                <p style="color: var(--text-secondary);">No network interfaces detected.</p>
+            </div>`;
+        return;
+    }
+
+    // List layout for interfaces within a single card
+    const interfacesRows = host.interfaces.map(iface => {
+        const historyKey = `${host.id}_${iface.interface_name}`;
+        const history = pfSenseNetworkHistory[historyKey];
+
+        let rxCurrent = '0 B/s';
+        let txCurrent = '0 B/s';
+        let rxSpark = '';
+        let txSpark = '';
+
+        if (history) {
+            rxCurrent = formatBytes(history.rx[history.rx.length - 1], 1) + '/s';
+            txCurrent = formatBytes(history.tx[history.tx.length - 1], 1) + '/s';
+            rxSpark = renderSparkline(history.rx, '#4ade80', 100, 30);
+            txSpark = renderSparkline(history.tx, '#fb923c', 100, 30);
+        }
+
+        return `
+        <div style="display: grid; grid-template-columns: 1.5fr 2fr 2fr 0.5fr; gap: 15px; align-items: center; padding: 12px 10px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+            <!-- Name & Status -->
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <div class="${iface.status === 'up' ? 'status-dot online' : 'status-dot offline'}" title="${iface.status}"></div>
+                <div style="font-weight: 500; font-size: 1rem; color: var(--primary-color); display: flex; align-items: center; gap: 8px;">
+                    <i class="fa-solid fa-network-wired" style="font-size: 0.9em; opacity: 0.7;"></i>
+                    <span>${iface.interface_name}</span>
+                    ${iface.ip_address ? `<span style="font-size: 0.75rem; color: var(--primary-color); background: rgba(var(--primary-rgb), 0.1); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(var(--primary-rgb), 0.2); font-family: monospace;">${iface.ip_address}</span>` : ''}
+                </div>
+            </div>
+            
+            <!-- RX -->
+            <div>
+                 <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 2px;">
+                    <span style="color: var(--text-secondary);">RX</span>
+                    <span style="font-weight: 500;">${rxCurrent}</span>
+                 </div>
+                 <div style="height: 30px; opacity: 0.8;">${rxSpark}</div>
+            </div>
+
+            <!-- TX -->
+            <div>
+                 <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 2px;">
+                    <span style="color: var(--text-secondary);">TX</span>
+                    <span style="font-weight: 500;">${txCurrent}</span>
+                 </div>
+                 <div style="height: 30px; opacity: 0.8;">${txSpark}</div>
+            </div>
+
+             <!-- Type -->
+             <div style="font-size: 0.75rem; color: var(--text-secondary); text-align: right; opacity: 0.6;">
+                ${iface.interface_type || 'Eth'}
+             </div>
+        </div>
+        `;
+    }).join('');
+
+    scannerSection.innerHTML = `
+        <div style="margin-bottom: 2rem;">
+            <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 8px;">
+                <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;">Resumen</h2>
+            </div>
+        </div>
+        
+        <div class="glass-panel" style="padding: 20px;">
+            <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start;">
+                <!-- Left Column: OS, Uptime, Gateways (Fixed Width approx 350px) -->
+                <div style="flex: 0 0 350px; display: flex; flex-direction: column; gap: 15px;">
+                    
+                    <!-- System Info Section -->
+                    <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 5px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                        Información
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <!-- OS Card -->
+                        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color);">Sistema Operativo</div>
+                                ${host.update_status === 'Up to Date'
+            ? '<span style="color: #4ade80; font-size: 0.7rem; background: rgba(34, 197, 94, 0.1); padding: 1px 5px; border-radius: 3px;">Actualizado</span>'
+            : host.update_status === 'Update Available'
+                ? '<span style="color: #facc15; font-size: 0.7rem; background: rgba(234, 179, 8, 0.15); padding: 1px 5px; border-radius: 3px;">Actualizar</span>'
+                : ''
+        }
+                            </div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 6px;">
+                                <i class="fa-brands fa-freebsd" style="font-size: 0.8rem; opacity: 0.8;"></i> ${host.os_name || 'Unknown'}
+                            </div>
+                        </div>
+
+                        <!-- Uptime Card -->
+                        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color);">Tiempo de Actividad</div>
+                            </div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 6px;">
+                                <i class="fa-solid fa-clock-rotate-left" style="font-size: 0.8rem; opacity: 0.8;"></i> ${host.uptime || 'Desconocido'}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Gateways Section -->
+                    ${(host.gateways && host.gateways.length > 0) ? `
+                        <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-top: 10px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                            Gateways
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            ${host.gateways.map(gw => `
+                                <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                        <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color);">${gw.name}</div>
+                                        ${gw.status.toLowerCase() === 'online'
+                ? '<span style="color: #4ade80; font-size: 0.7rem; background: rgba(34, 197, 94, 0.1); padding: 1px 5px; border-radius: 3px;">Online</span>'
+                : `<span style="color: #ef4444; font-size: 0.7rem; background: rgba(239, 68, 68, 0.1); padding: 1px 5px; border-radius: 3px;">${gw.status}</span>`
+            }
+                                    </div>
+                                    <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 3px;">
+                                        <i class="fa-solid fa-server" style="font-size: 0.65rem; opacity: 0.7; margin-right: 4px;"></i> ${gw.monitor_ip}
+                                    </div>
+                                     <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; gap: 8px;">
+                                        <span title="Latency"><i class="fa-solid fa-stopwatch" style="font-size: 0.65rem; opacity: 0.7; margin-right: 3px;"></i>${gw.delay}</span>
+                                        <span title="Packet Loss"><i class="fa-solid fa-chart-simple" style="font-size: 0.65rem; opacity: 0.7; margin-right: 3px;"></i>${gw.loss}</span>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : ''}
+
+                    <!-- DNS Servers Section -->
+                     ${(host.dns_servers && host.dns_servers.length > 0) ? `
+                        <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-top: 10px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                            DNS Servers
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                             <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px;">
+                                <div style="display: flex; flex-direction: column; gap: 5px;">
+                                    ${host.dns_servers.split(',').map(dns => `
+                                        <div style="font-size: 0.85rem; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+                                            <i class="fa-solid fa-globe" style="font-size: 0.75rem; opacity: 0.7; color: var(--accent-color);"></i> ${dns.trim()}
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        </div>
+                     ` : ''}
+                </div>
+
+                <!-- Network Interfaces Section (Right, Flex Grow) -->
+                <div style="flex: 1; min-width: 300px;">
+                    <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                        Network Interfaces
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1.5fr 2fr 2fr 0.5fr; gap: 15px; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary);">
+                        <div>Interface</div>
+                        <div>Inbound Traffic (RX)</div>
+                        <div>Outbound Traffic (TX)</div>
+                        <div style="text-align: right;">Type</div>
+                    </div>
+                    <div style="display: flex; flex-direction: column;">
+                        ${interfacesRows}
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+window.selectFirewallHost = selectFirewallHost;
+window.renderFirewallHostDetails = renderFirewallHostDetails;
 
 function getStatusColor(percent) {
     const val = parseFloat(percent);

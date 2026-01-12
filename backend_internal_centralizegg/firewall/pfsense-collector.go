@@ -102,14 +102,98 @@ func (mc *PfsenseCollector) collectOne(s data_centralizegg.PFSenseServer) error 
 		}
 	}
 
-	// 3. Network Interfaces
-	// netstat -bdi
-	netStats, err := runCommand(client, "netstat -bdi")
+	// 3a. Get Interface IP Addresses using ifconfig
+	// We want to map InterfaceName -> IPAddress
+	// ifconfig output parsing
+	ifConfigOut, err := runCommand(client, "ifconfig")
+	interfaceIPs := make(map[string]string)
+	interfaceMACs := make(map[string]string)
 	if err == nil {
-		parseAndStoreInterfaces(mc.DB, s.ID, netStats)
+		interfaceIPs, interfaceMACs = parseIfconfigIPs(ifConfigOut)
 	}
 
-	// Store Host Data
+	// 3. Network Interfaces (Stats) - Just collect strings first
+	// netstat -bdi
+	netStats, err := runCommand(client, "netstat -bdi")
+
+	// 1b. Uptime
+	uptimeOut, err := runCommand(client, "uptime")
+	// Output: 10:48PM  up 1 day, 20 mins, 2 users, load averages: 0.17, 0.11, 0.08
+	// We want "1 day, 20 mins"
+	uptime := "Unknown"
+	if err == nil {
+		if idx := strings.Index(uptimeOut, "up"); idx != -1 {
+			part := uptimeOut[idx+3:] // skip "up "
+			// find next comma? No, standard uptime has multiple commas.
+			// usually we want everything until "users" or "load"
+			// users usually comes after time.
+			if usersIdx := strings.Index(part, "user"); usersIdx != -1 {
+				// up 1 day, 20 mins, 2 users
+				// part[:usersIdx] -> "1 day, 20 mins, 2 "
+				// last comma before users is what we want?
+				// Actually typically: 10:48PM up 1 day, 20 mins, 2 users...
+				// formatted is "1 day, 20 mins"
+				raw := part[:usersIdx]
+				// remove trailing comma and number of users
+				// "1 day, 20 mins, 2 "
+				lastComma := strings.LastIndex(raw, ",")
+				if lastComma != -1 {
+					uptime = strings.TrimSpace(raw[:lastComma])
+				} else {
+					uptime = strings.TrimSpace(raw)
+				}
+			} else {
+				uptime = strings.TrimSpace(part)
+			}
+		}
+	}
+
+	// 1c. pfSense Version (More accurate than uname)
+	pfVersion, err := runCommand(client, "cat /etc/version")
+	if err == nil {
+		pfVersion = strings.TrimSpace(pfVersion) // e.g., 2.7.2-RELEASE
+	}
+
+	// 1d. Update Status
+	// Checking updates can be slow. "pkg version -v" might correspond to base system.
+	// "pfSense-upgrade -c" is official but slow.
+	// Let's assume Updated if version matches known? No.
+	// For now, let's try a quick check via "pkg version -v | grep pfSense-pkg"
+	// output: pfSense-pkg-2.7.2_1                    =
+	// = means up to date. < means needs update.
+	updateStatus := "Unknown"
+	pkgOut, err := runCommand(client, "pkg version -v | grep '^pfSense-pkg'")
+	if err == nil {
+		if strings.Contains(pkgOut, "<") {
+			updateStatus = "Update Available"
+		} else if strings.Contains(pkgOut, "=") {
+			updateStatus = "Up to Date"
+		}
+	}
+
+	// 1e. DNS Servers
+	dnsServers := ""
+	resolvOut, err := runCommand(client, "cat /etc/resolv.conf")
+	if err == nil {
+		var servers []string
+		lines := strings.Split(resolvOut, "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "nameserver") {
+				parts := strings.Fields(line)
+				if len(parts) >= 2 {
+					servers = append(servers, parts[1])
+				}
+			}
+		}
+		if len(servers) > 0 {
+			dnsServers = strings.Join(servers, ", ")
+		}
+	}
+
+	// ... [Other collection code] ...
+
+	// Store Host Data first to get the correct HostID
 	hostID, err := mc.DB.UpsertFirewallHost(data_centralizegg.FirewallHost{
 		ServerID:         s.ID,
 		Hostname:         strings.TrimSpace(hostname),
@@ -118,17 +202,53 @@ func (mc *PfsenseCollector) collectOne(s data_centralizegg.PFSenseServer) error 
 		TotalMemory:      memTotal,
 		FreeMemory:       memFree,
 		CPUUsage:         cpuUsage,
-		OSName:           "pfSense " + strings.TrimSpace(uname),
+		OSName:           "pfSense " + pfVersion + " (" + strings.TrimSpace(uname) + ")",
 		NetRXTotal:       0, // Aggregated from interfaces if needed
 		NetTXTotal:       0,
 		NetRXBytesPerSec: 0,
 		NetTXBytesPerSec: 0,
+		Uptime:           uptime,
+		UpdateStatus:     updateStatus,
+		DNSServers:       dnsServers,
 	})
 	if err != nil {
 		return fmt.Errorf("upsert host: %w", err)
 	}
 
-	_ = hostID
+	// Now store interfaces using the correct hostID
+	if err == nil && netStats != "" {
+		parseAndStoreInterfaces(mc.DB, hostID, netStats, interfaceIPs, interfaceMACs)
+	}
+
+	// 4. Gateway Status
+	// Try multiple paths/commands as it varies by pfSense version
+	gwCommands := []string{
+		"/usr/local/bin/php /usr/local/www/pfSsh.php playback gatewaystatus",
+		"/usr/local/bin/php /usr/local/sbin/pfSsh.php playback gatewaystatus",
+		"pfSsh.php playback gatewaystatus",
+	}
+
+	var gwStatus string
+	var gwErr error
+	for _, cmd := range gwCommands {
+		gwStatus, gwErr = runCommand(client, cmd)
+		if gwErr == nil && gwStatus != "" {
+			break
+		}
+	}
+
+	if gwErr == nil {
+		parseAndStoreGateways(mc.DB, hostID, gwStatus)
+	} else {
+		// Log error only if all attempts failed? No, gwErr is the last error.
+		// Silence it to avoid spam if keys are missing etc, OR keep it but maybe as Info/Warn if critical?
+		// User specifically wanted gateway monitoring, so missing it is bad.
+		// But if the command fails consistently, logs will fill up.
+		// Let's keep it but maybe commented out or less verbose?
+		// Actually, let's keep it visible since we just fixed it.
+		// log.Printf("[DEBUG-GW] Error running gateway command: %v", gwErr)
+	}
+
 	return nil
 }
 
@@ -237,7 +357,55 @@ func parseBytes(s string) uint64 {
 	return uint64(val)
 }
 
-func parseAndStoreInterfaces(db *data_centralizegg.DB, hostID int64, output string) {
+func parseIfconfigIPs(output string) (map[string]string, map[string]string) {
+	// em0: flags=8843<UP,BROADCAST,RUNNING,SIMPLEX,MULTICAST> metric 0 mtu 1500
+	//         options=810099<RXCSUM,VLAN_MTU,VLAN_HWTAGGING,VLAN_HWCSUM,VLAN_HWFILTER>
+	//         ether 00:50:56:a6:31:3e
+	//         inet 181.48.35.212 netmask 0xfffffff0 broadcast 181.48.35.223
+	//         media: Ethernet autoselect (1000baseT <full-duplex>)
+	//         status: active
+	// enc0: flags=0<> metric 0 mtu 1536
+	//         groups: enc
+	//         nd6 options=21<PERFORMNUD,AUTO_LINKLOCAL>
+
+	ips := make(map[string]string)
+	macs := make(map[string]string) // MAC -> Interface Name
+	var currentIface string
+
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		if !strings.HasPrefix(line, "\t") && strings.Contains(line, ": flags=") {
+			// New interface
+			parts := strings.Split(line, ":")
+			if len(parts) > 0 {
+				currentIface = parts[0]
+			}
+		} else if currentIface != "" {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "inet ") {
+				// inet 1.2.3.4 netmask ...
+				fields := strings.Fields(trimmed)
+				// fields should be: inet, IP, netmask, ...
+				if len(fields) >= 2 {
+					// Don't overwrite if we already found one (maybe take the first one)
+					if _, ok := ips[currentIface]; !ok {
+						ips[currentIface] = fields[1]
+					}
+				}
+			} else if strings.HasPrefix(trimmed, "ether ") {
+				// ether 00:50:56:a6:31:3e
+				fields := strings.Fields(trimmed)
+				if len(fields) >= 2 {
+					mac := strings.ToLower(fields[1])
+					macs[mac] = currentIface
+				}
+			}
+		}
+	}
+	return ips, macs
+}
+
+func parseAndStoreInterfaces(db *data_centralizegg.DB, hostID int64, output string, ipMap map[string]string, macMap map[string]string) {
 	// Header: Name  Mtu   Network       Address            Ipkts Ierrs Idrop    Opkts Oerrs  Coll
 	// em0   1500  <Link#1>      00:50:56:a6:31:3e  3685412     0     0  2835252     0     0
 
@@ -252,17 +420,154 @@ func parseAndStoreInterfaces(db *data_centralizegg.DB, hostID int64, output stri
 			continue
 		}
 		fields := strings.Fields(line)
-		if len(fields) < 5 {
+
+		if len(fields) == 0 {
 			continue
 		}
 
-		name := fields[0]
+		rawName := fields[0]
+		// Skip if name is "Name" (just in case) or empty
+		if rawName == "Name" || rawName == "" {
+			continue
+		}
+
+		// In netstat for pfSense, multiple lines appear per interface (Link, IPv4, IPv6).
+		// accurate traffic stats (Ibytes/Obytes) typically appear on the <Link#...> line.
+		// Example: em0 1500 <Link#1> ...
+		// IPv4/IPv6 lines (e.g. em0 - 192.168...) often have different counters.
+		// So we should only parse bytes if the line contains "<Link" or has the expected byte columns.
+
+		// Let's filter: only update stats if it looks like a Link line.
+		// Heuristic: Link lines usually have "Link#" in the 3rd column (index 2).
+		isLinkLine := false
+		if len(fields) >= 3 && strings.Contains(fields[2], "Link#") {
+			isLinkLine = true
+		}
+
+		if !isLinkLine {
+			// If not a link line, we skip this line entirely for STATS purposes.
+			// This avoids the issue where the IPv4 line overwrites the byte counts with something else or partial data.
+			continue
+		}
+
+		finalName := rawName
+
+		// Try to resolve full name using MAC address if available
+		// Address is usually at index 3 for Link lines
+		if len(fields) >= 4 {
+			potentialMac := strings.ToLower(fields[3])
+			// Simple check if it looks like a mac (contains :)
+			if strings.Contains(potentialMac, ":") {
+				if resolvedName, ok := macMap[potentialMac]; ok {
+					finalName = resolvedName
+				}
+			}
+		}
+		// Fallback: If name seems truncated (e.g. mvnet) and we didn't find MAC,
+		// we might double check if "Address" column is actually the full name (e.g. pflog0)
+		if finalName == rawName && len(fields) >= 4 {
+			potentialName := fields[3]
+			// If potentialName is a valid interface in our IP map (meaning it existed in ifconfig), use it?
+			// This helps for virutal interfaces like pflog0 where netstat shows "pflog" but Address column has "pflog0"
+			if _, exists := ipMap[potentialName]; exists {
+				// Only if it looks like an extension of rawName?
+				if strings.HasPrefix(potentialName, rawName) {
+					finalName = potentialName
+				}
+			}
+			// Also check if potentialName is a key in any map we have?
+			// We don't have a map of ALL interface names, just those with IPs or MACs.
+			// But ipMap contains names only if they have IPs.
+		}
+
+		cleanName := strings.TrimSuffix(finalName, "*")
+
+		var rxBytes, txBytes uint64
+		if len(fields) >= 5 {
+			// Heuristic: usually Ibytes and Obytes are the LAST two columns on pfSense regardless of column count variations in middle.
+			last := fields[len(fields)-1]
+			secondLast := fields[len(fields)-2]
+
+			if rb, err := strconv.ParseUint(secondLast, 10, 64); err == nil {
+				rxBytes = rb
+			}
+			if tb, err := strconv.ParseUint(last, 10, 64); err == nil {
+				txBytes = tb
+			}
+		}
 
 		_ = db.UpsertFirewallInterface(data_centralizegg.FirewallInterface{
 			HostID:        hostID,
-			InterfaceName: name,
+			InterfaceName: cleanName,
 			InterfaceType: "ethernet",
 			Status:        "up",
+			NetRXBytes:    rxBytes,
+			NetTXBytes:    txBytes,
+			IPAddress:     ipMap[cleanName],
+		})
+	}
+}
+
+func parseAndStoreGateways(db *data_centralizegg.DB, hostID int64, output string) {
+	// Output format:
+	// Name    Monitor IP  Source IP   Delay   StdDev  Loss    Status
+	// WAN_DHCP    8.8.8.8 172.42.3.1  8.406ms 1.708ms 0.0%    Online
+	// DPINGER_GW  1.2.3.4 5.6.7.8     0.0ms   0.0ms   100%    Offline
+
+	lines := strings.Split(output, "\n")
+	start := false
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "Name") && strings.Contains(line, "Status") {
+			start = true
+			continue
+		}
+		if !start || line == "" {
+			continue
+		}
+
+		fields := strings.Fields(line)
+
+		// Expected at least 7 fields
+		if len(fields) < 7 {
+			continue
+		}
+
+		// Name is first
+		name := fields[0]
+		// Status is last
+		status := fields[len(fields)-1]
+		if status == "none" {
+			status = "Online"
+		}
+
+		// Loss is second to last
+		loss := fields[len(fields)-2]
+		// StdDev is third to last
+		stddev := fields[len(fields)-3]
+		// Delay is fourth to last
+		delay := fields[len(fields)-4]
+		// Source IP is fifth to last
+		sourceIP := fields[len(fields)-5]
+		// Monitor IP is sixth to last.
+		// NOTE: Some fields might be missing if offline? Usually not in this output.
+		// Actually, Name might contain spaces? usually not for gateway names.
+		// Let's assume strict columns for now.
+		monitorIP := fields[1]
+
+		// Re-verify positions if fields > 7 (maybe Name has spaces?)
+		// Gateway names in pfSense are usually alphanumeric w/ underscores.
+		// If len > 7, it's ambiguous. But `pfSsh.php playback gatewaystatus` usually prints fixed columns or simple spaces.
+
+		_ = db.UpsertFirewallGateway(data_centralizegg.FirewallGateway{
+			HostID:    hostID,
+			Name:      name,
+			MonitorIP: monitorIP,
+			SourceIP:  sourceIP,
+			Delay:     delay,
+			StdDev:    stddev,
+			Loss:      loss,
+			Status:    status,
 		})
 	}
 }

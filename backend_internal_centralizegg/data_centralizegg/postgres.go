@@ -74,6 +74,16 @@ func NewPostgresDB(connStr string) (*DB, error) {
 	// Run migrations
 	ensureSchema(db)
 
+	// Migration: Ensure ip_address column exists in firewall.interfaces
+	_, _ = db.Exec("ALTER TABLE firewall.interfaces ADD COLUMN IF NOT EXISTS ip_address VARCHAR(255) DEFAULT ''")
+	// Verify for tx drop column too if we want, but let's stick to the one causing issue.
+	_, _ = db.Exec("ALTER TABLE firewall.interfaces ADD COLUMN IF NOT EXISTS net_tx_dropped BIGINT DEFAULT 0")
+
+	// Migration: Ensure uptime and update_status in firewall.hosts
+	_, _ = db.Exec("ALTER TABLE firewall.hosts ADD COLUMN IF NOT EXISTS uptime VARCHAR(255) DEFAULT 'Unknown'")
+	_, _ = db.Exec("ALTER TABLE firewall.hosts ADD COLUMN IF NOT EXISTS update_status VARCHAR(255) DEFAULT 'Unknown'")
+	_, _ = db.Exec("ALTER TABLE firewall.hosts ADD COLUMN IF NOT EXISTS dns_servers TEXT DEFAULT ''")
+
 	return &DB{Conn: db}, nil
 }
 
@@ -126,7 +136,22 @@ func ensureSchema(db *sql.DB) {
 			net_tx_errors BIGINT DEFAULT 0,
 			net_rx_dropped BIGINT DEFAULT 0,
 			net_tx_dropped BIGINT DEFAULT 0,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+			ip_address VARCHAR(255) DEFAULT '',
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(host_id, interface_name)
+		)`,
+		`CREATE TABLE IF NOT EXISTS firewall.gateways (
+			id SERIAL PRIMARY KEY,
+			host_id INTEGER REFERENCES firewall.hosts(id) ON DELETE CASCADE,
+			name VARCHAR(255) NOT NULL,
+			monitor_ip VARCHAR(255),
+			source_ip VARCHAR(255),
+			delay VARCHAR(50),
+			stddev VARCHAR(50),
+			loss VARCHAR(50),
+			status VARCHAR(50),
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(host_id, name)
 		)`,
 		// Generic Server Tables
 		`CREATE TABLE IF NOT EXISTS virtualization.proxmox_servers (
@@ -368,21 +393,26 @@ type PFSenseServer struct {
 }
 
 type FirewallHost struct {
-	ID               int64   `json:"id"`
-	ServerID         int64   `json:"server_id"`
-	Hostname         string  `json:"hostname"`
-	ServerName       string  `json:"server_name"`
-	IPAddress        string  `json:"ip_address"`
-	CPUModel         string  `json:"cpu_model"`
-	CPUCores         int     `json:"cpu_cores"`
-	TotalMemory      uint64  `json:"total_memory"`
-	FreeMemory       uint64  `json:"free_memory"`
-	CPUUsage         float64 `json:"cpu_usage"`
-	OSName           string  `json:"os_name"`
-	NetRXTotal       uint64  `json:"net_rx_total"`
-	NetTXTotal       uint64  `json:"net_tx_total"`
-	NetRXBytesPerSec uint64  `json:"net_rx_bytes_per_sec"`
-	NetTXBytesPerSec uint64  `json:"net_tx_bytes_per_sec"`
+	ID               int64               `json:"id"`
+	ServerID         int64               `json:"server_id"`
+	Hostname         string              `json:"hostname"`
+	ServerName       string              `json:"server_name"`
+	IPAddress        string              `json:"ip_address"`
+	CPUModel         string              `json:"cpu_model"`
+	CPUCores         int                 `json:"cpu_cores"`
+	TotalMemory      uint64              `json:"total_memory"`
+	FreeMemory       uint64              `json:"free_memory"`
+	CPUUsage         float64             `json:"cpu_usage"`
+	OSName           string              `json:"os_name"`
+	NetRXTotal       uint64              `json:"net_rx_total"`
+	NetTXTotal       uint64              `json:"net_tx_total"`
+	NetRXBytesPerSec uint64              `json:"net_rx_bytes_per_sec"`
+	NetTXBytesPerSec uint64              `json:"net_tx_bytes_per_sec"`
+	Uptime           string              `json:"uptime"`
+	UpdateStatus     string              `json:"update_status"`
+	DNSServers       string              `json:"dns_servers"`
+	Interfaces       []FirewallInterface `json:"interfaces"`
+	Gateways         []FirewallGateway   `json:"gateways"`
 }
 
 type FirewallInterface struct {
@@ -391,6 +421,8 @@ type FirewallInterface struct {
 	InterfaceName string `json:"interface_name"`
 	InterfaceType string `json:"interface_type"`
 	Status        string `json:"status"`
+	MACAddress    string `json:"mac_address"` // Not currently stored but good to have
+	IPAddress     string `json:"ip_address"`
 	NetRXBytes    uint64 `json:"net_rx_bytes"`
 	NetTXBytes    uint64 `json:"net_tx_bytes"`
 	NetRXPackets  uint64 `json:"net_rx_packets"`
@@ -401,17 +433,29 @@ type FirewallInterface struct {
 	NetTXDropped  uint64 `json:"net_tx_dropped"`
 }
 
+type FirewallGateway struct {
+	ID        int64  `json:"id"`
+	HostID    int64  `json:"host_id"`
+	Name      string `json:"name"`
+	MonitorIP string `json:"monitor_ip"`
+	SourceIP  string `json:"source_ip"`
+	Delay     string `json:"delay"`
+	StdDev    string `json:"stddev"`
+	Loss      string `json:"loss"`
+	Status    string `json:"status"`
+}
+
 func (d *DB) UpsertFirewallHost(h FirewallHost) (int64, error) {
 	var id int64
 	err := d.Conn.QueryRow("SELECT id FROM firewall.hosts WHERE server_id = $1", h.ServerID).Scan(&id)
 	if err == sql.ErrNoRows {
 		err = d.Conn.QueryRow(`
-			INSERT INTO firewall.hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, net_rx_total, net_tx_total, net_rx_bytes_per_sec, net_tx_bytes_per_sec)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
-			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.NetRXTotal, h.NetTXTotal, h.NetRXBytesPerSec, h.NetTXBytesPerSec).Scan(&id)
+			INSERT INTO firewall.hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, net_rx_total, net_tx_total, net_rx_bytes_per_sec, net_tx_bytes_per_sec, uptime, update_status, dns_servers)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
+			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.NetRXTotal, h.NetTXTotal, h.NetRXBytesPerSec, h.NetTXBytesPerSec, h.Uptime, h.UpdateStatus, h.DNSServers).Scan(&id)
 	} else if err == nil {
-		_, err = d.Conn.Exec(`UPDATE firewall.hosts SET hostname=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, net_rx_total=$8, net_tx_total=$9, net_rx_bytes_per_sec=$10, net_tx_bytes_per_sec=$11 WHERE id=$12`,
-			h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.NetRXTotal, h.NetTXTotal, h.NetRXBytesPerSec, h.NetTXBytesPerSec, id)
+		_, err = d.Conn.Exec(`UPDATE firewall.hosts SET hostname=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, net_rx_total=$8, net_tx_total=$9, net_rx_bytes_per_sec=$10, net_tx_bytes_per_sec=$11, uptime=$12, update_status=$13, dns_servers=$14 WHERE id=$15`,
+			h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.NetRXTotal, h.NetTXTotal, h.NetRXBytesPerSec, h.NetTXBytesPerSec, h.Uptime, h.UpdateStatus, h.DNSServers, id)
 	}
 	return id, err
 }
@@ -421,14 +465,14 @@ func (d *DB) UpsertFirewallInterface(iface FirewallInterface) error {
 	err := d.Conn.QueryRow("SELECT id FROM firewall.interfaces WHERE host_id = $1 AND interface_name = $2", iface.HostID, iface.InterfaceName).Scan(&id)
 	if err == sql.ErrNoRows {
 		_, err = d.Conn.Exec(`
-			INSERT INTO firewall.interfaces (host_id, interface_name, interface_type, status, net_rx_bytes, net_tx_bytes, net_rx_packets, net_tx_packets, net_rx_errors, net_tx_errors, net_rx_dropped, net_tx_dropped, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())`,
-			iface.HostID, iface.InterfaceName, iface.InterfaceType, iface.Status, iface.NetRXBytes, iface.NetTXBytes, iface.NetRXPackets, iface.NetTXPackets, iface.NetRXErrors, iface.NetTXErrors, iface.NetRXDropped, iface.NetTXDropped)
+			INSERT INTO firewall.interfaces (host_id, interface_name, interface_type, status, net_rx_bytes, net_tx_bytes, net_rx_packets, net_tx_packets, net_rx_errors, net_tx_errors, net_rx_dropped, net_tx_dropped, ip_address, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())`,
+			iface.HostID, iface.InterfaceName, iface.InterfaceType, iface.Status, iface.NetRXBytes, iface.NetTXBytes, iface.NetRXPackets, iface.NetTXPackets, iface.NetRXErrors, iface.NetTXErrors, iface.NetRXDropped, iface.NetTXDropped, iface.IPAddress)
 	} else if err == nil {
 		_, err = d.Conn.Exec(`
-			UPDATE firewall.interfaces SET interface_type=$1, status=$2, net_rx_bytes=$3, net_tx_bytes=$4, net_rx_packets=$5, net_tx_packets=$6, net_rx_errors=$7, net_tx_errors=$8, net_rx_dropped=$9, net_tx_dropped=$10, updated_at=NOW()
-			WHERE id=$11`,
-			iface.InterfaceType, iface.Status, iface.NetRXBytes, iface.NetTXBytes, iface.NetRXPackets, iface.NetTXPackets, iface.NetRXErrors, iface.NetTXErrors, iface.NetRXDropped, iface.NetTXDropped, id)
+			UPDATE firewall.interfaces SET interface_type=$1, status=$2, net_rx_bytes=$3, net_tx_bytes=$4, net_rx_packets=$5, net_tx_packets=$6, net_rx_errors=$7, net_tx_errors=$8, net_rx_dropped=$9, net_tx_dropped=$10, ip_address=$11, updated_at=NOW()
+			WHERE id=$12`,
+			iface.InterfaceType, iface.Status, iface.NetRXBytes, iface.NetTXBytes, iface.NetRXPackets, iface.NetTXPackets, iface.NetRXErrors, iface.NetTXErrors, iface.NetRXDropped, iface.NetTXDropped, iface.IPAddress, id)
 	}
 	return err
 }
@@ -481,11 +525,29 @@ func (d *DB) SetPFSenseServerStatus(id int64, status string) error {
 	return err
 }
 
-func (d *DB) GetFirewallHosts() ([]FirewallHost, error) {
+func (d *DB) UpsertFirewallGateway(gw FirewallGateway) error {
+	var id int64
+	err := d.Conn.QueryRow("SELECT id FROM firewall.gateways WHERE host_id = $1 AND name = $2", gw.HostID, gw.Name).Scan(&id)
+	if err == sql.ErrNoRows {
+		_, err = d.Conn.Exec(`
+			INSERT INTO firewall.gateways (host_id, name, monitor_ip, source_ip, delay, stddev, loss, status, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+			gw.HostID, gw.Name, gw.MonitorIP, gw.SourceIP, gw.Delay, gw.StdDev, gw.Loss, gw.Status)
+	} else if err == nil {
+		_, err = d.Conn.Exec(`
+			UPDATE firewall.gateways SET monitor_ip=$1, source_ip=$2, delay=$3, stddev=$4, loss=$5, status=$6, updated_at=NOW()
+			WHERE id=$7`,
+			gw.MonitorIP, gw.SourceIP, gw.Delay, gw.StdDev, gw.Loss, gw.Status, id)
+	}
+	return err
+}
+
+func (d *DB) GetFirewallHosts() ([]FirewallHost, error) { // Fetch Hosts
 	rows, err := d.Conn.Query(`
-		SELECT h.id, h.server_id, h.hostname, s.name, s.ip_address, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, h.net_rx_total, h.net_tx_total, h.net_rx_bytes_per_sec, h.net_tx_bytes_per_sec
-		FROM firewall.hosts h
-		JOIN firewall.pfsense_servers s ON h.server_id = s.id`)
+		SELECT fh.id, fh.server_id, fh.hostname, s.name, s.ip_address, fh.cpu_model, fh.cpu_cores, fh.total_memory, fh.free_memory, fh.cpu_usage, fh.os_name, fh.net_rx_total, fh.net_tx_total, fh.net_rx_bytes_per_sec, fh.net_tx_bytes_per_sec, fh.uptime, fh.update_status, COALESCE(fh.dns_servers, '')
+		FROM firewall.hosts fh
+		JOIN firewall.pfsense_servers s ON fh.server_id = s.id
+	`)
 	if err != nil {
 		return nil, err
 	}
@@ -494,11 +556,43 @@ func (d *DB) GetFirewallHosts() ([]FirewallHost, error) {
 	var hosts []FirewallHost
 	for rows.Next() {
 		var h FirewallHost
-		var osName sql.NullString
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &osName, &h.NetRXTotal, &h.NetTXTotal, &h.NetRXBytesPerSec, &h.NetTXBytesPerSec); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.NetRXTotal, &h.NetTXTotal, &h.NetRXBytesPerSec, &h.NetTXBytesPerSec, &h.Uptime, &h.UpdateStatus, &h.DNSServers); err != nil {
 			return nil, err
 		}
-		h.OSName = osName.String
+
+		// Fetch Interfaces
+		ifacesRows, err := d.Conn.Query(`SELECT id, host_id, interface_name, interface_type, status, net_rx_bytes, net_tx_bytes, ip_address FROM firewall.interfaces WHERE host_id = $1 ORDER BY interface_name ASC`, h.ID)
+		if err == nil {
+			var ifaces []FirewallInterface
+			for ifacesRows.Next() {
+				var iface FirewallInterface
+				var ipAddr sql.NullString
+				// We act as if checking error, but for listing we might just skip
+				if err := ifacesRows.Scan(&iface.ID, &iface.HostID, &iface.InterfaceName, &iface.InterfaceType, &iface.Status, &iface.NetRXBytes, &iface.NetTXBytes, &ipAddr); err == nil {
+					iface.IPAddress = ipAddr.String
+					ifaces = append(ifaces, iface)
+				}
+			}
+			ifacesRows.Close()
+			h.Interfaces = ifaces
+		}
+
+		// Fetch Gateways
+		gwRows, err := d.Conn.Query(`SELECT id, host_id, name, monitor_ip, source_ip, delay, stddev, loss, status FROM firewall.gateways WHERE host_id = $1 ORDER BY name ASC`, h.ID)
+		if err == nil {
+			var gws []FirewallGateway
+			for gwRows.Next() {
+				var gw FirewallGateway
+				// Handle potential nulls if needed, but table def doesn't have defaults for all.
+				// Assuming string fields are text/varchar.
+				if err := gwRows.Scan(&gw.ID, &gw.HostID, &gw.Name, &gw.MonitorIP, &gw.SourceIP, &gw.Delay, &gw.StdDev, &gw.Loss, &gw.Status); err == nil {
+					gws = append(gws, gw)
+				}
+			}
+			gwRows.Close()
+			h.Gateways = gws
+		}
+
 		hosts = append(hosts, h)
 	}
 	return hosts, nil
