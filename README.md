@@ -107,13 +107,13 @@ graph TD
     
     Collector -->|Query| PG
     
-    Collector -->|SSH Tunnel (KVM)| SSH
+    Collector -->|"SSH Tunnel (KVM)"| SSH
     SSH -->|Unix Socket| Libvirt
     Libvirt -->|Libvirt Protocol| KVM1
     Libvirt -->|Libvirt Protocol| KVM2
     Libvirt -->|Libvirt Protocol| KVMN
     
-    Collector -->|SSH Tunnel (pfSense)| pfSense
+    Collector -->|"SSH Tunnel (pfSense)"| pfSense
     pfSense -->|SSH Commands| pfSense1
     pfSense -->|SSH Commands| pfSense2
     pfSense -->|SSH Commands| pfSenseN
