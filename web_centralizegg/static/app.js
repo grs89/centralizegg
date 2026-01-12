@@ -1746,15 +1746,73 @@ function renderFirewallHostDetails(hostId) {
 
                     <!-- State Table Size -->
                     <!-- State Table Size -->
-                    <div style="margin-top: 25px;">
-                        <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between; align-items:center;">
-                            <div>State Table Size</div>
-                            <div style="font-size:0.85rem; opacity:0.7;">
-                                ${host.state_table_size.toLocaleString()} / ${(host.state_table_limit > 0 ? host.state_table_limit : 400000).toLocaleString()} ${host.state_table_limit > 0 ? '' : '<span style="opacity:0.6; font-size:0.75em;">(Default)</span>'}
-                            </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 25px;">
+                        <!-- Left Column: Active Connections -->
+                        <div>
+                             ${(() => {
+            let activeConns = [];
+            try {
+                activeConns = host.active_connections ? JSON.parse(host.active_connections) : [];
+            } catch (e) {
+                console.error("Error parsing active_connections:", e);
+            }
+
+            if (activeConns.length > 0) {
+                activeConns.sort((a, b) => (b.inbound + b.outbound) - (a.inbound + a.outbound));
+                const topConns = activeConns.slice(0, 5);
+
+                return `
+                                        <div>
+                                            <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between; align-items:center;">
+                                                <div>Active Connections <span style="font-size:0.7em; opacity:0.6;">(Top 5)</span></div>
+                                                <div style="font-size:0.85rem; opacity:0.7;"><i class="fa-solid fa-shield-halved"></i> Anomaly Detection</div>
+                                            </div>
+                                            <div style="background: rgba(255,255,255,0.05); border-radius: 6px; padding: 10px; overflow: hidden;">
+                                                <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 10px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 8px; font-size: 0.75rem; text-transform: uppercase; color: var(--text-secondary); opacity: 0.8;">
+                                                    <div>Remote Host</div>
+                                                    <div style="text-align: center;">In</div>
+                                                    <div style="text-align: center;">Out</div>
+                                                    <div style="text-align: right;">Total</div>
+                                                </div>
+                                                ${topConns.map(conn => {
+                    const total = conn.inbound + conn.outbound;
+                    const isSuspicious = total > 50;
+                    const rowColor = isSuspicious ? '#ef4444' : 'var(--text-primary)';
+                    return `
+                                                        <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 10px; padding: 6px 0; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.03); font-size: 0.85rem;">
+                                                            <div style="display:flex; align-items:center; gap:6px; color:${rowColor}; font-weight:${isSuspicious ? '600' : '400'};">
+                                                                ${isSuspicious ? '<i class="fa-solid fa-triangle-exclamation" style="font-size:0.8em;"></i>' : '<div style="width:14px;"></div>'}
+                                                                ${conn.remote_ip}
+                                                            </div>
+                                                            <div style="text-align: center; color: var(--text-secondary);">${conn.inbound}</div>
+                                                            <div style="text-align: center; color: var(--text-secondary);">${conn.outbound}</div>
+                                                            <div style="text-align: right; font-weight: 500; color:${rowColor};">${total}</div>
+                                                        </div>
+                                                    `;
+                }).join('')}
+                                            </div>
+                                        </div>
+                                    `;
+            } else {
+                return `
+                                        <div>
+                                            <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">Active Connections</div>
+                                            <div style="font-size: 0.9rem; color: var(--text-secondary); opacity: 0.7; padding: 10px 0;">No active connections data available.</div>
+                                        </div>`;
+            }
+        })()}
                         </div>
-                        <div style="background: rgba(255,255,255,0.05); border-radius: 6px; padding: 15px; position: relative; overflow: hidden;">
-                            ${(() => {
+
+                        <!-- Right Column: State Table Size -->
+                        <div>
+                             <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between; align-items:center;">
+                                <div>State Table Size</div>
+                                <div style="font-size:0.85rem; opacity:0.7;">
+                                    ${host.state_table_size.toLocaleString()} / ${(host.state_table_limit > 0 ? host.state_table_limit : 400000).toLocaleString()} ${host.state_table_limit > 0 ? '' : '<span style="opacity:0.6; font-size:0.75em;">(Default)</span>'}
+                                </div>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.05); border-radius: 6px; padding: 15px; position: relative; overflow: hidden;">
+                                ${(() => {
             const limit = host.state_table_limit > 0 ? host.state_table_limit : 400000;
             const percent = Math.min((host.state_table_size / limit) * 100, 100);
             let barColor = '#4ade80'; // Green
@@ -1762,71 +1820,18 @@ function renderFirewallHostDetails(hostId) {
             if (percent > 80) barColor = '#ef4444'; // Red
 
             return `
-                                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9rem; font-weight: 500;">
-                                        <span>Usage</span>
-                                        <span style="color: ${barColor}">${percent.toFixed(1)}%</span>
-                                    </div>
-                                    <div style="height: 10px; background: rgba(255,255,255,0.1); border-radius: 5px; overflow: hidden;">
-                                        <div style="height: 100%; width: ${percent}%; background: ${barColor}; transition: width 0.5s ease;"></div>
-                                    </div>
-                                `;
+                                        <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9rem; font-weight: 500;">
+                                            <span>Usage</span>
+                                            <span style="color: ${barColor}">${percent.toFixed(1)}%</span>
+                                        </div>
+                                        <div style="height: 10px; background: rgba(255,255,255,0.1); border-radius: 5px; overflow: hidden;">
+                                            <div style="height: 100%; width: ${percent}%; background: ${barColor}; transition: width 0.5s ease;"></div>
+                                        </div>
+                                    `;
         })()}
+                            </div>
                         </div>
                     </div>
-
-                    <!-- Active Connections / Anomaly Detection -->
-                    ${(() => {
-            let activeConns = [];
-            try {
-                // Safely parse JSON
-                activeConns = host.active_connections ? JSON.parse(host.active_connections) : [];
-            } catch (e) {
-                console.error("Error parsing active_connections:", e);
-            }
-
-            if (activeConns.length > 0) {
-                // Sort by total connections descending
-                activeConns.sort((a, b) => (b.inbound + b.outbound) - (a.inbound + a.outbound));
-                // Take top 5
-                const topConns = activeConns.slice(0, 5);
-
-                return `
-                                <div style="margin-top: 25px;">
-                                    <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between; align-items:center;">
-                                        <div>Active Connections <span style="font-size:0.7em; opacity:0.6;">(Top 5)</span></div>
-                                        <div style="font-size:0.85rem; opacity:0.7;"><i class="fa-solid fa-shield-halved"></i> Anomaly Detection</div>
-                                    </div>
-                                    <div style="background: rgba(255,255,255,0.05); border-radius: 6px; padding: 10px; overflow: hidden;">
-                                        <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 10px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 8px; font-size: 0.75rem; text-transform: uppercase; color: var(--text-secondary); opacity: 0.8;">
-                                            <div>Remote Host</div>
-                                            <div style="text-align: center;">In</div>
-                                            <div style="text-align: center;">Out</div>
-                                            <div style="text-align: right;">Total</div>
-                                        </div>
-                                        ${topConns.map(conn => {
-                    const total = conn.inbound + conn.outbound;
-                    // Anomaly Threshold: Arbitrary (e.g., > 50 connections from one IP might be interesting)
-                    const isSuspicious = total > 50;
-                    const rowColor = isSuspicious ? '#ef4444' : 'var(--text-primary)';
-
-                    return `
-                                            <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 10px; padding: 6px 0; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.03); font-size: 0.85rem;">
-                                                <div style="display:flex; align-items:center; gap:6px; color:${rowColor}; font-weight:${isSuspicious ? '600' : '400'};">
-                                                    ${isSuspicious ? '<i class="fa-solid fa-triangle-exclamation" style="font-size:0.8em;"></i>' : '<div style="width:14px;"></div>'}
-                                                    ${conn.remote_ip}
-                                                </div>
-                                                <div style="text-align: center; color: var(--text-secondary);">${conn.inbound}</div>
-                                                <div style="text-align: center; color: var(--text-secondary);">${conn.outbound}</div>
-                                                <div style="text-align: right; font-weight: 500; color:${rowColor};">${total}</div>
-                                            </div>
-                                            `;
-                }).join('')}
-                                    </div>
-                                </div>
-                            `;
-            }
-            return '';
-        })()}
 
                 </div>
             </div>
@@ -1839,17 +1844,17 @@ function renderFirewallHostDetails(hostId) {
 
     if (!statsWrapper) {
         scannerSection.innerHTML = `
-            <div id="fw-stats-wrapper"></div>
-            <div id="fw-map-wrapper" class="glass-panel" style="padding: 20px; margin-top: 20px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 15px; padding-bottom: 10px;">
-                    <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9;">
-                        Mapa de Tráfico en Tiempo Real
-                    </div>
-                    <i class="fa-solid fa-bug" onclick="window.toggleMapDebug()" title="Toggle Debug Mode" style="cursor: pointer; color: var(--text-secondary); font-size: 1rem; opacity: 0.5; transition: opacity 0.2s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5"></i>
+    <div id="fw-stats-wrapper" ></div>
+        <div id="fw-map-wrapper" class="glass-panel" style="padding: 20px; margin-top: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 15px; padding-bottom: 10px;">
+                <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9;">
+                    Mapa de Tráfico en Tiempo Real
                 </div>
-                <div id="trafficMap" style="height: 400px; width: 100%; border-radius: 8px; z-index: 1;"></div>
+                <i class="fa-solid fa-bug" onclick="window.toggleMapDebug()" title="Toggle Debug Mode" style="cursor: pointer; color: var(--text-secondary); font-size: 1rem; opacity: 0.5; transition: opacity 0.2s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5"></i>
             </div>
-        `;
+            <div id="trafficMap" style="height: 400px; width: 100%; border-radius: 8px; z-index: 1;"></div>
+        </div>
+`;
         statsWrapper = document.getElementById('fw-stats-wrapper');
     }
 
@@ -1881,41 +1886,41 @@ async function processGeoQueue() {
         if (cached) {
             callback(JSON.parse(cached));
         } else {
-            console.log(`Fetching GeoIP for ${ip}...`);
+            console.log(`Fetching GeoIP for ${ ip }...`);
             const res = await fetch(`http://ip-api.com/json/${ip}`);
 
-            if (!res.ok) {
-                if (res.status === 429 || res.status === 409) {
-                    console.warn(`Rate limit hit for ${ip}. Backing off for 60s.`);
-                    isRateLimited = true;
-                    geoQueue.unshift({ ip, callback }); // Return to front
-                    setTimeout(() => { isRateLimited = false; processGeoQueue(); }, 60000);
-                } else {
-                    console.error(`GeoIP Error ${res.status}: ${res.statusText}`);
-                    localStorage.setItem('geoip_' + ip, JSON.stringify({ error: true })); // Cache error to avoid retry
-                    callback(null);
-                }
-            } else {
-                const data = await res.json();
-                if (data.status === 'success') {
-                    const geoData = { lat: data.lat, lon: data.lon, city: data.city, country: data.country };
-                    localStorage.setItem('geoip_' + ip, JSON.stringify(geoData));
-                    callback(geoData);
-                } else {
-                    localStorage.setItem('geoip_' + ip, JSON.stringify({ error: true }));
-                    callback(null);
-                }
-            }
+if (!res.ok) {
+    if (res.status === 429 || res.status === 409) {
+        console.warn(`Rate limit hit for ${ip}. Backing off for 60s.`);
+        isRateLimited = true;
+        geoQueue.unshift({ ip, callback }); // Return to front
+        setTimeout(() => { isRateLimited = false; processGeoQueue(); }, 60000);
+    } else {
+        console.error(`GeoIP Error ${res.status}: ${res.statusText}`);
+        localStorage.setItem('geoip_' + ip, JSON.stringify({ error: true })); // Cache error to avoid retry
+        callback(null);
+    }
+} else {
+    const data = await res.json();
+    if (data.status === 'success') {
+        const geoData = { lat: data.lat, lon: data.lon, city: data.city, country: data.country };
+        localStorage.setItem('geoip_' + ip, JSON.stringify(geoData));
+        callback(geoData);
+    } else {
+        localStorage.setItem('geoip_' + ip, JSON.stringify({ error: true }));
+        callback(null);
+    }
+}
         }
     } catch (e) {
-        console.error("GeoIP Fetch Exception:", e);
-        // Put back in queue if network error? No, just skip to avoid blocking
-        callback(null);
-    } finally {
-        isProcessingQueue = false;
-        // Strict 2s delay between processing next item
-        setTimeout(processGeoQueue, 2000);
-    }
+    console.error("GeoIP Fetch Exception:", e);
+    // Put back in queue if network error? No, just skip to avoid blocking
+    callback(null);
+} finally {
+    isProcessingQueue = false;
+    // Strict 2s delay between processing next item
+    setTimeout(processGeoQueue, 2000);
+}
 }
 
 // Map variables
