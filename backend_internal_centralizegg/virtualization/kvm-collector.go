@@ -22,6 +22,13 @@ type DiskStat struct {
 	Allocation uint64 `json:"allocation"`
 }
 
+type BridgeStat struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	NetRX  uint64 `json:"net_rx"`
+	NetTX  uint64 `json:"net_tx"`
+}
+
 type vmStats struct {
 	cpuTime uint64
 	lastAt  time.Time
@@ -281,21 +288,73 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 		}
 	}
 
+	// New session for Bridge Interfaces
+	var bridgesJSON = "[]"
+	sessionBridges, err := sshClient.NewSession()
+	if err == nil {
+		defer sessionBridges.Close()
+		// Get Bridge names, status, RX bytes, and TX bytes
+		// Using awk to get traffic from /proc/net/dev and operstate from sysfs
+		cmd := `awk -F: '/(br|virbr)/ {iface=$1; gsub(/ /, "", iface); cmd="cat /sys/class/net/"iface"/operstate 2>/dev/null"; cmd | getline status; close(cmd); if(status == "") status="unknown"; print iface, status, $2, $10}' /proc/net/dev`
+		brOutput, err := sessionBridges.Output(cmd)
+		if err == nil {
+			output := string(brOutput)
+			lines := strings.Split(strings.TrimSpace(output), "\n")
+			var bridges []BridgeStat
+			for _, line := range lines {
+				parts := strings.Fields(line)
+				if len(parts) >= 4 {
+					var rx, tx uint64
+					fmt.Sscanf(parts[2], "%d", &rx)
+					fmt.Sscanf(parts[3], "%d", &tx)
+					bridges = append(bridges, BridgeStat{
+						Name:   parts[0],
+						Status: parts[1],
+						NetRX:  rx,
+						NetTX:  tx,
+					})
+				}
+			}
+			b, _ := json.Marshal(bridges)
+			bridgesJSON = string(b)
+		}
+	}
+
+	// New session for OOM Killer events
+	var oomJSON = "[]"
+	sessionOOM, err := sshClient.NewSession()
+	if err == nil {
+		defer sessionOOM.Close()
+		// Return only the last 3 events as a simple list of strings
+		cmd := `dmesg | grep -i "oom-killer" | tail -n 3 || echo ""`
+		oomOutput, err := sessionOOM.Output(cmd)
+		if err == nil {
+			output := strings.TrimSpace(string(oomOutput))
+			if output != "" {
+				events := strings.Split(output, "\n")
+				b, _ := json.Marshal(events)
+				oomJSON = string(b)
+			}
+		}
+	}
+
 	h := data_centralizegg.Host{
-		ServerID:     s.ID,
-		Hostname:     hostName,
-		CPUModel:     int8ToString(model[:]),
-		CPUCores:     int(cpus),
-		TotalMemory:  uint64(memory) * 1024,
-		FreeMemory:   freeMem,
-		CPUUsage:     cpuUsage,
-		OSName:       osName,
-		PublicIP:     publicIP,
-		DNSServers:   dnsServers,
-		Uptime:       uptime,
-		UpdateStatus: updateStatus,
-		Temperature:  temperature,
-		Disks:        disksJSON,
+		ServerID:         s.ID,
+		Hostname:         hostName,
+		CPUModel:         int8ToString(model[:]),
+		CPUCores:         int(cpus),
+		TotalMemory:      uint64(memory) * 1024,
+		FreeMemory:       freeMem,
+		CPUUsage:         cpuUsage,
+		OSName:           osName,
+		PublicIP:         publicIP,
+		DNSServers:       dnsServers,
+		Uptime:           uptime,
+		UpdateStatus:     updateStatus,
+		Temperature:      temperature,
+		Disks:            disksJSON,
+		BridgeInterfaces: bridgesJSON,
+		OOMEvents:        oomJSON,
 	}
 
 	hostID, err := mc.DB.UpsertHost(h)

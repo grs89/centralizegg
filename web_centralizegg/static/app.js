@@ -32,9 +32,12 @@ let selectedSuggestionIndex = -1;
 
 // VM Network History Cache
 const vmNetworkHistory = {}; // Key: vmId, Value: { rx: [], tx: [], lastRx, lastTx, lastTime }
+// Bridge Network History Cache
+const bridgeNetworkHistory = {}; // Key: hostId_brName, Value: { rx: [], tx: [], lastRx, lastTx, lastTime }
 // Firewall Network History Cache
 const pfSenseNetworkHistory = {}; // Key: hostId_ifaceName, Value: { rx: [], tx: [], lastRx, lastTx, lastTime }
 const HISTORY_POINTS = 20;
+let lastRenderedVMsHash = "";
 
 let selectedFirewallHostId = null;
 
@@ -126,6 +129,75 @@ function updateFirewallHistory(hosts) {
             });
         }
     });
+}
+
+function updateBridgeHistory(hosts) {
+    const now = Date.now();
+    hosts.forEach(host => {
+        let bridges = [];
+        try {
+            if (host.bridge_interfaces) bridges = JSON.parse(host.bridge_interfaces);
+        } catch (e) { return; }
+
+        bridges.forEach(br => {
+            const key = `${host.id}_${br.name}`;
+            if (!bridgeNetworkHistory[key]) {
+                bridgeNetworkHistory[key] = {
+                    rx: Array(HISTORY_POINTS).fill(0),
+                    tx: Array(HISTORY_POINTS).fill(0),
+                    lastRx: br.net_rx,
+                    lastTx: br.net_tx,
+                    lastTime: now
+                };
+            } else {
+                const entry = bridgeNetworkHistory[key];
+                const timeDelta = (now - entry.lastTime) / 1000;
+
+                if (timeDelta > 0) {
+                    let rxRate = 0;
+                    let txRate = 0;
+
+                    if (br.net_rx >= entry.lastRx) {
+                        rxRate = (br.net_rx - entry.lastRx) / timeDelta;
+                    }
+                    if (br.net_tx >= entry.lastTx) {
+                        txRate = (br.net_tx - entry.lastTx) / timeDelta;
+                    }
+
+                    entry.rx.push(rxRate);
+                    entry.tx.push(txRate);
+
+                    if (entry.rx.length > HISTORY_POINTS) entry.rx.shift();
+                    if (entry.tx.length > HISTORY_POINTS) entry.tx.shift();
+
+                    entry.lastRx = br.net_rx;
+                    entry.lastTx = br.net_tx;
+                    entry.lastTime = now;
+                }
+            }
+        });
+    });
+}
+
+function renderDonutChart(percent, color, size = 50) {
+    const strokeWidth = 5;
+    const radius = (size - strokeWidth) / 2;
+    const circumference = 2 * Math.PI * radius;
+    const offset = circumference - (percent / 100) * circumference;
+
+    return `
+        <div class="donut-chart-container" style="position: relative; width: ${size}px; height: ${size}px; display: flex; align-items: center; justify-content: center;">
+            <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="transform: rotate(-90deg);">
+                <!-- Background circle -->
+                <circle cx="${size / 2}" cy="${size / 2}" r="${radius}" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="${strokeWidth}" />
+                <!-- Foreground circle -->
+                <circle cx="${size / 2}" cy="${size / 2}" r="${radius}" fill="none" stroke="${color}" stroke-width="${strokeWidth}"
+                    stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" stroke-linecap="round"
+                    style="transition: stroke-dashoffset 0.5s ease-out; filter: drop-shadow(0 0 4px ${color}40);" />
+            </svg>
+            <div style="position: absolute; font-size: 0.75rem; font-weight: 700; color: ${color};">${percent}%</div>
+        </div>
+    `;
 }
 
 function renderSparkline(data, color, width = 100, height = 30) {
@@ -243,6 +315,8 @@ function switchTool(toolKey) {
     }
 
     currentTool = toolKey;
+    selectedHostId = null;
+    lastRenderedVMsHash = "";
 
     // Update Category Button Identity
     try {
@@ -369,7 +443,10 @@ window.switchTool = switchTool;
 
 function selectHost(id) {
     console.log('[DEBUG] Selected Host ID:', id);
-    selectedHostId = id;
+    if (selectedHostId !== id) {
+        selectedHostId = id;
+        lastRenderedVMsHash = ""; // Reset render cache for new host
+    }
     fetchHosts(); // Re-render hosts to show active state
     fetchVMs();   // Filter VMs
 }
@@ -801,6 +878,9 @@ async function fetchHosts() {
         }
 
         allHostsCache = hosts || [];
+        if (allHostsCache.length > 0) {
+            updateBridgeHistory(allHostsCache);
+        }
         renderHosts();
 
         // Update config button visibility after fetching hosts
@@ -1029,6 +1109,14 @@ function renderVMs() {
     // Filter and Sort VMs
     let filteredVMs = allVMsCache.filter(vm => vm.host_id === selectedHostId);
 
+    // Check if data changed before rendering
+    const host = allHostsCache.find(h => h.id === selectedHostId);
+    const dataHash = JSON.stringify({ vms: filteredVMs, host: host, searchQuery: searchQuery });
+    if (dataHash === lastRenderedVMsHash) {
+        return; // Skip re-render if data is identical
+    }
+    lastRenderedVMsHash = dataHash;
+
     // Apply search filter
     if (searchQuery) {
         filteredVMs = filteredVMs.filter(vm =>
@@ -1043,14 +1131,17 @@ function renderVMs() {
         return;
     }
 
-    // Render Host Info (Left Card)
-    const hostInfoContainer = document.getElementById('vm-host-info');
-    if (hostInfoContainer) {
+    // Render Host Info (Split into 2 Columns)
+    const hostInfoLeft = document.getElementById('vm-host-info-left');
+    const hostInfoRight = document.getElementById('vm-host-info-right');
+
+    if (hostInfoLeft && hostInfoRight) {
         const host = allHostsCache.find(h => h.id === selectedHostId);
         if (host) {
-            hostInfoContainer.innerHTML = `
-                <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                    Información
+            // --- LEFT COLUMN: System, Stats, Network ---
+            hostInfoLeft.innerHTML = `
+                <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    Sistema y Red
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 10px;">
                     <!-- OS Card -->
@@ -1076,17 +1167,12 @@ function renderVMs() {
                             <i class="fa-solid fa-clock-rotate-left fa-fw" style="font-size: 0.8rem; opacity: 0.8;"></i> ${host.uptime || 'Desconocido'}
                         </div>
                     </div>
-                </div>
-
-                <!-- Temperature Section -->
-                <div style="margin-top: 15px;">
-                    <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                        Temperatura
-                    </div>
+                
+                    <!-- Temperature Card -->
                     <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px; display: flex; align-items: center; justify-content: space-between;">
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <i class="fa-solid fa-temperature-three-quarters" style="color: var(--text-secondary);"></i>
-                            <span style="font-size: 0.9rem; color: var(--text-secondary);">CPU / Sistema</span>
+                            <span style="font-size: 0.9rem; color: var(--text-secondary);">Temperatura</span>
                         </div>
                         ${(() => {
                     const temp = host.temperature;
@@ -1099,50 +1185,92 @@ function renderVMs() {
                     return `<div style="font-weight: 600; font-size: 1.1rem; color: ${color};">${temp}°C</div>`;
                 })()}
                     </div>
-                </div>
 
-
-                <!-- Red y DNS Section -->
-                <div style="margin-top: 15px;">
-                    <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                        Red y DNS
-                    </div>
-                    <div style="display: flex; flex-direction: column; gap: 8px;">
-                        <!-- Private IP Card -->
-                        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px; display: flex; align-items: center; justify-content: space-between;">
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <i class="fa-solid fa-network-wired" style="color: var(--text-secondary); font-size: 0.8rem;"></i>
-                                <span style="font-size: 0.85rem; color: var(--text-secondary);">IP Local</span>
+                    <!-- Network Info -->
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px;">
+                         <div style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary); margin-bottom: 8px;">Red y DNS</div>
+                         <div style="display: flex; flex-direction: column; gap: 6px;">
+                            <div style="display: flex; justify-content: space-between; font-size: 0.8rem;">
+                                <span style="color: var(--text-secondary);">IP Local:</span>
+                                <span style="font-family: monospace; color: var(--accent-color);">${host.ip_address || 'N/A'}</span>
                             </div>
-                            <div style="font-weight: 600; font-size: 0.85rem; color: var(--accent-color); font-family: monospace;">${host.ip_address || 'N/A'}</div>
-                        </div>
-                        <!-- Public IP Card -->
-                        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px; display: flex; align-items: center; justify-content: space-between;">
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <i class="fa-solid fa-globe" style="color: var(--text-secondary); font-size: 0.8rem;"></i>
-                                <span style="font-size: 0.85rem; color: var(--text-secondary);">IP Pública</span>
+                            <div style="display: flex; justify-content: space-between; font-size: 0.8rem;">
+                                <span style="color: var(--text-secondary);">IP Pública:</span>
+                                <span style="font-family: monospace; color: #38bdf8;">${host.public_ip || 'N/A'}</span>
                             </div>
-                            <div style="font-weight: 600; font-size: 0.85rem; color: #38bdf8; font-family: monospace;">${host.public_ip || 'N/A'}</div>
-                        </div>
-                        <!-- DNS Servers -->
-                        ${(host.dns_servers || '').split(' ').filter(dns => dns).map(dns => `
-                            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px; display: flex; align-items: center; justify-content: space-between;">
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <i class="fa-solid fa-server" style="color: var(--text-secondary); font-size: 0.8rem;"></i>
-                                    <span style="font-size: 0.85rem; color: var(--text-secondary);">DNS</span>
+                             ${(host.dns_servers || '').split(' ').filter(dns => dns).map(dns => `
+                                <div style="display: flex; justify-content: space-between; font-size: 0.8rem;">
+                                    <span style="color: var(--text-secondary);">DNS:</span>
+                                    <span style="font-family: monospace; color: var(--text-primary);">${dns}</span>
                                 </div>
-                                <div style="font-weight: 500; font-size: 0.85rem; color: var(--text-primary); font-family: monospace;">${dns}</div>
-                            </div>
-                        `).join('')}
+                            `).join('')}
+                         </div>
+                    </div>
+
+                    <!-- Bridge Interfaces Section (Moved Here) -->
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Interfaces Bridge</div>
+                        ${(() => {
+                    let bridges = [];
+                    try {
+                        if (host.bridge_interfaces) bridges = JSON.parse(host.bridge_interfaces);
+                    } catch (e) { console.error("Error parsing bridge interfaces", e); }
+
+                    if (bridges.length === 0) return '<div style="opacity:0.5; font-size:0.85rem; padding: 5px;">No bridge interfaces</div>';
+
+                    return bridges.map(br => {
+                        const net = bridgeNetworkHistory[`${host.id}_${br.name}`] || { rx: [], tx: [] };
+                        const currentRx = net.rx.length > 0 ? net.rx[net.rx.length - 1] : 0;
+                        const currentTx = net.tx.length > 0 ? net.tx[net.tx.length - 1] : 0;
+
+                        return `
+                                <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px; margin-bottom: 4px;">
+                                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <i class="fa-solid fa-bridge" style="color: var(--text-secondary); font-size: 0.8rem;"></i>
+                                            <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary);">${br.name}</span>
+                                        </div>
+                                        <div style="font-weight: 600; font-size: 0.7rem; color: ${br.status === 'up' ? '#4ade80' : br.status === 'down' ? '#ef4444' : '#facc15'}; text-transform: uppercase; background: ${br.status === 'up' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; padding: 1px 4px; border-radius: 3px;">
+                                            ${br.status || 'unknown'}
+                                        </div>
+                                    </div>
+                                    <div style="display: flex; gap: 10px; align-items: center;">
+                                        <div style="flex: 1; display: flex; flex-direction: column; gap: 2px;">
+                                            <div style="display: flex; justify-content: space-between; align-items: baseline; font-size: 0.65rem; color: #4ade80; opacity: 0.9;">
+                                                <span>RX</span>
+                                                <span>${formatBytes(currentRx, 1)}/s</span>
+                                            </div>
+                                            <div style="height: 14px;">
+                                                ${renderSparkline(net.rx, '#4ade80', 100, 14)}
+                                            </div>
+                                        </div>
+                                        <div style="flex: 1; display: flex; flex-direction: column; gap: 2px;">
+                                            <div style="display: flex; justify-content: space-between; align-items: baseline; font-size: 0.65rem; color: #fb923c; opacity: 0.9;">
+                                                <span>TX</span>
+                                                <span>${formatBytes(currentTx, 1)}/s</span>
+                                            </div>
+                                            <div style="height: 14px;">
+                                                ${renderSparkline(net.tx, '#fb923c', 100, 14)}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                    }).join('');
+                })()}
                     </div>
                 </div>
+            `;
 
-                <!-- Disks Section -->
-                <div style="margin-top: 15px;">
-                    <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                        Discos
-                    </div>
+            // --- RIGHT COLUMN: Storage, Bridges, OOM ---
+            hostInfoRight.innerHTML = `
+                <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    Almacenamiento e Interfaces
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 15px;">
+                    <!-- Disks Section -->
                     <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Discos Locales</div>
                         ${(() => {
                     let disks = [];
                     try {
@@ -1155,36 +1283,63 @@ function renderVMs() {
                         const usedGB = (disk.allocation / (1024 * 1024 * 1024)).toFixed(1);
                         const totalGB = (disk.capacity / (1024 * 1024 * 1024)).toFixed(1);
                         const percent = disk.capacity > 0 ? ((disk.allocation / disk.capacity) * 100).toFixed(0) : 0;
+                        const color = getStatusColor(percent);
+
                         return `
-                                    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px;">
-                                        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
+                                    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 12px; display: flex; align-items: center; gap: 15px;">
+                                        ${renderDonutChart(percent, color, 54)}
+                                        <div style="flex: 1; display: flex; flex-direction: column; gap: 4px; overflow: hidden;">
                                             <div style="display: flex; align-items: center; gap: 6px;">
-                                                <i class="fa-solid fa-hard-drive" style="color: var(--text-secondary); font-size: 0.8rem;"></i>
-                                                <span style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary);">${disk.device}</span>
+                                                <i class="fa-solid fa-hard-drive" style="color: var(--text-secondary); font-size: 0.75rem; opacity: 0.7;"></i>
+                                                <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${disk.device}</span>
                                             </div>
-                                            <span style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.7;">${usedGB}/${totalGB} GB</span>
-                                        </div>
-                                        <div style="display: flex; align-items: center; gap: 10px;">
-                                            <div class="host-progress-container" style="flex: 1; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px;">
-                                                <div class="host-progress-fill" style="width: ${percent}%; background: ${getStatusColor(percent)}; border-radius: 2px;"></div>
+                                            <div style="font-size: 0.7rem; color: var(--text-secondary); opacity: 0.6; display: flex; align-items: center; gap: 4px;">
+                                                <span>Uso</span>
+                                                <span style="color: var(--text-primary); font-weight: 500;">${usedGB}/${totalGB} GB</span>
                                             </div>
-                                            <span style="font-size: 0.75rem; font-weight: 700; color: ${getStatusColor(percent)}; min-width: 35px; text-align: right;">${percent}%</span>
                                         </div>
                                     </div>
                                 `;
                     }).join('');
                 })()}
                     </div>
+
+
+                    <!-- OOM Killer Section -->
+                    ${(() => {
+                    let oomEvents = [];
+                    try {
+                        if (host.oom_events) oomEvents = JSON.parse(host.oom_events);
+                    } catch (e) { console.error("Error parsing OOM events", e); }
+                    if (oomEvents.length === 0) return '';
+                    return `
+                            <div style="margin-top: 5px;">
+                                <div style="font-size: 0.85rem; font-weight: 600; color: #ef4444; opacity: 0.9; margin-bottom: 5px;">
+                                    OOM Killer Warnings
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 8px;">
+                                    ${oomEvents.map(event => `
+                                        <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 6px; padding: 10px;">
+                                            <div style="font-size: 0.75rem; color: #f87171; font-family: monospace; white-space: pre-wrap; word-break: break-all;">
+                                                ${event}
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        `;
+                })()}
                 </div>
             `;
-        }
-        else {
-            hostInfoContainer.innerHTML = '<div style="opacity: 0.5; font-size: 0.9rem;">No host data available</div>';
+        } else {
+            const noDataHtml = '<div style="opacity: 0.5; font-size: 0.9rem;">No host data available</div>';
+            hostInfoLeft.innerHTML = noDataHtml;
+            hostInfoRight.innerHTML = noDataHtml;
         }
     }
 
     // Grid header with fixed minimum widths for stability
-    const gridCols = "minmax(250px, 1.2fr) 60px minmax(80px, 0.6fr) minmax(120px, 1fr) minmax(140px, 1fr) minmax(180px, 1.2fr)";
+    const gridCols = "minmax(250px, 1.2fr) minmax(80px, 0.6fr) minmax(120px, 1fr) minmax(140px, 1fr) minmax(180px, 1.2fr)";
 
     let html = `
         <div style="overflow-x: auto; width: 100%; padding-bottom: 10px;">
@@ -1193,7 +1348,6 @@ function renderVMs() {
             </div>
             <div class="vm-list-header" style="display: grid; grid-template-columns: ${gridCols}; gap: 15px; padding: 10px 10px; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 8px; min-width: 1060px;">
                 <div>Nombre / Sistema</div>
-                <div style="text-align: center;">Estado</div>
                 <div>CPU</div>
                 <div>Memoria</div>
                 <div>Disco</div>
@@ -1232,8 +1386,8 @@ function renderVMs() {
         <div class="vm-row state-${vm.state.toLowerCase()}" style="display: grid; grid-template-columns: ${gridCols}; gap: 12px; padding: 12px 15px; align-items: center; border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; background: rgba(255,255,255,0.015); transition: all 0.2s ease; margin-bottom: 4px; min-width: 1060px;">
             <!-- Name & OS / IP Unified -->
             <div style="display: flex; align-items: center; gap: 12px; font-weight: 600; overflow: hidden;">
-                <div style="width: 38px; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.1);">
-                    <i class="fa-solid fa-desktop" style="opacity: 0.8; font-size: 1.1rem; color: var(--accent-color);"></i>
+                <div style="width: 38px; height: 38px; border-radius: 8px; background: ${isRunning ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid ${isRunning ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'};">
+                    <i class="fa-solid fa-desktop" style="opacity: 0.8; font-size: 1.1rem; color: ${isRunning ? '#4ade80' : '#ef4444'};"></i>
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 2px; overflow: hidden;">
                     <span style="font-size: 1rem; line-height: 1.2; word-break: break-word; color: var(--text-primary);">${vm.name}</span>
@@ -1245,12 +1399,6 @@ function renderVMs() {
                 </div>
             </div>
 
-            <!-- Status -->
-            <div style="text-align: center;">
-                <div style="display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 6px; background: ${isRunning ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; color: ${isRunning ? '#4ade80' : '#ef4444'}; border: 1px solid ${isRunning ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'};" title="${vm.state}">
-                    <i class="fa-solid fa-power-off" style="font-size: 0.95rem;"></i>
-                </div>
-            </div>
 
             <!-- CPU -->
             <div>
