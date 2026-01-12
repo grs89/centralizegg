@@ -39,8 +39,10 @@
 *   **Métricas Completas**: 
     - CPU: Uso calculado basado en tiempo de CPU acumulado
     - Memoria: Total, libre y utilizada
-    - Disco: Capacidad, asignación, lectura y escritura
-    - Red: Tráfico RX/TX
+    - Memoria: Total, libre y utilizada
+    - **Almacenamiento del Host**: Visualización elegante con **Gríficas de Torta (Donut Charts)** para cada punto de montaje.
+    - Red: Tráfico RX/TX con **Sparklines** en tiempo real.
+    - **Interfaces Bridge**: Monitoreo dedicado de estados y tráfico para puentes de red (`br0`, `virbr0`, etc.).
     - Estado de VMs: Running, Blocked, Paused, Shutdown, Shutoff, Crashed, Suspended
 *   **Monitoreo de Firewall**: Soporte completo para **pfSense** vía SSH.
     - Métricas de sistema (CPU, Memoria, Disco)
@@ -502,9 +504,11 @@ Almacena estadísticas de interfaces de red de pfSense.
 
 2. **Visualización de Hosts**
    - Tarjetas con métricas de CPU, memoria y disco
+   - **Layout Optimizado**: Información dividida en dos columnas:
+       - **Sistema y Red**: OS, Uptime, Temperatura, IPs y Bridges.
+       - **Almacenamiento**: Gráficos de disco (Donut Charts) y alertas OOM.
    - Indicadores de estado (online/offline)
    - Iconos de SO según distribución detectada
-   - Popovers interactivos para detalles de CPU y memoria
 
 3. **Visualización de VMs**
    - Grid de tarjetas con estado visual
