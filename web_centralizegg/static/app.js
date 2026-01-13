@@ -369,7 +369,7 @@ function switchTool(toolKey) {
                         <div style="font-size: 4rem; color: var(--accent-color); margin-bottom: 2rem; opacity: 0.5;">
                             <i class="${tool.icon || 'fa-solid fa-box-open'}"></i>
                         </div>
-                        <h2 style="margin-bottom: 1rem;">${toolKey === 'pfsense' ? 'Resumen' : `${tool.name} Management`}</h2>
+                        <h2 style="margin-bottom: 1rem;"><i class="fa-solid fa-list-ul"></i> ${toolKey === 'pfsense' ? 'Resumen' : `${tool.name} Management`}</h2>
                         <p style="color: var(--text-secondary); max-width: 500px; margin: 0 auto 2rem auto;">
                             ${toolKey === 'pfsense' ? 'Network Interfaces' : `Gestión completa de ${tool.name} próximamente.`}
                         </p>
@@ -1893,7 +1893,7 @@ function renderFirewallHostDetails(hostId) {
     const statsHTML = `
         <div style="margin-bottom: 0.5rem;">
             <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 8px;">
-                <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;">Resumen</h2>
+                <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen</h2>
             </div>
         </div>
         
