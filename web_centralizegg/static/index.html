@@ -273,26 +273,16 @@
                     </div>
 
                     <div class="glass-panel" style="padding: 24px;">
-                        <div style="display: flex; flex-direction: column; gap: 24px;">
-                            <!-- Host Info Section (Top, 2 Columns) -->
-                            <div
-                                style="display: grid; grid-template-columns: 350px 1fr; gap: 24px;">
-                                <!-- Left Column: Basic Info & Network -->
-                                <div id="vm-host-info-left" style="display: flex; flex-direction: column; gap: 15px;">
-                                    <!-- Injected by JS -->
-                                </div>
-                                <!-- Right Column: Storage & Bridges -->
-                                <div id="vm-host-info-right" style="display: flex; flex-direction: column; gap: 15px;">
-                                    <!-- Injected by JS -->
-                                </div>
+                        <!-- KVM Dashboard Layout (2 Columns) -->
+                        <div style="display: grid; grid-template-columns: 350px 1fr; gap: 24px;">
+                            <!-- Left Column: Host Details -->
+                            <div id="vm-host-info-left" style="display: flex; flex-direction: column; gap: 15px;">
+                                <!-- Injected by JS -->
                             </div>
-
-                            <!-- VM Grid (Bottom, Full Width) -->
-                            <div style="width: 100%;">
-                                <div class="vm-grid" id="vm-grid" style="margin-top: 0;">
-                                    <div class="loading-state">
-                                        <i class="fa-solid fa-circle-notch fa-spin"></i> Loading infrastructure...
-                                    </div>
+                            <!-- Right Column: Máquinas Virtuales -->
+                            <div id="vm-grid" class="vm-grid" style="margin-top: 0; min-width: 0;">
+                                <div class="loading-state">
+                                    <i class="fa-solid fa-circle-notch fa-spin"></i> Loading infrastructure...
                                 </div>
                             </div>
                         </div>
