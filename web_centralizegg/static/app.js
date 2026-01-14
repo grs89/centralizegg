@@ -1012,6 +1012,63 @@ function renderDockerHostDetails(hostId) {
         return alerts.join('');
     };
 
+    const renderGPUCard = () => {
+        let gpus = [];
+        try {
+            gpus = JSON.parse(host.gpu_info || '[]');
+        } catch (e) {
+            console.error("Error parsing GPU info:", e);
+        }
+
+        let gpuContent = '';
+        if (!gpus || gpus.length === 0) {
+            gpuContent = `
+                <div style="text-align: center; padding: 15px; background: rgba(255,255,255,0.02); border-radius: 4px; border: 1px dashed rgba(255,255,255,0.1);">
+                    <span style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.6;">No se detectaron GPUs (N/A)</span>
+                </div>
+            `;
+        } else {
+            gpuContent = `
+                <div id="gpu-list" style="display: flex; flex-direction: column; gap: 12px;">
+                    ${gpus.map(gpu => `
+                        <div style="display: flex; flex-direction: column; gap: 6px;">
+                            <div style="display: flex; justify-content: space-between; align-items: start;">
+                                <span style="font-size: 0.75rem; font-weight: 700; color: var(--text-primary); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${gpu.name}">${gpu.name}</span>
+                                <span style="font-size: 0.75rem; font-weight: 700; color: ${getStatusColor(gpu.utilization)};">${gpu.utilization}%</span>
+                            </div>
+                            <!-- Utilization Bar -->
+                            <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
+                                <div style="height: 100%; width: ${gpu.utilization}%; background: ${getStatusColor(gpu.utilization)};"></div>
+                            </div>
+                            <!-- Stats Row -->
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 2px;">
+                                <div style="display: flex; flex-direction: column; gap: 1px;">
+                                    <span style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.8;">VRAM</span>
+                                    <span style="font-size: 0.75rem; font-weight: 600;">${Math.round(gpu.memory_used)} / ${Math.round(gpu.memory_total)} MB</span>
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 1px; align-items: flex-end;">
+                                    <span style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.8;">Temp</span>
+                                    <span style="font-size: 0.75rem; font-weight: 600; color: ${gpu.temperature > 80 ? '#ef4444' : '#4ade80'};">${gpu.temperature}°C</span>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        return `
+            <!-- Monitoreo de GPU -->
+            <div id="gpu-monitoring-card" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px; margin-bottom: 5px;">
+                <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
+                    <i class="fa-solid fa-microchip" style="color: #4ade80;"></i>
+                    <span>Monitoreo de GPU</span>
+                </div>
+                ${gpuContent}
+            </div>
+        `;
+    };
+
     const renderVolumesList = () => {
         let volumes = [];
         try {
@@ -1168,6 +1225,9 @@ function renderDockerHostDetails(hostId) {
         const volumesListEl = document.getElementById('docker-volumes-list');
         if (volumesListEl) volumesListEl.innerHTML = renderVolumesList();
 
+        const gpuWrapperEl = document.getElementById('docker-gpu-wrapper');
+        if (gpuWrapperEl) gpuWrapperEl.innerHTML = renderGPUCard();
+
         const mapContainer = document.getElementById('docker-topology-map');
         if (mapContainer && host.docker_networks) {
             if (!window.currentDockerMap) {
@@ -1277,6 +1337,10 @@ function renderDockerHostDetails(hostId) {
                         <div id="docker-volumes-list" style="display: flex; flex-direction: column; gap: 4px; max-height: 250px; overflow-y: auto;">
                             ${renderVolumesList()}
                         </div>
+                    </div>
+
+                    <div id="docker-gpu-wrapper">
+                        ${renderGPUCard()}
                     </div>
 
                     <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; margin-top: 5px; border-bottom: 1px solid rgba(255,255,255,0.1);">

@@ -176,6 +176,52 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 		}
 	}
 
+	// Docker GPU Info (NVIDIA)
+	gpuJSON := "[]"
+	gpuRaw, err := dc.runCommand(client, "nvidia-smi --query-gpu=gpu_name,utilization.gpu,memory.used,memory.total,temperature.gpu --format=csv,noheader,nounits 2>/dev/null")
+	if err != nil {
+		// Log error if it's not just "command not found"
+		if !strings.Contains(err.Error(), "127") && !strings.Contains(err.Error(), "not found") {
+			fmt.Printf("[GPU Debug] Error running nvidia-smi on %s: %v\n", s.Name, err)
+		}
+	} else if strings.TrimSpace(gpuRaw) != "" {
+		fmt.Printf("[GPU Debug] Found GPU data on %s: %s\n", s.Name, strings.TrimSpace(gpuRaw))
+		lines := strings.Split(strings.TrimSpace(gpuRaw), "\n")
+		type GPUInfo struct {
+			Name        string `json:"name"`
+			Utilization int    `json:"utilization"`
+			MemoryUsed  uint64 `json:"memory_used"`
+			MemoryTotal uint64 `json:"memory_total"`
+			Temp        int    `json:"temperature"`
+		}
+		var gpus []GPUInfo
+		for _, line := range lines {
+			parts := strings.Split(line, ",")
+			if len(parts) >= 5 {
+				var util, temp int
+				var mUsed, mTotal uint64
+				fmt.Sscanf(strings.TrimSpace(parts[1]), "%d", &util)
+				fmt.Sscanf(strings.TrimSpace(parts[2]), "%d", &mUsed)
+				fmt.Sscanf(strings.TrimSpace(parts[3]), "%d", &mTotal)
+				fmt.Sscanf(strings.TrimSpace(parts[4]), "%d", &temp)
+
+				gpus = append(gpus, GPUInfo{
+					Name:        strings.TrimSpace(parts[0]),
+					Utilization: util,
+					MemoryUsed:  mUsed,
+					MemoryTotal: mTotal,
+					Temp:        temp,
+				})
+			}
+		}
+		if b, err := json.Marshal(gpus); err == nil {
+			gpuJSON = string(b)
+		}
+	} else {
+		// No output but no error
+		// fmt.Printf("[GPU Debug] No nvidia-smi output from %s\n", s.Name)
+	}
+
 	hostID, err := dc.DB.UpsertDockerHost(data_centralizegg.DockerHost{
 		ServerID:      s.ID,
 		Hostname:      hostname,
@@ -196,6 +242,7 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 		LogsSize:      dockerLogsSize,
 		Volumes:       volumesJSON,
 		Networks:      networksJSON,
+		GPUInfo:       gpuJSON,
 		UpdateStatus:  "Up to Date",
 	})
 	if err != nil {
