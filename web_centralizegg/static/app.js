@@ -1763,63 +1763,76 @@ function renderDockerSummary() {
             <h2 style="margin:0; font-size: 1.5rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen</h2>
         </div>
 
-        <div class="glass-panel" style="padding: 30px; border: none; text-align: left;">
-            <div style="display: grid; grid-template-columns: 1.5fr minmax(300px, 1fr); gap: 30px; align-items: start;">
-                <!-- Left Column: Hosts -->
-                <div style="display: flex; flex-direction: column; gap: 20px;">
-                    <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+        <div class="glass-panel" style="padding: 25px;">
+            <div style="display: flex; gap: 30px; flex-wrap: wrap; align-items: flex-start;">
+                <!-- Left Column: Host Status (Fixed Width approx 350px) -->
+                <div style="flex: 0 0 380px; display: flex; flex-direction: column; gap: 15px;">
+                    <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 5px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
                         Estado de los Hosts
                     </div>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px;">
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
                         ${dockerHosts.map(h => `
-                            <div class="glass-panel" style="padding: 20px; border: 1px solid rgba(255,255,255,0.05);">
-                                <div style="display: flex; justify-content: space-between; margin-bottom: 15px; align-items: center;">
-                                    <div style="font-weight: 600; font-size: 1rem;">${h.server_name || h.hostname}</div>
-                                    <span style="font-size: 0.7rem; font-weight: 600; color: ${h.docker_service_status === 'active' ? '#4ade80' : '#ef4444'}; text-transform: uppercase; background: ${h.docker_service_status === 'active' ? 'rgba(74, 222, 128, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; padding: 2px 8px; border-radius: 4px;">
+                            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 15px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                    <div style="font-weight: 600; font-size: 0.9rem; color: var(--accent-color);">${h.server_name || h.hostname}</div>
+                                    <span style="font-size: 0.65rem; font-weight: 700; color: ${h.docker_service_status === 'active' ? '#4ade80' : '#ef4444'}; text-transform: uppercase; background: ${h.docker_service_status === 'active' ? 'rgba(74, 222, 128, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; padding: 2px 6px; border-radius: 4px; border: 1px solid ${h.docker_service_status === 'active' ? 'rgba(74, 222, 128, 0.2)' : 'rgba(239, 68, 68, 0.2)'};">
                                         ${h.docker_service_status || 'offline'}
                                     </span>
                                 </div>
-                                <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.9rem;">
-                                    <div style="display: flex; justify-content: space-between;">
-                                        <span style="color: var(--text-secondary);">Docker Version:</span>
-                                        <span>${h.docker_version}</span>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.75rem;">
+                                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                                        <span style="color: var(--text-secondary); opacity: 0.7;">Docker</span>
+                                        <span style="font-weight: 500;">v${h.docker_version}</span>
                                     </div>
-                                    <div style="display: flex; justify-content: space-between;">
-                                        <span style="color: var(--text-secondary);">Socket Status:</span>
-                                        <span style="color: ${h.docker_socket_status === 'Ready' ? '#4ade80' : '#ef4444'};">${h.docker_socket_status}</span>
+                                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                                        <span style="color: var(--text-secondary); opacity: 0.7;">Socket</span>
+                                        <span style="color: ${h.docker_socket_status === 'Ready' ? '#4ade80' : '#ef4444'}; font-weight: 500;">${h.docker_socket_status}</span>
                                     </div>
-                                    <div style="display: flex; justify-content: space-between;">
-                                        <span style="color: var(--text-secondary);">API Latency:</span>
-                                        <span style="color: ${h.docker_api_latency < 500 ? '#4ade80' : '#eab308'};">${h.docker_api_latency}ms</span>
+                                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                                        <span style="color: var(--text-secondary); opacity: 0.7;">Latencia API</span>
+                                        <span style="color: ${h.docker_api_latency < 500 ? '#4ade80' : '#eab308'}; font-weight: 500;">${h.docker_api_latency}ms</span>
                                     </div>
-                                </div>
-                                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.05); text-align: right;">
-                                    <button onclick="selectDockerHost(${h.id})" class="nala-btn" style="padding: 5px 15px; font-size: 0.8rem;">Explorar</button>
+                                    <div style="display: flex; align-items: flex-end; justify-content: flex-end;">
+                                        <button onclick="selectDockerHost(${h.id})" class="nala-btn" style="padding: 3px 10px; font-size: 0.7rem; height: auto;">Explorar</button>
+                                    </div>
                                 </div>
                             </div>
                         `).join('')}
                     </div>
                 </div>
 
-                <div style="display: flex; flex-direction: column; gap: 20px;">
-                    <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                <!-- Right Column: Cluster Metrics -->
+                <div style="flex: 1; display: flex; flex-direction: column; gap: 15px; min-width: 300px;">
+                    <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 5px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
                         Métricas del Cluster
                     </div>
-                    <div style="display: flex; flex-direction: column; gap: 15px;">
-                        <div class="glass-panel" style="padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 10px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.1);">
-                            <i class="fa-solid fa-box" style="font-size: 1.8rem; color: #3b82f6;"></i>
-                            <div style="font-size: 1.8rem; font-weight: 700;">${totalContainers}</div>
-                            <div style="color: var(--text-secondary); text-transform: uppercase; font-size: 0.75rem;">Contenedores Totales</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                        <div class="glass-panel" style="padding: 20px; display: flex; align-items: center; gap: 20px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.1);">
+                            <div style="width: 50px; height: 50px; border-radius: 12px; background: rgba(59, 130, 246, 0.1); display: flex; align-items: center; justify-content: center;">
+                                <i class="fa-solid fa-box" style="font-size: 1.5rem; color: #3b82f6;"></i>
+                            </div>
+                            <div>
+                                <div style="font-size: 1.8rem; font-weight: 700; line-height: 1;">${totalContainers}</div>
+                                <div style="color: var(--text-secondary); text-transform: uppercase; font-size: 0.65rem; font-weight: 600; margin-top: 5px; letter-spacing: 0.5px;">Contenedores Totales</div>
+                            </div>
                         </div>
-                        <div class="glass-panel" style="padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 10px; background: rgba(34, 197, 94, 0.05); border: 1px solid rgba(34, 197, 94, 0.1);">
-                            <i class="fa-solid fa-play" style="font-size: 1.8rem; color: #22c55e;"></i>
-                            <div style="font-size: 1.8rem; font-weight: 700;">${runningContainers}</div>
-                            <div style="color: var(--text-secondary); text-transform: uppercase; font-size: 0.75rem;">En ejecución</div>
+                        <div class="glass-panel" style="padding: 20px; display: flex; align-items: center; gap: 20px; background: rgba(34, 197, 94, 0.05); border: 1px solid rgba(34, 197, 94, 0.1);">
+                            <div style="width: 50px; height: 50px; border-radius: 12px; background: rgba(34, 197, 94, 0.1); display: flex; align-items: center; justify-content: center;">
+                                <i class="fa-solid fa-play" style="font-size: 1.5rem; color: #22c55e;"></i>
+                            </div>
+                            <div>
+                                <div style="font-size: 1.8rem; font-weight: 700; line-height: 1;">${runningContainers}</div>
+                                <div style="color: var(--text-secondary); text-transform: uppercase; font-size: 0.65rem; font-weight: 600; margin-top: 5px; letter-spacing: 0.5px;">En ejecución</div>
+                            </div>
                         </div>
-                        <div class="glass-panel" style="padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 10px; background: rgba(168, 85, 247, 0.05); border: 1px solid rgba(168, 85, 247, 0.1);">
-                            <i class="fa-solid fa-microchip" style="font-size: 1.8rem; color: #a855f7;"></i>
-                            <div style="font-size: 1.8rem; font-weight: 700;">${avgCpu}%</div>
-                            <div style="color: var(--text-secondary); text-transform: uppercase; font-size: 0.75rem;">Carga CPU Media</div>
+                        <div class="glass-panel" style="padding: 20px; display: flex; align-items: center; gap: 20px; background: rgba(168, 85, 247, 0.05); border: 1px solid rgba(168, 85, 247, 0.1);">
+                            <div style="width: 50px; height: 50px; border-radius: 12px; background: rgba(168, 85, 247, 0.1); display: flex; align-items: center; justify-content: center;">
+                                <i class="fa-solid fa-microchip" style="font-size: 1.5rem; color: #a855f7;"></i>
+                            </div>
+                            <div>
+                                <div style="font-size: 1.8rem; font-weight: 700; line-height: 1;">${avgCpu}%</div>
+                                <div style="color: var(--text-secondary); text-transform: uppercase; font-size: 0.65rem; font-weight: 600; margin-top: 5px; letter-spacing: 0.5px;">Carga CPU Media</div>
+                            </div>
                         </div>
                     </div>
                 </div>
