@@ -979,13 +979,13 @@ function renderDockerHostDetails(hostId) {
                     Contenedores
                 </div>
                 
-                <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1.5fr 1.2fr 0.8fr; gap: 15px; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary);">
+                <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1.5fr 1fr 1fr; gap: 15px; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary);">
                     <div>Nombre / Imagen</div>
                     <div>Estado</div>
                     <div>CPU</div>
-                    <div>Memoria (Uso/Límite)</div>
+                    <div>Memoria</div>
                     <div>Red (RX/TX)</div>
-                    <div style="text-align: right;">Alertas</div>
+                    <div style="text-align: right;">Disco (E/S)</div>
                 </div>
 
                 <div style="display: flex; flex-direction: column;">
@@ -996,13 +996,14 @@ function renderDockerHostDetails(hostId) {
         const hasOom = c.oom_killed;
 
         return `
-                        <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1.5fr 1.2fr 0.8fr; gap: 15px; align-items: center; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.05); transition: all 0.2s ease;">
+                        <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1.5fr 1fr 1fr; gap: 15px; align-items: center; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.05); transition: all 0.2s ease;">
                             <!-- Name & Image -->
                             <div style="display: flex; align-items: center; gap: 10px; overflow: hidden;">
                                 <i class="fa-brands fa-docker" style="color: ${isRunning ? '#38bdf8' : '#9ca3af'}; font-size: 1.2rem; opacity: 0.8;"></i>
                                 <div style="display: flex; flex-direction: column; overflow: hidden;">
                                     <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${c.name}">${c.name}</span>
-                                    <span style="font-size: 0.7rem; color: var(--text-secondary); opacity: 0.6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${c.image}</span>
+                                    <span style="font-size: 0.7rem; color: var(--text-secondary); opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${c.image}</span>
+                                    ${c.ip_address ? `<span style="font-size: 0.65rem; color: var(--accent-color); font-family: monospace; opacity: 0.9;">${c.ip_address}</span>` : ''}
                                 </div>
                             </div>
 
@@ -1025,7 +1026,7 @@ function renderDockerHostDetails(hostId) {
                             <!-- RAM Usage / Limit -->
                             <div style="display: flex; flex-direction: column; gap: 3px;">
                                 <div style="font-size: 0.85rem; font-weight: 600; color: ${isHighMem ? '#fb923c' : 'var(--text-primary)'};">
-                                    ${formatBytes(c.memory_usage, 1)} / ${formatBytes(c.memory_limit, 1)}
+                                    ${formatBytes(c.memory_usage, 1)}
                                 </div>
                                 <div style="width: 100%; height: 3px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
                                     <div style="height: 100%; width: ${Math.min(memPercent, 100)}%; background: ${isHighMem ? '#fb923c' : '#a855f7'};"></div>
@@ -1034,21 +1035,24 @@ function renderDockerHostDetails(hostId) {
 
                             <!-- Network -->
                             <div style="display: flex; flex-direction: column; gap: 1px; font-size: 0.8rem;">
-                                <div style="display: flex; align-items: center; gap: 5px; color: #4ade80; opacity: 0.9;">
+                                <div style="display: flex; align-items: center; gap: 5px; color: #4ade80; opacity: 0.9;" title="Network RX">
                                     <i class="fa-solid fa-arrow-down" style="font-size: 0.7rem;"></i> ${formatBytes(c.net_rx, 0)}
                                 </div>
-                                <div style="display: flex; align-items: center; gap: 5px; color: #fb923c; opacity: 0.9;">
+                                <div style="display: flex; align-items: center; gap: 5px; color: #fb923c; opacity: 0.9;" title="Network TX">
                                     <i class="fa-solid fa-arrow-up" style="font-size: 0.7rem;"></i> ${formatBytes(c.net_tx, 0)}
                                 </div>
                             </div>
 
-                            <!-- Alerts / OOM -->
-                            <div style="text-align: right;">
-                                ${hasOom ? `
-                                    <span title="Memory Limit Hit (OOM)" style="color: #ef4444; font-size: 0.7rem; font-weight: 700; background: rgba(239, 68, 68, 0.1); padding: 1px 5px; border-radius: 3px; border: 1px solid rgba(239, 68, 68, 0.2);">
-                                        <i class="fa-solid fa-circle-exclamation"></i> OOM
-                                    </span>
-                                ` : `<span style="color: var(--text-secondary); opacity: 0.2; font-size: 0.7rem;"><i class="fa-solid fa-check"></i></span>`}
+                            <!-- Disk -->
+                            <div style="display: flex; flex-direction: column; gap: 1px; font-size: 0.8rem;">
+                                <div style="display: flex; align-items: center; gap: 5px; color: var(--text-secondary); opacity: 0.8;" title="Disk Read (Block In)">
+                                    <i class="fa-solid fa-hard-drive" style="font-size: 0.7rem;"></i> ${formatBytes(c.block_in, 0)}
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 5px; color: var(--text-secondary); opacity: 0.8;" title="Disk Write (Block Out)">
+                                    <i class="fa-solid fa-pen-to-square" style="font-size: 0.7rem;"></i> ${formatBytes(c.block_out, 0)}
+                                </div>
+                            </div>
+
                             </div>
                         </div>
                         `;

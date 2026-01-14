@@ -142,19 +142,30 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 	}
 
 	// 2. Containers Info
-	// Get OOM status
+	// Get OOM status and IP
 	oomMap := make(map[string]bool)
-	oomOutput, err := dc.runCommand(client, `[ -n "$(docker ps -aq)" ] && docker inspect --format '{{.Name}} {{.State.OOMKilled}}' $(docker ps -aq) || echo ""`)
+	ipMap := make(map[string]string)
+	inspectOutput, err := dc.runCommand(client, `[ -n "$(docker ps -aq)" ] && docker inspect --format '{{.Name}} {{.State.OOMKilled}} {{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' $(docker ps -aq) || echo ""`)
 	if err == nil {
-		lines := strings.Split(strings.TrimSpace(oomOutput), "\n")
+		lines := strings.Split(strings.TrimSpace(inspectOutput), "\n")
 		for _, line := range lines {
 			if line == "" {
 				continue
 			}
 			parts := strings.Fields(line)
-			if len(parts) == 2 {
+			if len(parts) >= 2 {
 				name := strings.TrimPrefix(parts[0], "/")
 				oomMap[name] = parts[1] == "true"
+				// IP might be in parts[2] or beyond if there are multiple networks
+				// We'll just take the first non-empty IP we find
+				if len(parts) > 2 {
+					for i := 2; i < len(parts); i++ {
+						if parts[i] != "" && parts[i] != "<nil>" {
+							ipMap[name] = parts[i]
+							break
+						}
+					}
+				}
 			}
 		}
 	}
@@ -203,6 +214,7 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 			BlockIn:   dc.parseNetBytes(st.BlockIO, true),
 			BlockOut:  dc.parseNetBytes(st.BlockIO, false),
 			PIDs:      st.PIDs,
+			IPAddress: ipMap[dps.Names],
 			OOMKilled: oomMap[dps.Names],
 			HostID:    hostID,
 		}
