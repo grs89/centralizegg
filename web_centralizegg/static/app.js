@@ -40,6 +40,8 @@ const vmNetworkHistory = {}; // Key: vmId, Value: { rx: [], tx: [], lastRx, last
 const bridgeNetworkHistory = {}; // Key: hostId_brName, Value: { rx: [], tx: [], lastRx, lastTx, lastTime }
 // Firewall Network History Cache
 const pfSenseNetworkHistory = {}; // Key: hostId_ifaceName, Value: { rx: [], tx: [], lastRx, lastTx, lastTime }
+// Container Network History Cache
+const containerNetworkHistory = {}; // Key: containerUniqueId, Value: { rx: [], tx: [], lastRx, lastTx, lastTime }
 const HISTORY_POINTS = 20;
 let lastRenderedVMsHash = "";
 
@@ -83,6 +85,43 @@ function updateNetworkHistory(vms) {
 
                 entry.lastRx = vm.net_rx;
                 entry.lastTx = vm.net_tx;
+                entry.lastTime = now;
+            }
+        }
+    });
+}
+
+function updateContainerHistory(containers) {
+    const now = Date.now();
+    containers.forEach(c => {
+        const key = `${c.host_id}_${c.name}`;
+        if (!containerNetworkHistory[key]) {
+            containerNetworkHistory[key] = {
+                rx: Array(HISTORY_POINTS).fill(0),
+                tx: Array(HISTORY_POINTS).fill(0),
+                lastRx: c.net_rx,
+                lastTx: c.net_tx,
+                lastTime: now
+            };
+        } else {
+            const entry = containerNetworkHistory[key];
+            const timeDelta = (now - entry.lastTime) / 1000;
+
+            if (timeDelta > 0) {
+                let rxRate = 0;
+                let txRate = 0;
+
+                if (c.net_rx >= entry.lastRx) rxRate = (c.net_rx - entry.lastRx) / timeDelta;
+                if (c.net_tx >= entry.lastTx) txRate = (c.net_tx - entry.lastTx) / timeDelta;
+
+                entry.rx.push(rxRate);
+                entry.tx.push(txRate);
+
+                if (entry.rx.length > HISTORY_POINTS) entry.rx.shift();
+                if (entry.tx.length > HISTORY_POINTS) entry.tx.shift();
+
+                entry.lastRx = c.net_rx;
+                entry.lastTx = c.net_tx;
                 entry.lastTime = now;
             }
         }
@@ -858,6 +897,7 @@ async function fetchContainers() {
         const response = await fetch(API_CONTAINER_CONTAINERS);
         if (!response.ok) throw new Error('Failed to fetch containers');
         allContainersCache = await response.json();
+        updateContainerHistory(allContainersCache);
         if (currentTool === 'docker') {
             if (selectedDockerHostId) {
                 renderDockerHostDetails(selectedDockerHostId);
@@ -1034,12 +1074,26 @@ function renderDockerHostDetails(hostId) {
                             </div>
 
                             <!-- Network -->
-                            <div style="display: flex; flex-direction: column; gap: 1px; font-size: 0.8rem;">
-                                <div style="display: flex; align-items: center; gap: 5px; color: #4ade80; opacity: 0.9;" title="Network RX">
-                                    <i class="fa-solid fa-arrow-down" style="font-size: 0.7rem;"></i> ${formatBytes(c.net_rx, 0)}
+                            <div style="display: flex; flex-direction: column; gap: 2px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem;">
+                                    <span style="color: var(--text-secondary); opacity: 0.8;"><i class="fa-solid fa-arrow-down" style="font-size: 0.65rem; color: #4ade80;"></i> RX</span>
+                                    <span style="font-weight: 600; font-family: monospace;">${formatBytes(c.net_rx, 0)}</span>
                                 </div>
-                                <div style="display: flex; align-items: center; gap: 5px; color: #fb923c; opacity: 0.9;" title="Network TX">
-                                    <i class="fa-solid fa-arrow-up" style="font-size: 0.7rem;"></i> ${formatBytes(c.net_tx, 0)}
+                                <div style="height: 18px; width: 100%; opacity: 0.8;">
+                                    ${(() => {
+                const history = containerNetworkHistory[`${c.host_id}_${c.name}`];
+                return history ? renderSparkline(history.rx, '#4ade80', 100, 18) : '';
+            })()}
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; margin-top: 2px;">
+                                    <span style="color: var(--text-secondary); opacity: 0.8;"><i class="fa-solid fa-arrow-up" style="font-size: 0.65rem; color: #fb923c;"></i> TX</span>
+                                    <span style="font-weight: 600; font-family: monospace;">${formatBytes(c.net_tx, 0)}</span>
+                                </div>
+                                <div style="height: 18px; width: 100%; opacity: 0.8;">
+                                    ${(() => {
+                const history = containerNetworkHistory[`${c.host_id}_${c.name}`];
+                return history ? renderSparkline(history.tx, '#fb923c', 100, 18) : '';
+            })()}
                                 </div>
                             </div>
 
