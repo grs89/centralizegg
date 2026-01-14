@@ -136,11 +136,32 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 	inodesUsage = strings.TrimSpace(inodesRaw)
 
 	// Log size for all containers
-	// Note: We use find and du -cb to get the total sum of all json-log files
 	logsRaw, _ := dc.runCommand(client, "du -sb /var/lib/docker/containers/ 2>/dev/null | awk '{print $1}'")
 	logsTrimmed := strings.TrimSpace(logsRaw)
 	if logsTrimmed != "" {
 		fmt.Sscanf(logsTrimmed, "%d", &dockerLogsSize)
+	}
+
+	// Docker Volumes
+	volumesJSON := "[]"
+	volsRaw, _ := dc.runCommand(client, "docker system df -v | awk '/VOLUME NAME/{p=1;next} /Images space usage/{p=0} /Build cache usage/{p=0} p && $1!=\"\" {print $1,$3}'")
+	volsLines := strings.Split(strings.TrimSpace(volsRaw), "\n")
+	type VolumeInfo struct {
+		Name string `json:"name"`
+		Size uint64 `json:"size"`
+	}
+	var volumes []VolumeInfo
+	for _, line := range volsLines {
+		parts := strings.Fields(line)
+		if len(parts) >= 2 {
+			volumes = append(volumes, VolumeInfo{
+				Name: parts[0],
+				Size: dc.parseBytes(parts[1]),
+			})
+		}
+	}
+	if b, err := json.Marshal(volumes); err == nil {
+		volumesJSON = string(b)
 	}
 
 	hostID, err := dc.DB.UpsertDockerHost(data_centralizegg.DockerHost{
@@ -161,6 +182,7 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 		StorageTotal:  storageTotal,
 		InodesUsage:   inodesUsage,
 		LogsSize:      dockerLogsSize,
+		Volumes:       volumesJSON,
 		UpdateStatus:  "Up to Date",
 	})
 	if err != nil {

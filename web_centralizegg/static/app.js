@@ -996,6 +996,29 @@ function renderDockerHostDetails(hostId) {
         return alerts.join('');
     };
 
+    const renderVolumesList = () => {
+        let volumes = [];
+        try {
+            volumes = JSON.parse(host.docker_volumes || '[]');
+        } catch (e) {
+            console.error("Error parsing volumes:", e);
+        }
+
+        if (volumes.length === 0) {
+            return '<div style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.6;">No se detectaron volúmenes</div>';
+        }
+
+        // Sort largest to smallest
+        volumes.sort((a, b) => (b.size || 0) - (a.size || 0));
+
+        return volumes.map(v => `
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.02);">
+                <span style="color: var(--text-primary); font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px;" title="${v.name}">${v.name}</span>
+                <span style="font-weight: 600; color: var(--accent-color);">${formatBytes(v.size, 1)}</span>
+            </div>
+        `).join('');
+    };
+
     const renderContainerRows = () => {
         if (filteredContainers.length === 0) {
             return '<div style="text-align:center; padding: 40px; opacity:0.5;">No hay contenedores que mostrar</div>';
@@ -1126,6 +1149,9 @@ function renderDockerHostDetails(hostId) {
         if (inodesEl) inodesEl.textContent = host.docker_inodes_usage || '0%';
         if (logsEl) logsEl.textContent = formatBytes(host.docker_logs_size, 1);
 
+        const volumesListEl = document.getElementById('docker-volumes-list');
+        if (volumesListEl) volumesListEl.innerHTML = renderVolumesList();
+
         return; // Done with partial update
     }
 
@@ -1218,6 +1244,14 @@ function renderDockerHostDetails(hostId) {
                                     <span id="docker-host-logs" style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary);">${formatBytes(host.docker_logs_size, 1)}</span>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Docker Volumes Card -->
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
+                        <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 10px;">Volúmenes Docker</div>
+                        <div id="docker-volumes-list" style="display: flex; flex-direction: column; gap: 4px; max-height: 250px; overflow-y: auto;">
+                            ${renderVolumesList()}
                         </div>
                     </div>
 
