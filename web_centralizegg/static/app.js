@@ -909,7 +909,7 @@ function renderDockerHostDetails(hostId) {
     const gridCols = "minmax(200px, 1fr) minmax(80px, 0.5fr) minmax(100px, 1fr) minmax(140px, 1.2fr) minmax(100px, 0.8fr)";
 
     inner.innerHTML = `
-        <div style="display: grid; grid-template-columns: 380px 1fr; gap: 24px; align-items: start;">
+        <div style="display: grid; grid-template-columns: 350px 1fr; gap: 24px; align-items: start;">
             <!-- Left Column: Information -->
             <div style="display: flex; flex-direction: column; gap: 15px;">
                 <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
