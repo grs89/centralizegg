@@ -917,63 +917,44 @@ function renderDockerHostDetails(hostId) {
 
     inner.innerHTML = `
         <div style="display: flex; flex-direction: column; gap: 24px;">
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 24px;">
-                <!-- Left Column: Host Details -->
+                <!-- Single Column Layout -->
                 <div style="display: flex; flex-direction: column; gap: 15px;">
                     <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                        Host Docker: ${host.server_name || host.hostname}
+                        Información
                     </div>
-                    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 15px; display: flex; flex-direction: column; gap: 10px;">
-                        <div style="display: flex; justify-content: space-between;">
-                            <span style="color: var(--text-secondary);">Versión Docker:</span>
-                            <span style="color: var(--accent-color); font-weight: 600;">${host.docker_version || 'Unknown'}</span>
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 25px; display: flex; flex-direction: column; gap: 15px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="color: var(--text-secondary); font-size: 1rem;">Versión Docker:</span>
+                            <span style="color: #38bdf8; font-weight: 700; font-size: 1.1rem;">${host.docker_version || 'N/A'}</span>
                         </div>
-                        <div style="display: flex; justify-content: space-between;">
-                            <span style="color: var(--text-secondary);">OS:</span>
-                            <span>${host.os_name || 'N/A'}</span>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="color: var(--text-secondary); font-size: 1rem;">OS:</span>
+                            <span style="font-weight: 600; font-size: 1rem; color: var(--text-primary);">${host.os_name || 'N/A'}</span>
                         </div>
-                        <div style="display: flex; justify-content: space-between;">
-                            <span style="color: var(--text-secondary);">Uptime:</span>
-                            <span>${host.uptime || 'N/A'}</span>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="color: var(--text-secondary); font-size: 1rem;">Uptime:</span>
+                            <span style="font-weight: 600; font-size: 1rem; color: var(--text-primary);">${host.uptime || 'N/A'}</span>
                         </div>
-                        <div style="display: flex; justify-content: space-between;">
-                            <span style="color: var(--text-secondary);">CPU:</span>
-                            <span>${(host.cpu_usage || 0).toFixed(1)}% (${host.cpu_cores || 1} núcleos)</span>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="color: var(--text-secondary); font-size: 1rem;">CPU:</span>
+                            <span style="font-weight: 600; font-size: 1.1rem; color: var(--text-primary);">${(host.cpu_usage || 0).toFixed(1)}% (${host.cpu_cores || 1} núcleos)</span>
                         </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 5px; border-top: 1px solid rgba(255,255,255,0.05); margin-top: 5px;">
-                            <span style="color: var(--text-secondary);">Servicio Docker:</span>
-                            <span style="font-size: 0.75rem; font-weight: 600; color: ${host.docker_service_status === 'active' ? '#4ade80' : '#ef4444'}; text-transform: uppercase;">
-                                ${host.docker_service_status || 'unknown'}
+                        
+                        <div style="height: 1px; background: rgba(255,255,255,0.05); margin: 5px 0;"></div>
+
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="color: var(--text-secondary); font-size: 1rem; font-weight: 500;">Servicio Docker:</span>
+                            <span style="font-weight: 800; font-size: 1rem; color: ${host.docker_service_status === 'active' ? '#4ade80' : '#ef4444'}; text-transform: uppercase;">
+                                ${host.docker_service_status || 'offline'}
                             </span>
                         </div>
-                        <div style="display: flex; justify-content: space-between;">
-                            <span style="color: var(--text-secondary);">Docker Socket:</span>
-                            <span style="font-size: 0.75rem;">${host.docker_socket_status || 'unknown'}</span>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="color: var(--text-secondary); font-size: 1rem;">Docker Socket:</span>
+                            <span style="font-weight: 600; font-size: 1rem; color: var(--text-primary); text-align: right;">${host.docker_socket_status || 'N/A'}</span>
                         </div>
-                        <div style="display: flex; justify-content: space-between;">
-                            <span style="color: var(--text-secondary);">Latencia API:</span>
-                            <span style="color: ${host.docker_api_latency < 500 ? '#4ade80' : '#eab308'}; font-weight: 600;">${host.docker_api_latency || 0} ms</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Right Column: Host Resources -->
-                <div style="display: flex; flex-direction: column; gap: 15px;">
-                    <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                        Recursos del Host
-                    </div>
-                    <div style="display: flex; gap: 20px;">
-                        <div style="flex: 1; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 15px; text-align: center;">
-                            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 8px;">Memoria Uso</div>
-                            <div style="display: flex; justify-content: center;">
-                                ${host.total_memory > 0 ? renderDonutChart(((host.total_memory - host.free_memory) / host.total_memory * 100).toFixed(0), '#3b82f6', 60) : '0%'}
-                            </div>
-                        </div>
-                        <div style="flex: 1; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 15px; text-align: center;">
-                            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 8px;">CPU Uso</div>
-                            <div style="display: flex; justify-content: center;">
-                                ${renderDonutChart((host.cpu_usage || 0).toFixed(0), '#4ade80', 60)}
-                            </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="color: var(--text-secondary); font-size: 1rem;">Latencia API:</span>
+                            <span style="font-weight: 800; font-size: 1.1rem; color: ${host.docker_api_latency < 500 ? '#4ade80' : '#eab308'};">${host.docker_api_latency || 0} ms</span>
                         </div>
                     </div>
                 </div>
@@ -1763,134 +1744,7 @@ function renderDockerSummary() {
             <h2 style="margin:0; font-size: 1.5rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen</h2>
         </div>
 
-        <div class="glass-panel" style="padding: 25px;">
-            <div style="display: flex; gap: 30px; flex-wrap: wrap; align-items: flex-start;">
-                <!-- Left Column: Host Status (Fixed Width approx 350px) -->
-                <div style="flex: 0 0 380px; display: flex; flex-direction: column; gap: 15px;">
-                    <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 5px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                        Estado de los Hosts
-                    </div>
-                    <div style="display: flex; flex-direction: column; gap: 10px;">
-                        ${dockerHosts.map(h => `
-                            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 15px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                    <div style="font-weight: 600; font-size: 0.9rem; color: var(--accent-color);">${h.server_name || h.hostname}</div>
-                                    <span style="font-size: 0.65rem; font-weight: 700; color: ${h.docker_service_status === 'active' ? '#4ade80' : '#ef4444'}; text-transform: uppercase; background: ${h.docker_service_status === 'active' ? 'rgba(74, 222, 128, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; padding: 2px 6px; border-radius: 4px; border: 1px solid ${h.docker_service_status === 'active' ? 'rgba(74, 222, 128, 0.2)' : 'rgba(239, 68, 68, 0.2)'};">
-                                        ${h.docker_service_status || 'offline'}
-                                    </span>
-                                </div>
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.75rem;">
-                                    <div style="display: flex; flex-direction: column; gap: 2px;">
-                                        <span style="color: var(--text-secondary); opacity: 0.7;">Docker</span>
-                                        <span style="font-weight: 500;">v${h.docker_version}</span>
-                                    </div>
-                                    <div style="display: flex; flex-direction: column; gap: 2px;">
-                                        <span style="color: var(--text-secondary); opacity: 0.7;">Socket</span>
-                                        <span style="color: ${h.docker_socket_status === 'Ready' ? '#4ade80' : '#ef4444'}; font-weight: 500;">${h.docker_socket_status}</span>
-                                    </div>
-                                    <div style="display: flex; flex-direction: column; gap: 2px;">
-                                        <span style="color: var(--text-secondary); opacity: 0.7;">Latencia API</span>
-                                        <span style="color: ${h.docker_api_latency < 500 ? '#4ade80' : '#eab308'}; font-weight: 500;">${h.docker_api_latency}ms</span>
-                                    </div>
-                                    <div style="display: flex; align-items: flex-end; justify-content: flex-end;">
-                                        <button onclick="selectDockerHost(${h.id})" class="nala-btn" style="padding: 3px 10px; font-size: 0.7rem; height: auto;">Explorar</button>
-                                    </div>
-                                </div>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
 
-                <!-- Right Column: Cluster Metrics -->
-                <div style="flex: 1; display: flex; flex-direction: column; gap: 15px; min-width: 300px;">
-                    <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 5px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                        Métricas del Cluster
-                    </div>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
-                        <div class="glass-panel" style="padding: 20px; display: flex; align-items: center; gap: 20px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.1);">
-                            <div style="width: 50px; height: 50px; border-radius: 12px; background: rgba(59, 130, 246, 0.1); display: flex; align-items: center; justify-content: center;">
-                                <i class="fa-solid fa-box" style="font-size: 1.5rem; color: #3b82f6;"></i>
-                            </div>
-                            <div>
-                                <div style="font-size: 1.8rem; font-weight: 700; line-height: 1;">${totalContainers}</div>
-                                <div style="color: var(--text-secondary); text-transform: uppercase; font-size: 0.65rem; font-weight: 600; margin-top: 5px; letter-spacing: 0.5px;">Contenedores Totales</div>
-                            </div>
-                        </div>
-                        <div class="glass-panel" style="padding: 20px; display: flex; align-items: center; gap: 20px; background: rgba(34, 197, 94, 0.05); border: 1px solid rgba(34, 197, 94, 0.1);">
-                            <div style="width: 50px; height: 50px; border-radius: 12px; background: rgba(34, 197, 94, 0.1); display: flex; align-items: center; justify-content: center;">
-                                <i class="fa-solid fa-play" style="font-size: 1.5rem; color: #22c55e;"></i>
-                            </div>
-                            <div>
-                                <div style="font-size: 1.8rem; font-weight: 700; line-height: 1;">${runningContainers}</div>
-                                <div style="color: var(--text-secondary); text-transform: uppercase; font-size: 0.65rem; font-weight: 600; margin-top: 5px; letter-spacing: 0.5px;">En ejecución</div>
-                            </div>
-                        </div>
-                        <div class="glass-panel" style="padding: 20px; display: flex; align-items: center; gap: 20px; background: rgba(168, 85, 247, 0.05); border: 1px solid rgba(168, 85, 247, 0.1);">
-                            <div style="width: 50px; height: 50px; border-radius: 12px; background: rgba(168, 85, 247, 0.1); display: flex; align-items: center; justify-content: center;">
-                                <i class="fa-solid fa-microchip" style="font-size: 1.5rem; color: #a855f7;"></i>
-                            </div>
-                            <div>
-                                <div style="font-size: 1.8rem; font-weight: 700; line-height: 1;">${avgCpu}%</div>
-                                <div style="color: var(--text-secondary); text-transform: uppercase; font-size: 0.65rem; font-weight: 600; margin-top: 5px; letter-spacing: 0.5px;">Carga CPU Media</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Global Container Monitoring Card -->
-            <div class="glass-panel" style="margin-top: 30px; padding: 25px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                    <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9;">
-                        Monitoreo Global de Contenedores
-                    </div>
-                </div>
-                
-                <div style="display: flex; flex-direction: column; gap: 8px;">
-                    <!-- List Header -->
-                    <div style="display: grid; grid-template-columns: 2fr 1.2fr 1fr 1.2fr 0.8fr; gap: 15px; padding: 0 10px 10px 10px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.75rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 600;">
-                        <div>Contenedor / Host</div>
-                        <div>CPU</div>
-                        <div>RAM (Uso/Límite)</div>
-                        <div>Estado</div>
-                        <div style="text-align: right;">Alertas</div>
-                    </div>
-
-                    ${allContainersCache.length === 0 ? '<div style="text-align:center; padding: 40px; opacity:0.5;">No hay contenedores activos</div>' : allContainersCache.slice(0, 20).map(c => {
-        const host = allHostsCache.find(h => h.id === c.host_id);
-        const isRunning = (c.state || '').toLowerCase() === 'running';
-        const memPercent = c.memory_limit > 0 ? (c.memory_usage / c.memory_limit * 100) : 0;
-        const hasOom = c.oom_killed;
-
-        return `
-                            <div style="display: grid; grid-template-columns: 2fr 1.2fr 1fr 1.2fr 0.8fr; gap: 15px; padding: 10px; align-items: center; border: 1px solid rgba(255,255,255,0.02); border-radius: 6px; background: rgba(255,255,255,0.01);">
-                                <div style="display: flex; flex-direction: column; overflow: hidden;">
-                                    <span style="font-size: 0.9rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${c.name}</span>
-                                    <span style="font-size: 0.7rem; color: var(--accent-color); opacity: 0.7;">${host ? host.server_name || host.hostname : 'Unknown Host'}</span>
-                                </div>
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <span style="font-size: 0.85rem; min-width: 45px;">${(c.cpu_usage || 0).toFixed(1)}%</span>
-                                    <div style="flex: 1; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
-                                        <div style="height: 100%; width: ${Math.min(c.cpu_usage || 0, 100)}%; background: #3b82f6;"></div>
-                                    </div>
-                                </div>
-                                <div style="font-size: 0.8rem; color: var(--text-secondary);">
-                                    ${formatBytes(c.memory_usage, 0)} / ${formatBytes(c.memory_limit, 0)}
-                                </div>
-                                <div>
-                                    <span style="font-size: 0.6rem; font-weight: 700; color: ${isRunning ? '#4ade80' : '#ef4444'}; text-transform: uppercase;">
-                                        ● ${c.state || 'stopped'}
-                                    </span>
-                                </div>
-                                <div style="text-align: right;">
-                                    ${hasOom ? '<i class="fa-solid fa-triangle-exclamation" style="color:#ef4444;" title="OOM Hit"></i>' : ''}
-                                </div>
-                            </div>
-                        `;
-    }).join('')}
-                    ${allContainersCache.length > 20 ? '<div style="text-align:center; padding: 10px; font-size: 0.75rem; color: var(--text-secondary); opacity: 0.6;">Mostrando los primeros 20 contenedores. Selecciona un host para ver la lista completa.</div>' : ''}
-                </div>
-            </div>
         </div>
     `;
 }
@@ -1978,7 +1832,11 @@ async function deleteServer(id) {
 
 // Edit Logic
 window.startEdit = (id) => {
-    const s = currentServers.find(srv => srv.id === id);
+    let serverCache = currentServers;
+    if (currentTool === 'pfsense') serverCache = currentFirewallServers;
+    else if (currentTool === 'docker') serverCache = currentDockerServers;
+
+    const s = serverCache.find(srv => srv.id === id);
     if (!s) return;
 
     document.getElementById('srv-id').value = s.id;
