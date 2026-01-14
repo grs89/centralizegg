@@ -355,8 +355,13 @@ func (dc *DockerCollector) scanVulnerabilities(client *ssh.Client, image string)
 	// Use --format json to get parseable output
 	cmd := fmt.Sprintf("docker scout quickview %s --format json 2>/dev/null", image)
 	output, err := dc.runCommand(client, cmd)
-	if err != nil || output == "" {
-		return ""
+	if err != nil || strings.TrimSpace(output) == "" {
+		// Fallback for some systems where scout might be a docker plugin but not in direct path
+		cmdFixed := fmt.Sprintf("docker scout quickview %s --format json 2>/dev/null", image)
+		output, err = dc.runCommand(client, cmdFixed)
+		if err != nil || strings.TrimSpace(output) == "" {
+			return ""
+		}
 	}
 
 	// Simple structure to extract vulnerability counts
@@ -376,7 +381,15 @@ func (dc *DockerCollector) scanVulnerabilities(client *ssh.Client, image string)
 		// If direct unmarshal fails, we'll try to find the "vulnerabilities" key manually in a generic map
 		var generic map[string]interface{}
 		if err := json.Unmarshal([]byte(output), &generic); err == nil {
-			if vulns, ok := generic["vulnerabilities"].(map[string]interface{}); ok {
+			// Check if vulnerabilities is nested in summary or similar
+			vulnsRaw := generic["vulnerabilities"]
+			if vulnsRaw == nil && generic["summary"] != nil {
+				if summary, ok := generic["summary"].(map[string]interface{}); ok {
+					vulnsRaw = summary["vulnerabilities"]
+				}
+			}
+
+			if vulns, ok := vulnsRaw.(map[string]interface{}); ok {
 				var v VulnCounts
 				if c, ok := vulns["critical"].(float64); ok {
 					v.Critical = int(c)
