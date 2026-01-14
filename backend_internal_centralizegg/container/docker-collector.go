@@ -171,6 +171,7 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 	// Get OOM status and IP
 	oomMap := make(map[string]bool)
 	ipMap := make(map[string]string)
+	vulnCache := make(map[string]string)
 	inspectOutput, err := dc.runCommand(client, `[ -n "$(docker ps -aq)" ] && docker inspect --format '{{.Name}} {{.State.OOMKilled}} {{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' $(docker ps -aq) || echo ""`)
 	if err == nil {
 		lines := strings.Split(strings.TrimSpace(inspectOutput), "\n")
@@ -250,22 +251,35 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 		}
 
 		c := data_centralizegg.Container{
-			Name:      dps.Names,
-			Image:     dps.Image,
-			Ports:     dps.Ports,
-			State:     dps.State,
-			Status:    dps.Status,
-			CPUUsage:  dc.parsePercent(st.CPUPerc),
-			MemUsage:  dc.parseBytes(st.MemUsage),
-			MemLimit:  dc.parseBytes(st.MemLimit),
-			NetRX:     dc.parseNetBytes(st.NetIO, true),
-			NetTX:     dc.parseNetBytes(st.NetIO, false),
-			BlockIn:   dc.parseNetBytes(st.BlockIO, true),
-			BlockOut:  dc.parseNetBytes(st.BlockIO, false),
-			PIDs:      pids,
-			IPAddress: ipMap[dps.Names],
-			OOMKilled: oomMap[dps.Names],
-			HostID:    hostID,
+			Name:            dps.Names,
+			Image:           dps.Image,
+			Ports:           dps.Ports,
+			State:           dps.State,
+			Status:          dps.Status,
+			CPUUsage:        dc.parsePercent(st.CPUPerc),
+			MemUsage:        dc.parseBytes(st.MemUsage),
+			MemLimit:        dc.parseBytes(st.MemLimit),
+			NetRX:           dc.parseNetBytes(st.NetIO, true),
+			NetTX:           dc.parseNetBytes(st.NetIO, false),
+			BlockIn:         dc.parseNetBytes(st.BlockIO, true),
+			BlockOut:        dc.parseNetBytes(st.BlockIO, false),
+			PIDs:            pids,
+			IPAddress:       ipMap[dps.Names],
+			OOMKilled:       oomMap[dps.Names],
+			Vulnerabilities: "", // Will fill next
+			HostID:          hostID,
+		}
+
+		// Image Vulnerabilities (with cache)
+		if dps.Image != "" {
+			if v, ok := vulnCache[dps.Image]; ok {
+				c.Vulnerabilities = v
+			} else {
+				// Scan only if image is not cached
+				vulnInfo := dc.scanVulnerabilities(client, dps.Image)
+				vulnCache[dps.Image] = vulnInfo
+				c.Vulnerabilities = vulnInfo
+			}
 		}
 
 		if err := dc.DB.UpsertContainer(c); err != nil {
@@ -334,6 +348,59 @@ func (dc *DockerCollector) runCommand(client *ssh.Client, cmd string) (string, e
 
 	output, err := session.CombinedOutput(cmd)
 	return string(output), err
+}
+
+func (dc *DockerCollector) scanVulnerabilities(client *ssh.Client, image string) string {
+	// Try docker scout quickview which is faster for summary
+	// Use --format json to get parseable output
+	cmd := fmt.Sprintf("docker scout quickview %s --format json 2>/dev/null", image)
+	output, err := dc.runCommand(client, cmd)
+	if err != nil || output == "" {
+		return ""
+	}
+
+	// Simple structure to extract vulnerability counts
+	type VulnCounts struct {
+		Critical int `json:"critical"`
+		High     int `json:"high"`
+		Medium   int `json:"medium"`
+		Low      int `json:"low"`
+	}
+	var data struct {
+		Vulnerabilities VulnCounts `json:"vulnerabilities"`
+	}
+
+	// Quickview sometimes has a slightly different JSON structure than cves
+	// We try to unmarshal directly from the root if it's a simple object
+	if err := json.Unmarshal([]byte(output), &data); err != nil {
+		// If direct unmarshal fails, we'll try to find the "vulnerabilities" key manually in a generic map
+		var generic map[string]interface{}
+		if err := json.Unmarshal([]byte(output), &generic); err == nil {
+			if vulns, ok := generic["vulnerabilities"].(map[string]interface{}); ok {
+				var v VulnCounts
+				if c, ok := vulns["critical"].(float64); ok {
+					v.Critical = int(c)
+				}
+				if h, ok := vulns["high"].(float64); ok {
+					v.High = int(h)
+				}
+				if m, ok := vulns["medium"].(float64); ok {
+					v.Medium = int(m)
+				}
+				if l, ok := vulns["low"].(float64); ok {
+					v.Low = int(l)
+				}
+				data.Vulnerabilities = v
+			}
+		}
+	}
+
+	res := data.Vulnerabilities
+	if res.Critical == 0 && res.High == 0 && res.Medium == 0 && res.Low == 0 {
+		return "Safe"
+	}
+
+	return fmt.Sprintf("Critical:%d,High:%d,Medium:%d,Low:%d", res.Critical, res.High, res.Medium, res.Low)
 }
 
 func (dc *DockerCollector) parsePercent(s string) float64 {

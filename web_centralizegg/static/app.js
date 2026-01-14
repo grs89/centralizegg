@@ -953,23 +953,47 @@ function renderDockerHostDetails(hostId) {
 
     // Helpers for common rendering parts
     const renderAlertsList = () => {
-        const oomContainers = filteredContainers.filter(c => c.oom_killed);
-        if (oomContainers.length === 0) {
+        const alerts = [];
+
+        // OOM Alerts
+        filteredContainers.filter(c => c.oom_killed).forEach(c => {
+            alerts.push(`
+                <div style="display: flex; align-items: flex-start; gap: 10px; padding: 8px; background: rgba(239, 68, 68, 0.05); border: 1px solid rgba(239, 68, 68, 0.1); border-radius: 4px;">
+                    <i class="fa-solid fa-circle-exclamation" style="color: #ef4444; margin-top: 2px;"></i>
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span style="font-size: 0.8rem; font-weight: 700; color: #ef4444;">OOM Killed: ${c.name}</span>
+                        <span style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.8;">Límite de memoria excedido</span>
+                    </div>
+                </div>
+            `);
+        });
+
+        // Vulnerability Alerts (Critical/High)
+        filteredContainers.filter(c => c.vulnerabilities && (c.vulnerabilities.includes('Critical:') || c.vulnerabilities.includes('High:'))).forEach(c => {
+            const isCritical = c.vulnerabilities.includes('Critical:') && !c.vulnerabilities.includes('Critical:0');
+            const isHigh = c.vulnerabilities.includes('High:') && !c.vulnerabilities.includes('High:0');
+
+            if (isCritical || isHigh) {
+                alerts.push(`
+                    <div style="display: flex; align-items: flex-start; gap: 10px; padding: 8px; background: ${isCritical ? 'rgba(239, 68, 68, 0.05)' : 'rgba(234, 179, 8, 0.05)'}; border: 1px solid ${isCritical ? 'rgba(239, 68, 68, 0.1)' : 'rgba(234, 179, 8, 0.1)'}; border-radius: 4px;">
+                        <i class="fa-solid fa-shield-virus" style="color: ${isCritical ? '#ef4444' : '#eab308'}; margin-top: 2px;"></i>
+                        <div style="display: flex; flex-direction: column; gap: 2px;">
+                            <span style="font-size: 0.8rem; font-weight: 700; color: ${isCritical ? '#ef4444' : '#eab308'};">CVE: ${c.image}</span>
+                            <span style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.8;">${c.vulnerabilities}</span>
+                        </div>
+                    </div>
+                `);
+            }
+        });
+
+        if (alerts.length === 0) {
             return `
                 <div style="display: flex; align-items: center; gap: 8px; color: var(--text-secondary); opacity: 0.6; font-size: 0.8rem;">
                     <i class="fa-solid fa-check-circle" style="color: #4ade80;"></i>
                     <span>Sin alertas críticas</span>
                 </div>`;
         }
-        return oomContainers.map(c => `
-            <div style="display: flex; align-items: flex-start; gap: 10px; padding: 8px; background: rgba(239, 68, 68, 0.05); border: 1px solid rgba(239, 68, 68, 0.1); border-radius: 4px;">
-                <i class="fa-solid fa-circle-exclamation" style="color: #ef4444; margin-top: 2px;"></i>
-                <div style="display: flex; flex-direction: column; gap: 2px;">
-                    <span style="font-size: 0.8rem; font-weight: 700; color: #ef4444;">OOM Killed: ${c.name}</span>
-                    <span style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.8;">Límite de memoria excedido</span>
-                </div>
-            </div>
-        `).join('');
+        return alerts.join('');
     };
 
     const renderContainerRows = () => {
@@ -989,6 +1013,12 @@ function renderDockerHostDetails(hostId) {
                             <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${c.name}">${c.name}</span>
                             <span style="font-size: 0.7rem; color: var(--text-secondary); opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${c.image}</span>
                             ${c.ip_address ? `<span style="font-size: 0.65rem; color: var(--accent-color); font-family: monospace; opacity: 0.9;">${c.ip_address}</span>` : ''}
+                            ${c.vulnerabilities && c.vulnerabilities !== 'Safe' ? `
+                                <div style="display: flex; align-items: center; gap: 4px; margin-top: 2px;" title="${c.vulnerabilities}">
+                                    <i class="fa-solid fa-shield-virus" style="font-size: 0.6rem; color: ${c.vulnerabilities.includes('Critical:') && !c.vulnerabilities.includes('Critical:0') ? '#ef4444' : '#eab308'};"></i>
+                                    <span style="font-size: 0.65rem; font-weight: 600; color: ${c.vulnerabilities.includes('Critical:') && !c.vulnerabilities.includes('Critical:0') ? '#ef4444' : '#eab308'}; opacity: 0.9;">CVE</span>
+                                </div>
+                            ` : ''}
                         </div>
                     </div>
 

@@ -87,24 +87,25 @@ type DockerHost struct {
 }
 
 type Container struct {
-	ID        int64     `json:"id"`
-	Name      string    `json:"name"`
-	Image     string    `json:"image"`
-	Ports     string    `json:"ports"`
-	State     string    `json:"state"`
-	Status    string    `json:"status"`
-	CPUUsage  float64   `json:"cpu_usage"`
-	MemUsage  uint64    `json:"memory_usage"`
-	MemLimit  uint64    `json:"memory_limit"`
-	NetRX     uint64    `json:"net_rx"`
-	NetTX     uint64    `json:"net_tx"`
-	BlockIn   uint64    `json:"block_in"`
-	BlockOut  uint64    `json:"block_out"`
-	PIDs      int       `json:"pids"`
-	IPAddress string    `json:"ip_address"`
-	OOMKilled bool      `json:"oom_killed"`
-	HostID    int64     `json:"host_id"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID              int64     `json:"id"`
+	Name            string    `json:"name"`
+	Image           string    `json:"image"`
+	Ports           string    `json:"ports"`
+	State           string    `json:"state"`
+	Status          string    `json:"status"`
+	CPUUsage        float64   `json:"cpu_usage"`
+	MemUsage        uint64    `json:"memory_usage"`
+	MemLimit        uint64    `json:"memory_limit"`
+	NetRX           uint64    `json:"net_rx"`
+	NetTX           uint64    `json:"net_tx"`
+	BlockIn         uint64    `json:"block_in"`
+	BlockOut        uint64    `json:"block_out"`
+	PIDs            int       `json:"pids"`
+	IPAddress       string    `json:"ip_address"`
+	OOMKilled       bool      `json:"oom_killed"`
+	Vulnerabilities string    `json:"vulnerabilities"`
+	HostID          int64     `json:"host_id"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 type KVMServer struct {
@@ -349,10 +350,12 @@ func ensureSchema(db *sql.DB) {
 			pids INT DEFAULT 0,
 			ip_address VARCHAR(255) DEFAULT '',
 			oom_killed BOOLEAN DEFAULT FALSE,
+			vulnerabilities TEXT DEFAULT '',
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE(host_id, name)
 		)`,
 		"ALTER TABLE containers.containers ADD COLUMN IF NOT EXISTS ports VARCHAR(255) DEFAULT ''",
+		"ALTER TABLE containers.containers ADD COLUMN IF NOT EXISTS vulnerabilities TEXT DEFAULT ''",
 	}
 
 	for _, q := range queries {
@@ -863,14 +866,14 @@ func (d *DB) UpsertContainer(c Container) error {
 
 	if err == sql.ErrNoRows {
 		_, err = d.Conn.Exec(`
-			INSERT INTO containers.containers (name, image, ports, state, status, cpu_usage, memory_usage, memory_limit, net_rx, net_tx, block_in, block_out, pids, ip_address, oom_killed, host_id, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW())`,
-			c.Name, c.Image, c.Ports, c.State, c.Status, c.CPUUsage, c.MemUsage, c.MemLimit, c.NetRX, c.NetTX, c.BlockIn, c.BlockOut, c.PIDs, c.IPAddress, c.OOMKilled, c.HostID)
+			INSERT INTO containers.containers (name, image, ports, state, status, cpu_usage, memory_usage, memory_limit, net_rx, net_tx, block_in, block_out, pids, ip_address, oom_killed, vulnerabilities, host_id, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW())`,
+			c.Name, c.Image, c.Ports, c.State, c.Status, c.CPUUsage, c.MemUsage, c.MemLimit, c.NetRX, c.NetTX, c.BlockIn, c.BlockOut, c.PIDs, c.IPAddress, c.OOMKilled, c.Vulnerabilities, c.HostID)
 	} else if err == nil {
 		_, err = d.Conn.Exec(`
-			UPDATE containers.containers SET image=$1, ports=$2, state=$3, status=$4, cpu_usage=$5, memory_usage=$6, memory_limit=$7, net_rx=$8, net_tx=$9, block_in=$10, block_out=$11, pids=$12, ip_address=$13, oom_killed=$14, updated_at=NOW()
-			WHERE id=$15`,
-			c.Image, c.Ports, c.State, c.Status, c.CPUUsage, c.MemUsage, c.MemLimit, c.NetRX, c.NetTX, c.BlockIn, c.BlockOut, c.PIDs, c.IPAddress, c.OOMKilled, id)
+			UPDATE containers.containers SET image=$1, ports=$2, state=$3, status=$4, cpu_usage=$5, memory_usage=$6, memory_limit=$7, net_rx=$8, net_tx=$9, block_in=$10, block_out=$11, pids=$12, ip_address=$13, oom_killed=$14, vulnerabilities=$15, updated_at=NOW()
+			WHERE id=$16`,
+			c.Image, c.Ports, c.State, c.Status, c.CPUUsage, c.MemUsage, c.MemLimit, c.NetRX, c.NetTX, c.BlockIn, c.BlockOut, c.PIDs, c.IPAddress, c.OOMKilled, c.Vulnerabilities, id)
 	}
 	return err
 }
@@ -897,7 +900,7 @@ func (d *DB) GetDockerHosts() ([]DockerHost, error) {
 }
 
 func (d *DB) GetAllContainers() ([]Container, error) {
-	rows, err := d.Conn.Query("SELECT id, name, image, ports, state, status, cpu_usage, memory_usage, memory_limit, net_rx, net_tx, block_in, block_out, pids, ip_address, oom_killed, host_id, updated_at FROM containers.containers")
+	rows, err := d.Conn.Query("SELECT id, name, image, ports, state, status, cpu_usage, memory_usage, memory_limit, net_rx, net_tx, block_in, block_out, pids, ip_address, oom_killed, vulnerabilities, host_id, updated_at FROM containers.containers")
 	if err != nil {
 		return nil, err
 	}
@@ -906,7 +909,7 @@ func (d *DB) GetAllContainers() ([]Container, error) {
 	var containers []Container
 	for rows.Next() {
 		var c Container
-		if err := rows.Scan(&c.ID, &c.Name, &c.Image, &c.Ports, &c.State, &c.Status, &c.CPUUsage, &c.MemUsage, &c.MemLimit, &c.NetRX, &c.NetTX, &c.BlockIn, &c.BlockOut, &c.PIDs, &c.IPAddress, &c.OOMKilled, &c.HostID, &c.UpdatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Image, &c.Ports, &c.State, &c.Status, &c.CPUUsage, &c.MemUsage, &c.MemLimit, &c.NetRX, &c.NetTX, &c.BlockIn, &c.BlockOut, &c.PIDs, &c.IPAddress, &c.OOMKilled, &c.Vulnerabilities, &c.HostID, &c.UpdatedAt); err != nil {
 			return nil, err
 		}
 		containers = append(containers, c)
