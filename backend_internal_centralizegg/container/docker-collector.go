@@ -164,6 +164,18 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 		volumesJSON = string(b)
 	}
 
+	// Docker Networks Topology
+	networksJSON := "[]"
+	netsRaw, err := dc.runCommand(client, "docker network inspect $(docker network ls -q) --format '{{json .}}' 2>/dev/null")
+	if err == nil && strings.TrimSpace(netsRaw) != "" {
+		networksJSON = strings.TrimSpace(netsRaw)
+		// Ensure it's a valid JSON array or object
+		if !strings.HasPrefix(networksJSON, "[") {
+			// If it's a list indicative of one-line-per-object, wrap it
+			networksJSON = "[" + strings.ReplaceAll(networksJSON, "\n", ",") + "]"
+		}
+	}
+
 	hostID, err := dc.DB.UpsertDockerHost(data_centralizegg.DockerHost{
 		ServerID:      s.ID,
 		Hostname:      hostname,
@@ -183,6 +195,7 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 		InodesUsage:   inodesUsage,
 		LogsSize:      dockerLogsSize,
 		Volumes:       volumesJSON,
+		Networks:      networksJSON,
 		UpdateStatus:  "Up to Date",
 	})
 	if err != nil {

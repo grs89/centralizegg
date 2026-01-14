@@ -931,12 +931,28 @@ function renderDockerHostDetails(hostId) {
     const host = allHostsCache.find(h => h.id === hostId);
     if (!host) return;
 
-    const inner = scannerSection.querySelector('.glass-panel');
-    if (!inner) return;
+    // --- WRAPPER INITIALIZATION (Firewall Pattern) ---
+    let statsWrapper = document.getElementById('docker-stats-wrapper');
+    let mapWrapper = document.getElementById('docker-map-wrapper');
 
-    inner.style.textAlign = 'left';
-    inner.style.padding = '24px';
-    inner.style.border = 'none';
+    if (!statsWrapper) {
+        scannerSection.innerHTML = `
+            <div id="docker-stats-wrapper" class="glass-panel" style="padding: 24px; text-align: left; margin-bottom: 20px;"></div>
+            <div id="docker-map-wrapper" class="glass-panel" style="padding: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 15px; padding-bottom: 10px;">
+                    <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9;">
+                        Mapa de Red Docker
+                    </div>
+                    <i class="fa-solid fa-bug" onclick="window.toggleDockerMapDebug()" title="Toggle Debug Mode" style="cursor: pointer; color: var(--text-secondary); font-size: 1rem; opacity: 0.5; transition: opacity 0.2s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5"></i>
+                </div>
+                <div id="docker-topology-map" style="height: 500px; width: 100%; border-radius: 8px;"></div>
+            </div>
+        `;
+        statsWrapper = document.getElementById('docker-stats-wrapper');
+        mapWrapper = document.getElementById('docker-map-wrapper');
+    }
+
+    const inner = statsWrapper;
 
     let filteredContainers = allContainersCache.filter(c => c.host_id === hostId);
     filteredContainers.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
@@ -1152,6 +1168,14 @@ function renderDockerHostDetails(hostId) {
         const volumesListEl = document.getElementById('docker-volumes-list');
         if (volumesListEl) volumesListEl.innerHTML = renderVolumesList();
 
+        const mapContainer = document.getElementById('docker-topology-map');
+        if (mapContainer && host.docker_networks) {
+            if (!window.currentDockerMap) {
+                window.currentDockerMap = new DockerTopologyMap('docker-topology-map');
+            }
+            window.currentDockerMap.render(host.docker_networks);
+        }
+
         return; // Done with partial update
     }
 
@@ -1267,7 +1291,6 @@ function renderDockerHostDetails(hostId) {
                     </div>
                 </div>
             </div>
-
             <!-- Right Column: Containers -->
             <div style="flex: 1; min-width: 0;">
                 <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
@@ -1289,6 +1312,15 @@ function renderDockerHostDetails(hostId) {
             </div>
         </div>
     `;
+
+    // Re-draw map after full content render
+    const mapContainer = document.getElementById('docker-topology-map');
+    if (mapContainer && host.docker_networks) {
+        if (!window.currentDockerMap) {
+            window.currentDockerMap = new DockerTopologyMap('docker-topology-map');
+        }
+        window.currentDockerMap.render(host.docker_networks);
+    }
 }
 
 // Function to update config button visibility based on tool and configured servers
@@ -3231,3 +3263,246 @@ function initDocSystem() {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', initDocSystem);
+
+class DockerTopologyMap {
+    constructor(containerId) {
+        this.containerId = containerId;
+        this.svg = null;
+        this.width = 0;
+        this.height = 400;
+        this.nodes = [];
+        this.links = [];
+        this.initialized = false;
+    }
+
+    render(networksJSON) {
+        const container = document.getElementById(this.containerId);
+        if (!container) return;
+
+        this.width = container.clientWidth || 800;
+
+        let networks = [];
+        try {
+            networks = networksJSON ? JSON.parse(networksJSON) : [];
+        } catch (e) {
+            console.error('[DockerTopologyMap] Error parsing networks:', e);
+            return;
+        }
+
+        // --- TOPOLOGY BUILDER ---
+        const nodes = [];
+        const links = [];
+        const nodeMap = new Map();
+
+        // 1. Internet Node
+        const internetId = 'internet-node';
+        nodes.push({ id: internetId, name: 'Internet', type: 'internet', color: '#ff4d4d' });
+        nodeMap.set(internetId, 0);
+
+        // 2. Process Networks and Containers
+        networks.forEach(net => {
+            const netId = `net-${net.Id}`;
+            if (!nodeMap.has(netId)) {
+                // Avoid connecting 'none' and 'host' to internet
+                const isInternalOnly = net.Name === 'none' || net.Name === 'host' || net.Internal;
+
+                nodes.push({
+                    id: netId,
+                    name: net.Name,
+                    type: 'network',
+                    color: net.Name === 'none' || net.Name === 'host' ? '#94a3b8' : '#38bdf8',
+                    isSystem: net.Name === 'none' || net.Name === 'host'
+                });
+                nodeMap.set(netId, nodes.length - 1);
+
+                if (!isInternalOnly) {
+                    links.push({ source: netId, target: internetId, type: 'external' });
+                }
+            }
+
+            const containers = net.Containers || {};
+            Object.keys(containers).forEach(cid => {
+                const c = containers[cid];
+                const cleanName = c.Name.replace(/^\//, '').split('.')[0]; // Shorten name
+                const cnodeId = `c-${cid}`;
+
+                if (!nodeMap.has(cnodeId)) {
+                    nodes.push({ id: cnodeId, name: cleanName, image: cleanName, type: 'container', color: '#4ade80' });
+                    nodeMap.set(cnodeId, nodes.length - 1);
+                }
+
+                links.push({ source: cnodeId, target: netId, type: 'internal' });
+            });
+        });
+
+        this.nodes = nodes;
+        this.links = links;
+
+        this.draw();
+    }
+
+    draw() {
+        const container = document.getElementById(this.containerId);
+        if (!container) return;
+
+        this.height = Math.max(500, this.nodes.length * 30);
+
+        container.innerHTML = `
+            <svg width="100%" height="${this.height}" style="background: transparent; overflow: visible;">
+                <defs>
+                    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                        <feGaussianBlur stdDeviation="4" result="blur" />
+                        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                    </filter>
+                    <style>
+                        @keyframes pulse {
+                            0% { filter: drop-shadow(0 0 2px rgba(255, 77, 77, 0.5)); }
+                            50% { filter: drop-shadow(0 0 10px rgba(255, 77, 77, 0.8)); }
+                            100% { filter: drop-shadow(0 0 2px rgba(255, 77, 77, 0.5)); }
+                        }
+                        .internet-pulse { animation: pulse 2s infinite ease-in-out; }
+                        .node-group:hover circle { filter: brightness(1.2) drop-shadow(0 0 15px currentColor); }
+                    </style>
+                </defs>
+                <g id="links-group"></g>
+                <g id="nodes-group"></g>
+            </svg>
+        `;
+
+        const linksGroup = container.querySelector('#links-group');
+        const nodesGroup = container.querySelector('#nodes-group');
+
+        const centerX = this.width / 2;
+
+        // 1. Hierarchical Spread (Top down with more spacing)
+        const internetNode = this.nodes.find(n => n.type === 'internet');
+        if (internetNode) {
+            internetNode.x = centerX;
+            internetNode.y = 70;
+        }
+
+        const networkNodes = this.nodes.filter(n => n.type === 'network');
+        const netSpacing = Math.min(this.width / (networkNodes.length + 1), 250);
+        const netStartX = centerX - ((networkNodes.length - 1) * netSpacing) / 2;
+
+        networkNodes.forEach((node, i) => {
+            node.x = netStartX + (i * netSpacing);
+            node.y = 220;
+        });
+
+        const containerNodes = this.nodes.filter(n => n.type === 'container');
+        const contSpacing = Math.min(this.width / (containerNodes.length + 1), 150);
+        const contStartX = centerX - ((containerNodes.length - 1) * contSpacing) / 2;
+
+        containerNodes.forEach((node, i) => {
+            const connectedLinks = this.links.filter(l => l.source === node.id);
+            if (connectedLinks.length > 0) {
+                const targetNet = this.nodes.find(n => n.id === connectedLinks[0].target);
+                // Spread containers belonging to the same network
+                const indexInNet = connectedLinks[0] ? this.links.filter(l => l.target === connectedLinks[0].target && l.source.startsWith('c-')).indexOf(connectedLinks[0]) : 0;
+                const offset = (indexInNet - 1) * 80;
+                node.x = targetNet.x + offset;
+            } else {
+                node.x = contStartX + (i * contSpacing);
+            }
+            node.y = 380 + (i % 2 === 0 ? 0 : 40);
+        });
+
+        // 2. Render Links
+        this.links.forEach(link => {
+            const source = this.nodes.find(n => n.id === link.source);
+            const target = this.nodes.find(n => n.id === link.target);
+            if (source && target) {
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', source.x);
+                line.setAttribute('y1', source.y);
+                line.setAttribute('x2', target.x);
+                line.setAttribute('y2', target.y);
+
+                if (link.type === 'external') {
+                    line.setAttribute('stroke', 'rgba(255,77,77,0.5)');
+                    line.setAttribute('stroke-width', '2.5');
+                    line.setAttribute('stroke-dasharray', '8,8');
+                    const anim = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+                    anim.setAttribute('attributeName', 'stroke-dashoffset');
+                    anim.setAttribute('from', '32');
+                    anim.setAttribute('to', '0');
+                    anim.setAttribute('dur', '1.2s');
+                    anim.setAttribute('repeatCount', 'indefinite');
+                    line.appendChild(anim);
+                } else {
+                    line.setAttribute('stroke', 'rgba(255,255,255,0.2)');
+                    line.setAttribute('stroke-width', '1.8');
+                }
+                linksGroup.appendChild(line);
+            }
+        });
+
+        // 3. Render Nodes
+        this.nodes.forEach(node => {
+            const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            group.setAttribute('class', 'node-group');
+            group.style.cursor = 'pointer';
+
+            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('cx', node.x);
+            circle.setAttribute('cy', node.y);
+            circle.setAttribute('r', node.type === 'container' ? 16 : 28);
+            circle.setAttribute('fill', node.color);
+            circle.setAttribute('fill-opacity', '0.2');
+            circle.setAttribute('stroke', node.color);
+            circle.setAttribute('stroke-width', '3');
+            circle.style.transition = 'all 0.3s ease';
+            if (node.type === 'internet') circle.classList.add('internet-pulse');
+
+            const foSize = node.type === 'container' ? 28 : 42;
+            const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+            fo.setAttribute('x', node.x - foSize / 2);
+            fo.setAttribute('y', node.y - foSize / 2);
+            fo.setAttribute('width', foSize);
+            fo.setAttribute('height', foSize);
+            fo.style.pointerEvents = 'none';
+
+            let iconClass = 'fa-solid fa-box';
+            if (node.type === 'internet') iconClass = 'fa-solid fa-globe';
+            else if (node.type === 'network' || node.isSystem) iconClass = 'fa-solid fa-network-wired';
+
+            fo.innerHTML = `
+                <div xmlns="http://www.w3.org/1999/xhtml" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: ${node.color}; font-size: ${node.type === 'container' ? '16px' : '22px'}; text-shadow: 0 0 10px ${node.color}cc;">
+                    <i class="${iconClass}"></i>
+                </div>
+            `;
+
+            const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            label.setAttribute('x', node.x);
+            label.setAttribute('y', node.y + (node.type === 'container' ? 40 : 55));
+            label.setAttribute('text-anchor', 'middle');
+            label.setAttribute('fill', 'var(--text-primary)');
+            label.setAttribute('font-size', '12px');
+            label.setAttribute('font-weight', '700');
+            label.style.textShadow = '0 2px 4px rgba(0,0,0,0.8)';
+            label.textContent = node.name;
+
+            group.appendChild(circle);
+            group.appendChild(fo);
+            group.appendChild(label);
+            nodesGroup.appendChild(group);
+
+            group.addEventListener('mouseenter', () => {
+                circle.setAttribute('fill-opacity', '0.5');
+                circle.setAttribute('stroke-width', '4');
+            });
+            group.addEventListener('mouseleave', () => {
+                circle.setAttribute('fill-opacity', '0.2');
+                circle.setAttribute('stroke-width', '3');
+            });
+        });
+    }
+}
+
+window.DockerTopologyMap = DockerTopologyMap;
+
+window.toggleDockerMapDebug = function () {
+    console.log('[DockerMap] Debug mode toggled');
+    // Implement extra debug info if needed
+};
