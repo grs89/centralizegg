@@ -915,62 +915,80 @@ function renderDockerHostDetails(hostId) {
                 <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
                     Información
                 </div>
-                <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 25px; display: flex; flex-direction: column; gap: 15px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span style="color: var(--text-secondary); font-size: 1rem;">Versión Docker:</span>
-                        <span style="color: #38bdf8; font-weight: 700; font-size: 1.1rem;">${host.docker_version || 'N/A'}</span>
+                
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <!-- Docker Service Card -->
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color);">Servicio Docker</div>
+                            <span style="font-weight: 800; font-size: 0.7rem; color: ${host.docker_service_status === 'active' ? '#4ade80' : '#ef4444'}; text-transform: uppercase; background: ${host.docker_service_status === 'active' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; padding: 2px 6px; border-radius: 4px; border: 1px solid ${host.docker_service_status === 'active' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'};">
+                                ${host.docker_service_status || 'offline'}
+                            </span>
+                        </div>
+                        <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                            <i class="fa-solid fa-plug" style="font-size: 0.8rem; opacity: 0.7;"></i> 
+                            <span>Socket: <span style="color: var(--text-primary); font-weight: 500;">${host.docker_socket_status || 'N/A'}</span></span>
+                        </div>
                     </div>
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span style="color: var(--text-secondary); font-size: 1rem;">OS:</span>
-                        <span style="font-weight: 600; font-size: 1rem; color: var(--text-primary);">${host.os_name || 'N/A'}</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span style="color: var(--text-secondary); font-size: 1rem;">Uptime:</span>
-                        <span style="font-weight: 600; font-size: 1rem; color: var(--text-primary);">${host.uptime || 'N/A'}</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span style="color: var(--text-secondary); font-size: 1rem;">CPU:</span>
-                        <span style="font-weight: 600; font-size: 1.1rem; color: var(--text-primary);">${(host.cpu_usage || 0).toFixed(1)}% (${host.cpu_cores || 1} núcleos)</span>
-                    </div>
-                    
-                    <div style="height: 1px; background: rgba(255,255,255,0.05); margin: 5px 0;"></div>
 
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span style="color: var(--text-secondary); font-size: 1rem; font-weight: 500;">Servicio Docker:</span>
-                        <span style="font-weight: 800; font-size: 1rem; color: ${host.docker_service_status === 'active' ? '#4ade80' : '#ef4444'}; text-transform: uppercase;">
-                            ${host.docker_service_status || 'offline'}
-                        </span>
+                    <!-- System Info Card -->
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color);">Sistema y Versión</div>
+                            <span style="color: #38bdf8; font-weight: 700; font-size: 0.75rem;">v${host.docker_version || 'N/A'}</span>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 6px;">
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                                <i class="fa-solid fa-server" style="font-size: 0.8rem; opacity: 0.7;"></i> 
+                                <span>OS: <span style="color: var(--text-primary); font-weight: 500;">${host.os_name || 'N/A'}</span></span>
+                            </div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                                <i class="fa-solid fa-clock-rotate-left" style="font-size: 0.8rem; opacity: 0.7;"></i> 
+                                <span>Uptime: <span style="color: var(--text-primary); font-weight: 500;">${host.uptime || 'N/A'}</span></span>
+                            </div>
+                        </div>
                     </div>
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span style="color: var(--text-secondary); font-size: 1rem;">Docker Socket:</span>
-                        <span style="font-weight: 600; font-size: 1rem; color: var(--text-primary); text-align: right;">${host.docker_socket_status || 'N/A'}</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span style="color: var(--text-secondary); font-size: 1rem;">Latencia API:</span>
-                        <span style="font-weight: 800; font-size: 1.1rem; color: ${host.docker_api_latency < 500 ? '#4ade80' : '#eab308'};">${host.docker_api_latency || 0} ms</span>
+
+                    <!-- Performance Card -->
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
+                        <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 8px;">Rendimiento</div>
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                                    <i class="fa-solid fa-microchip" style="font-size: 0.8rem; opacity: 0.7;"></i> 
+                                    <span>Carga CPU</span>
+                                </div>
+                                <span style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">${(host.cpu_usage || 0).toFixed(1)}%</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                                    <i class="fa-solid fa-stopwatch" style="font-size: 0.8rem; opacity: 0.7;"></i> 
+                                    <span>Latencia API</span>
+                                </div>
+                                <span style="font-weight: 700; font-size: 0.85rem; color: ${host.docker_api_latency < 500 ? '#4ade80' : '#eab308'};">${host.docker_api_latency || 0} ms</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
 
             <!-- Right Column: Containers -->
-            <div class="glass-panel" style="padding: 25px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                    <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9;">
-                        Contenedores Activos
-                    </div>
+            <!-- Right Column: Containers -->
+            <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    Contenedores
                 </div>
                 
-                <div style="display: flex; flex-direction: column; gap: 10px;">
-                    <!-- Grid Header -->
-                    <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1.5fr 1fr 0.8fr; gap: 15px; padding: 0 10px 10px 10px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.75rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 600;">
-                        <div>Nombre / Imagen</div>
-                        <div>Estado</div>
-                        <div>CPU</div>
-                        <div>Memoria (Uso/Límite)</div>
-                        <div>Red (RX/TX)</div>
-                        <div style="text-align: right;">Alertas</div>
-                    </div>
+                <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1.5fr 1.2fr 0.8fr; gap: 15px; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary);">
+                    <div>Nombre / Imagen</div>
+                    <div>Estado</div>
+                    <div>CPU</div>
+                    <div>Memoria (Uso/Límite)</div>
+                    <div>Red (RX/TX)</div>
+                    <div style="text-align: right;">Alertas</div>
+                </div>
 
+                <div style="display: flex; flex-direction: column;">
                     ${filteredContainers.length === 0 ? '<div style="text-align:center; padding: 40px; opacity:0.5;">No hay contenedores que mostrar</div>' : filteredContainers.map(c => {
         const isRunning = (c.state || '').toLowerCase() === 'running';
         const memPercent = c.memory_limit > 0 ? (c.memory_usage / c.memory_limit * 100) : 0;
@@ -978,62 +996,61 @@ function renderDockerHostDetails(hostId) {
         const hasOom = c.oom_killed;
 
         return `
-                            <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1.5fr 1fr 0.8fr; gap: 15px; padding: 12px 10px; align-items: center; border: 1px solid rgba(255,255,255,0.03); border-radius: 8px; background: rgba(255,255,255,0.015); transition: all 0.2s ease;">
-                                <!-- Name & Image -->
-                                <div style="display: flex; align-items: center; gap: 10px; overflow: hidden;">
-                                    <div style="width: 32px; height: 32px; border-radius: 8px; background: ${isRunning ? 'rgba(56, 189, 248, 0.1)' : 'rgba(156, 163, 175, 0.1)'}; display: flex; align-items: center; justify-content: center; border: 1px solid ${isRunning ? 'rgba(56, 189, 248, 0.2)' : 'rgba(156, 163, 175, 0.2)'}; flex-shrink: 0;">
-                                        <i class="fa-brands fa-docker" style="color: ${isRunning ? '#38bdf8' : '#9ca3af'}; font-size: 1rem;"></i>
-                                    </div>
-                                    <div style="display: flex; flex-direction: column; overflow: hidden;">
-                                        <span style="font-size: 0.9rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${c.name}">${c.name}</span>
-                                        <span style="font-size: 0.7rem; color: var(--text-secondary); opacity: 0.6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${c.image}</span>
-                                    </div>
-                                </div>
-
-                                <!-- Status -->
-                                <div>
-                                    <span style="font-size: 0.65rem; font-weight: 700; color: ${isRunning ? '#4ade80' : '#ef4444'}; text-transform: uppercase; background: ${isRunning ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; padding: 2px 8px; border-radius: 5px; border: 1px solid ${isRunning ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'};">
-                                        ${c.state || 'stopped'}
-                                    </span>
-                                </div>
-
-                                <!-- CPU -->
-                                <div style="display: flex; flex-direction: column; gap: 4px;">
-                                    <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary);">${(c.cpu_usage || 0).toFixed(1)}%</div>
-                                    <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
-                                        <div style="height: 100%; width: ${Math.min(c.cpu_usage || 0, 100)}%; background: #3b82f6;"></div>
-                                    </div>
-                                </div>
-
-                                <!-- RAM Usage / Limit -->
-                                <div style="display: flex; flex-direction: column; gap: 4px;">
-                                    <div style="font-size: 0.8rem; font-weight: 600; color: ${isHighMem ? '#fb923c' : 'var(--text-primary)'};">
-                                        ${formatBytes(c.memory_usage, 1)} / ${formatBytes(c.memory_limit, 1)}
-                                    </div>
-                                    <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
-                                        <div style="height: 100%; width: ${Math.min(memPercent, 100)}%; background: ${isHighMem ? '#fb923c' : '#a855f7'};"></div>
-                                    </div>
-                                </div>
-
-                                <!-- Network -->
-                                <div style="display: flex; flex-direction: column; gap: 2px; font-size: 0.75rem;">
-                                    <div style="display: flex; align-items: center; gap: 4px; color: #4ade80;">
-                                        <i class="fa-solid fa-arrow-down" style="font-size: 0.6rem;"></i> ${formatBytes(c.net_rx, 0)}
-                                    </div>
-                                    <div style="display: flex; align-items: center; gap: 4px; color: #fb923c;">
-                                        <i class="fa-solid fa-arrow-up" style="font-size: 0.6rem;"></i> ${formatBytes(c.net_tx, 0)}
-                                    </div>
-                                </div>
-
-                                <!-- Alerts / OOM -->
-                                <div style="text-align: right;">
-                                    ${hasOom ? `
-                                        <span title="Memory Limit Hit (OOM)" style="color: #ef4444; font-size: 0.7rem; font-weight: 700; background: rgba(239, 68, 68, 0.1); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(239, 68, 68, 0.2); animation: pulse 2s infinite;">
-                                            <i class="fa-solid fa-triangle-exclamation"></i> OOM
-                                        </span>
-                                    ` : '<span style="color: var(--text-secondary); opacity: 0.3; font-size: 0.7rem;">None</span>'}
+                        <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1.5fr 1.2fr 0.8fr; gap: 15px; align-items: center; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.05); transition: all 0.2s ease;">
+                            <!-- Name & Image -->
+                            <div style="display: flex; align-items: center; gap: 10px; overflow: hidden;">
+                                <i class="fa-brands fa-docker" style="color: ${isRunning ? '#38bdf8' : '#9ca3af'}; font-size: 1.2rem; opacity: 0.8;"></i>
+                                <div style="display: flex; flex-direction: column; overflow: hidden;">
+                                    <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${c.name}">${c.name}</span>
+                                    <span style="font-size: 0.7rem; color: var(--text-secondary); opacity: 0.6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${c.image}</span>
                                 </div>
                             </div>
+
+                            <!-- Status -->
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <div class="status-dot ${isRunning ? 'online' : 'offline'}" style="width: 8px; height: 8px;"></div>
+                                <span style="font-size: 0.75rem; font-weight: 500; color: ${isRunning ? '#4ade80' : '#ef4444'}; text-transform: uppercase;">
+                                    ${c.state || 'stopped'}
+                                </span>
+                            </div>
+
+                            <!-- CPU -->
+                            <div style="display: flex; flex-direction: column; gap: 3px;">
+                                <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary);">${(c.cpu_usage || 0).toFixed(1)}%</div>
+                                <div style="width: 100%; height: 3px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
+                                    <div style="height: 100%; width: ${Math.min(c.cpu_usage || 0, 100)}%; background: #3b82f6;"></div>
+                                </div>
+                            </div>
+
+                            <!-- RAM Usage / Limit -->
+                            <div style="display: flex; flex-direction: column; gap: 3px;">
+                                <div style="font-size: 0.85rem; font-weight: 600; color: ${isHighMem ? '#fb923c' : 'var(--text-primary)'};">
+                                    ${formatBytes(c.memory_usage, 1)} / ${formatBytes(c.memory_limit, 1)}
+                                </div>
+                                <div style="width: 100%; height: 3px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
+                                    <div style="height: 100%; width: ${Math.min(memPercent, 100)}%; background: ${isHighMem ? '#fb923c' : '#a855f7'};"></div>
+                                </div>
+                            </div>
+
+                            <!-- Network -->
+                            <div style="display: flex; flex-direction: column; gap: 1px; font-size: 0.8rem;">
+                                <div style="display: flex; align-items: center; gap: 5px; color: #4ade80; opacity: 0.9;">
+                                    <i class="fa-solid fa-arrow-down" style="font-size: 0.7rem;"></i> ${formatBytes(c.net_rx, 0)}
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 5px; color: #fb923c; opacity: 0.9;">
+                                    <i class="fa-solid fa-arrow-up" style="font-size: 0.7rem;"></i> ${formatBytes(c.net_tx, 0)}
+                                </div>
+                            </div>
+
+                            <!-- Alerts / OOM -->
+                            <div style="text-align: right;">
+                                ${hasOom ? `
+                                    <span title="Memory Limit Hit (OOM)" style="color: #ef4444; font-size: 0.7rem; font-weight: 700; background: rgba(239, 68, 68, 0.1); padding: 1px 5px; border-radius: 3px; border: 1px solid rgba(239, 68, 68, 0.2);">
+                                        <i class="fa-solid fa-circle-exclamation"></i> OOM
+                                    </span>
+                                ` : `<span style="color: var(--text-secondary); opacity: 0.2; font-size: 0.7rem;"><i class="fa-solid fa-check"></i></span>`}
+                            </div>
+                        </div>
                         `;
     }).join('')}
                 </div>
