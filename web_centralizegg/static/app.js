@@ -3327,7 +3327,15 @@ class DockerTopologyMap {
                 const cnodeId = `c-${cid}`;
 
                 if (!nodeMap.has(cnodeId)) {
-                    nodes.push({ id: cnodeId, name: cleanName, image: cleanName, type: 'container', color: '#4ade80' });
+                    const ip = c.IPv4Address || c.IPv6Address || 'Sin IP';
+                    nodes.push({
+                        id: cnodeId,
+                        name: cleanName,
+                        image: cleanName,
+                        type: 'container',
+                        color: '#4ade80',
+                        ip: ip.split('/')[0] // Remove subnet mask
+                    });
                     nodeMap.set(cnodeId, nodes.length - 1);
                 }
 
@@ -3431,8 +3439,16 @@ class DockerTopologyMap {
                     anim.setAttribute('repeatCount', 'indefinite');
                     line.appendChild(anim);
                 } else {
-                    line.setAttribute('stroke', 'rgba(255,255,255,0.2)');
-                    line.setAttribute('stroke-width', '1.8');
+                    line.setAttribute('stroke', source.color || 'rgba(255,255,255,0.2)');
+                    line.setAttribute('stroke-width', '1.5');
+                    line.setAttribute('stroke-dasharray', '4,4');
+                    const anim = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+                    anim.setAttribute('attributeName', 'stroke-dashoffset');
+                    anim.setAttribute('from', '16');
+                    anim.setAttribute('to', '0');
+                    anim.setAttribute('dur', '3s');
+                    anim.setAttribute('repeatCount', 'indefinite');
+                    line.appendChild(anim);
                 }
                 linksGroup.appendChild(line);
             }
@@ -3482,6 +3498,10 @@ class DockerTopologyMap {
             label.setAttribute('font-weight', '700');
             label.style.textShadow = '0 2px 4px rgba(0,0,0,0.8)';
             label.textContent = node.name;
+
+            const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+            title.textContent = node.type === 'container' ? `${node.name}\nIP: ${node.ip}` : node.name;
+            group.appendChild(title);
 
             group.appendChild(circle);
             group.appendChild(fo);
