@@ -44,6 +44,11 @@
     - Red: Tráfico RX/TX con **Sparklines** en tiempo real.
     - **Interfaces Bridge**: Monitoreo dedicado de estados y tráfico para puentes de red (`br0`, `virbr0`, etc.).
     - Estado de VMs: Running, Blocked, Paused, Shutdown, Shutoff, Crashed, Suspended
+*   **Monitoreo de Contenedores**: Soporte avanzado para **Docker & Podman**.
+    - **Mapa de Topología**: Visualización interactiva animada de la red (Contenedores -> Redes -> Internet).
+    - **Monitoreo de GPU**: Carga, temperatura y VRAM para GPUs NVIDIA mediante `nvidia-smi`.
+    - **Seguridad (CVE)**: Escaneo automático de vulnerabilidades en imágenes con `docker scout`.
+    - **Almacenamiento**: Detalle de `/var/lib/docker`, inodos y tamaños de volúmenes individuales.
 *   **Monitoreo de Firewall**: Soporte completo para **pfSense** vía SSH.
     - Métricas de sistema (CPU, Memoria, Disco)
     - Información de interfaces de red con estadísticas de tráfico
@@ -85,9 +90,10 @@ graph TD
     
     subgraph Backend["Backend (Go)"]
         API[API REST<br/>Gorilla Mux]
-        Collector[Colector Unificado<br/>KVM + pfSense]
+        Collector[Colector Unificado<br/>KVM + pfSense + Docker]
         Libvirt[Libvirt Client]
         SSH[SSH Client]
+        Docker[Docker SSH Client]
         pfSense[pfSense Client]
     end
     
@@ -138,6 +144,10 @@ graph TD
    - Enumera todas las VMs y recopila sus métricas
    - Calcula uso de CPU basado en tiempo acumulado
    - Almacena/actualiza datos en PostgreSQL
+4. **Monitoreo de Docker**:
+   - Inspección de redes para generar el mapa de topología.
+   - Recopilación de estadísticas de contenedores (CPU, RAM, Red, I/O).
+   - Escaneo de vulnerabilidades y monitoreo de GPU.
 
 2. **API REST**: Procesa peticiones del frontend
    - `GET /api/hosts` - Retorna hosts con información completa
@@ -162,8 +172,10 @@ Centralizegg/
 │   │   └── postgres.go            # Capa de acceso a datos (PostgreSQL)
 │   ├── virtualization/
 │   │   └── kvm-collector.go       # Colector de métricas KVM
-│   └── firewall/
-│       └── pfsense-collector.go   # Colector de métricas pfSense (SSH)
+│   ├── firewall/
+│   │   └── pfsense-collector.go   # Colector de métricas pfSense (SSH)
+│   └── container/
+│       └── docker-collector.go    # Colector de métricas Docker/Podman
 ├── web_centralizegg/
 │   └── static/
 │       ├── index.html             # Interfaz principal
@@ -530,15 +542,15 @@ Almacena estadísticas de interfaces de red de pfSense.
    - Actualización automática cada 5 segundos
    - Indicador de última actualización
 
-### Herramientas (Placeholders)
+5. **Docker / Podman**
+   - Mapa de red SVG reactivo con animaciones de flujo.
+   - Detalles de IP al pasar el mouse por los contenedores.
+   - Monitoreo persistente de GPU NVIDIA.
+   - Listado de volúmenes con ordenamiento por tamaño.
 
-El dashboard incluye placeholders para futuras herramientas:
-- Proxmox
-- NAS / Ceph
-- Docker / Podman
-- Servicios Web / DB
-- PFSense
-- Logs
+6. **Notificaciones & Logs**
+   - Registro unificado de éxito en la recolección para todas las herramientas.
+   - Badge con contador de servidores offline.
 
 ## 💻 Desarrollo
 
@@ -666,6 +678,7 @@ go build -o centralizegg ./cmd_centralizegg/server
     - **Frontend Libs**:
         - `Leaflet.js` - Mapas interactivos con soporte táctil
         - `leaflet-ant-path` - Animaciones de tráfico fluidas (Bezier/Flight-Path)
+        - `Interactive SVG Engine` - Renderizado de topología de red con flujos animados
         - `Custom Sparklines` - Renderizado SVG ultraligero para métricas en tiempo real
 
 ### Debugging AntPath Map
