@@ -1086,19 +1086,19 @@ function renderDockerHostDetails(hostId) {
 
                             <!-- CPU -->
                             <div style="display: flex; flex-direction: column; gap: 3px;">
-                                <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary);">${(c.cpu_usage || 0).toFixed(1)}%</div>
+                                <div style="font-size: 0.85rem; font-weight: 600; color: ${getStatusColor(c.cpu_usage || 0)};">${(c.cpu_usage || 0).toFixed(1)}%</div>
                                 <div style="width: 100%; height: 3px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
-                                    <div style="height: 100%; width: ${Math.min(c.cpu_usage || 0, 100)}%; background: #3b82f6;"></div>
+                                    <div style="height: 100%; width: ${Math.min(c.cpu_usage || 0, 100)}%; background: ${getStatusColor(c.cpu_usage || 0)};"></div>
                                 </div>
                             </div>
 
                             <!-- RAM Usage / Limit -->
                             <div style="display: flex; flex-direction: column; gap: 3px;">
-                                <div style="font-size: 0.85rem; font-weight: 600; color: ${isHighMem ? '#fb923c' : 'var(--text-primary)'};">
+                                <div style="font-size: 0.85rem; font-weight: 600; color: ${getStatusColor(memPercent)};">
                                     ${formatBytes(c.memory_usage, 1)}
                                 </div>
                                 <div style="width: 100%; height: 3px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
-                                    <div style="height: 100%; width: ${Math.min(memPercent, 100)}%; background: ${isHighMem ? '#fb923c' : '#a855f7'};"></div>
+                                    <div style="height: 100%; width: ${Math.min(memPercent, 100)}%; background: ${getStatusColor(memPercent)};"></div>
                                 </div>
                             </div>
 
@@ -1671,21 +1671,23 @@ function renderVMs() {
     }
 
     // Grid header with fixed minimum widths for stability
-    const gridCols = "minmax(250px, 1.2fr) minmax(80px, 0.6fr) minmax(120px, 1fr) minmax(140px, 1fr) minmax(180px, 1.2fr)";
+    const gridCols = "2fr 1fr 1fr 1.5fr 1.5fr 2fr";
 
     let html = `
-        <div style="overflow-x: auto; width: 100%; padding-bottom: 10px;">
-            <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); width: 100%; min-width: 1060px;">
+        <div style="width: 100%; padding-bottom: 10px;">
+            <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); width: 100%;">
                 Máquinas Virtuales
             </div>
-            <div class="vm-list-header" style="display: grid; grid-template-columns: ${gridCols}; gap: 15px; padding: 10px 10px; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 8px; min-width: 1060px;">
+            <div class="vm-list-header" style="display: grid; grid-template-columns: ${gridCols}; gap: 15px; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 8px;">
                 <div>Nombre / Sistema</div>
+                <div>Estado</div>
                 <div>CPU</div>
                 <div>Memoria</div>
                 <div>Disco</div>
                 <div>RED (RX/TX)</div>
             </div>
-            <div style="display: flex; flex-direction: column; gap: 8px; min-width: 1100px;">
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+                <!-- VM Rows -->
     `;
 
     html += filteredVMs.map(vm => {
@@ -1715,42 +1717,44 @@ function renderVMs() {
         const currentTx = net.tx.length > 0 ? net.tx[net.tx.length - 1] : 0;
 
         return `
-        <div class="vm-row state-${vm.state.toLowerCase()}" style="display: grid; grid-template-columns: ${gridCols}; gap: 12px; padding: 12px 15px; align-items: center; border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; background: rgba(255,255,255,0.015); transition: all 0.2s ease; margin-bottom: 4px; min-width: 1060px;">
+        <div class="vm-row state-${vm.state.toLowerCase()}" style="display: grid; grid-template-columns: ${gridCols}; gap: 15px; padding: 12px 10px; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); transition: all 0.2s ease;">
             <!-- Name & OS / IP Unified -->
-            <div style="display: flex; align-items: center; gap: 12px; font-weight: 600; overflow: hidden;">
-                <div style="width: 38px; height: 38px; border-radius: 8px; background: ${isRunning ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid ${isRunning ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'};">
-                    <i class="fa-solid fa-desktop" style="opacity: 0.8; font-size: 1.1rem; color: ${isRunning ? '#4ade80' : '#ef4444'};"></i>
-                </div>
+            <div style="display: flex; align-items: center; gap: 12px; overflow: hidden;">
+                <i class="fa-solid fa-desktop" style="color: ${isRunning ? '#4ade80' : '#ef4444'}; font-size: 1.1rem; opacity: 0.8;"></i>
                 <div style="display: flex; flex-direction: column; gap: 2px; overflow: hidden;">
-                    <span style="font-size: 1rem; line-height: 1.2; word-break: break-word; color: var(--text-primary);">${vm.name}</span>
-                    <div style="display: flex; align-items: center; gap: 8px; font-size: 0.75rem; font-weight: 400; color: var(--text-secondary); opacity: 0.8;">
-                        <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px;" title="${osName}">${osName}</span>
+                    <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${vm.name}">${vm.name}</span>
+                    <div style="display: flex; align-items: center; gap: 8px; font-size: 0.7rem; font-weight: 400; color: var(--text-secondary); opacity: 0.8;">
+                        <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px;" title="${osName}">${osName}</span>
                         <span style="opacity: 0.4;">•</span>
                         <span style="color: var(--accent-color); font-family: monospace;">${primaryIp}</span>
                     </div>
                 </div>
             </div>
 
+            <!-- Status -->
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <div class="status-dot ${isRunning ? 'online' : 'offline'}" style="width: 8px; height: 8px;"></div>
+                <span style="font-size: 0.75rem; font-weight: 500; color: ${isRunning ? '#4ade80' : '#ef4444'}; text-transform: uppercase;">
+                    ${vm.state || 'unknown'}
+                </span>
+            </div>
+
 
             <!-- CPU -->
-            <div>
-                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
-                    <span style="font-size: 0.9rem; font-weight: 700; color: ${getStatusColor(cpuPercent)};">${cpuPercent}%</span>
-                    <span style="font-size: 0.75rem; font-weight: 400; opacity: 0.6;">CPU</span>
-                </div>
-                <div class="host-progress-container" style="height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px;">
-                    <div class="host-progress-fill" style="width: ${cpuPercent}%; background: ${getStatusColor(cpuPercent)}; border-radius: 2px;"></div>
+            <div style="display: flex; flex-direction: column; gap: 3px;">
+                <div style="font-size: 0.85rem; font-weight: 600; color: ${getStatusColor(cpuPercent)};">${cpuPercent}%</div>
+                <div style="width: 100%; height: 3px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
+                    <div style="height: 100%; width: ${cpuPercent}%; background: ${getStatusColor(cpuPercent)};"></div>
                 </div>
             </div>
 
             <!-- Memory -->
-            <div>
-                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
-                    <span style="font-size: 0.9rem; font-weight: 700; color: ${getStatusColor(memPercent)};">${memPercent}%</span>
-                    <span style="font-size: 0.75rem; font-weight: 400; opacity: 0.6;">${memUsedGB}/${memTotalGB}G</span>
+            <div style="display: flex; flex-direction: column; gap: 3px;">
+                <div style="font-size: 0.85rem; font-weight: 600; color: ${getStatusColor(memPercent)};">
+                    ${memPercent}% <span style="font-size: 0.7rem; font-weight: 400; opacity: 0.6; margin-left: 4px;">${memUsedGB}/${memTotalGB}G</span>
                 </div>
-                <div class="host-progress-container" style="height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px;">
-                    <div class="host-progress-fill" style="width: ${memPercent}%; background: ${getStatusColor(memPercent)}; border-radius: 2px;"></div>
+                <div style="width: 100%; height: 3px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
+                    <div style="height: 100%; width: ${memPercent}%; background: ${getStatusColor(memPercent)};"></div>
                 </div>
             </div>
 
@@ -1775,26 +1779,25 @@ function renderVMs() {
                             `;
         }).join('')}
                     </div>` : `
-                    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
-                        <span style="font-size: 0.9rem; font-weight: 700; color: ${getStatusColor(diskPercent)};">${diskPercent}%</span>
-                        <span style="font-size: 0.75rem; font-weight: 400; opacity: 0.6;">${diskUsedGB}/${diskTotalGB}G</span>
+                    <div style="font-size: 0.85rem; font-weight: 600; color: ${getStatusColor(diskPercent)};">
+                        ${diskPercent}% <span style="font-size: 0.7rem; font-weight: 400; opacity: 0.6; margin-left: 4px;">${diskUsedGB}/${diskTotalGB}G</span>
                     </div>
-                    <div class="host-progress-container" style="height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px;">
-                        <div class="host-progress-fill" style="width: ${diskPercent}%; background: ${getStatusColor(diskPercent)}; border-radius: 2px;"></div>
+                    <div style="width: 100%; height: 3px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
+                        <div style="height: 100%; width: ${diskPercent}%; background: ${getStatusColor(diskPercent)};"></div>
                     </div>
                 `}
             </div>
 
             <!-- Tráfico (Network) -->
-            <div style="display: flex; flex-direction: column; gap: 4px; padding-right: 15px;">
+            <div style="display: flex; flex-direction: column; gap: 4px;">
                 <!-- RX Row -->
                 <div style="display: flex; flex-direction: column; gap: 2px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; font-weight: 700; color: var(--text-primary);">
-                        <div style="display: flex; align-items: center; gap: 6px; color: #9ca3af; font-size: 0.75rem;">
-                            <i class="fa-solid fa-arrow-down" style="color: #4ade80; font-size: 0.7rem;"></i>
+                        <div style="display: flex; align-items: center; gap: 6px; color: #9ca3af; font-size: 0.7rem;">
+                            <i class="fa-solid fa-arrow-down" style="color: #4ade80; font-size: 0.65rem;"></i>
                             <span>RX</span>
                         </div>
-                        <span style="font-family: monospace;">${formatBytes(currentRx, 0)}</span>
+                        <span style="font-family: monospace; font-size: 0.75rem;">${formatBytes(currentRx, 0)}</span>
                     </div>
                     <div style="height: 16px; opacity: 0.8; width: 100%;">
                         ${renderSparkline(net.rx, '#4ade80', 160, 16)}
@@ -1804,11 +1807,11 @@ function renderVMs() {
                 <!-- TX Row -->
                 <div style="display: flex; flex-direction: column; gap: 2px; margin-top: 4px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; font-weight: 700; color: var(--text-primary);">
-                        <div style="display: flex; align-items: center; gap: 6px; color: #9ca3af; font-size: 0.75rem;">
-                            <i class="fa-solid fa-arrow-up" style="color: #fb923c; font-size: 0.7rem;"></i>
+                        <div style="display: flex; align-items: center; gap: 6px; color: #9ca3af; font-size: 0.7rem;">
+                            <i class="fa-solid fa-arrow-up" style="color: #fb923c; font-size: 0.65rem;"></i>
                             <span>TX</span>
                         </div>
-                        <span style="font-family: monospace;">${formatBytes(currentTx, 0)}</span>
+                        <span style="font-family: monospace; font-size: 0.75rem;">${formatBytes(currentTx, 0)}</span>
                     </div>
                     <div style="height: 16px; opacity: 0.8; width: 100%;">
                         ${renderSparkline(net.tx, '#fb923c', 160, 16)}
@@ -2969,9 +2972,9 @@ window.renderFirewallHostDetails = renderFirewallHostDetails;
 // Restore Helper Functions
 function getStatusColor(percent) {
     const val = parseFloat(percent);
-    if (val <= 60) return '#22c55e'; // Success Green
-    if (val <= 80) return '#eab308'; // Warning Yellow/Amber
-    return '#ef4444'; // Danger Red
+    if (val < 80) return '#3b82f6'; // Elegant Blue
+    if (val < 95) return '#fb923c'; // Warning Orange
+    return '#ef4444'; // Critical Red
 }
 
 // Documentation System
