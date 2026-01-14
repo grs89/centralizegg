@@ -374,13 +374,7 @@ function switchTool(toolKey) {
                     let placeholderHtml = '';
 
                     if (toolKey === 'pfsense') {
-                        placeholderHtml = `
-                            <div style="font-size: 4rem; color: var(--accent-color); margin-bottom: 2rem; opacity: 0.5;">
-                                <i class="${tool.icon || 'fa-solid fa-box-open'}"></i>
-                            </div>
-                            <h2 style="margin-bottom: 1rem;"><i class="fa-solid fa-list-ul"></i> Resumen</h2>
-                            <p style="color: var(--text-secondary); max-width: 500px; margin: 0 auto 2rem auto;">Network Interfaces</p>
-                        `;
+                        renderFirewallSummary();
                     } else if (toolKey === 'docker') {
                         placeholderHtml = `
                             <div style="font-size: 4rem; color: var(--accent-color); margin-bottom: 2rem; opacity: 0.5;">
@@ -402,7 +396,6 @@ function switchTool(toolKey) {
                             </p>
                         `;
                     }
-                    containerInner.innerHTML = placeholderHtml;
                 }
             }
 
@@ -916,51 +909,51 @@ function renderDockerHostDetails(hostId) {
     const gridCols = "minmax(200px, 1fr) minmax(80px, 0.5fr) minmax(100px, 1fr) minmax(140px, 1.2fr) minmax(100px, 0.8fr)";
 
     inner.innerHTML = `
-        <div style="display: flex; flex-direction: column; gap: 24px;">
-                <!-- Single Column Layout -->
-                <div style="display: flex; flex-direction: column; gap: 15px;">
-                    <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                        Información
+        <div style="display: grid; grid-template-columns: 380px 1fr; gap: 24px; align-items: start;">
+            <!-- Left Column: Information -->
+            <div style="display: flex; flex-direction: column; gap: 15px;">
+                <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    Información
+                </div>
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 25px; display: flex; flex-direction: column; gap: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: var(--text-secondary); font-size: 1rem;">Versión Docker:</span>
+                        <span style="color: #38bdf8; font-weight: 700; font-size: 1.1rem;">${host.docker_version || 'N/A'}</span>
                     </div>
-                    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 25px; display: flex; flex-direction: column; gap: 15px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="color: var(--text-secondary); font-size: 1rem;">Versión Docker:</span>
-                            <span style="color: #38bdf8; font-weight: 700; font-size: 1.1rem;">${host.docker_version || 'N/A'}</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="color: var(--text-secondary); font-size: 1rem;">OS:</span>
-                            <span style="font-weight: 600; font-size: 1rem; color: var(--text-primary);">${host.os_name || 'N/A'}</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="color: var(--text-secondary); font-size: 1rem;">Uptime:</span>
-                            <span style="font-weight: 600; font-size: 1rem; color: var(--text-primary);">${host.uptime || 'N/A'}</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="color: var(--text-secondary); font-size: 1rem;">CPU:</span>
-                            <span style="font-weight: 600; font-size: 1.1rem; color: var(--text-primary);">${(host.cpu_usage || 0).toFixed(1)}% (${host.cpu_cores || 1} núcleos)</span>
-                        </div>
-                        
-                        <div style="height: 1px; background: rgba(255,255,255,0.05); margin: 5px 0;"></div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: var(--text-secondary); font-size: 1rem;">OS:</span>
+                        <span style="font-weight: 600; font-size: 1rem; color: var(--text-primary);">${host.os_name || 'N/A'}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: var(--text-secondary); font-size: 1rem;">Uptime:</span>
+                        <span style="font-weight: 600; font-size: 1rem; color: var(--text-primary);">${host.uptime || 'N/A'}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: var(--text-secondary); font-size: 1rem;">CPU:</span>
+                        <span style="font-weight: 600; font-size: 1.1rem; color: var(--text-primary);">${(host.cpu_usage || 0).toFixed(1)}% (${host.cpu_cores || 1} núcleos)</span>
+                    </div>
+                    
+                    <div style="height: 1px; background: rgba(255,255,255,0.05); margin: 5px 0;"></div>
 
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="color: var(--text-secondary); font-size: 1rem; font-weight: 500;">Servicio Docker:</span>
-                            <span style="font-weight: 800; font-size: 1rem; color: ${host.docker_service_status === 'active' ? '#4ade80' : '#ef4444'}; text-transform: uppercase;">
-                                ${host.docker_service_status || 'offline'}
-                            </span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="color: var(--text-secondary); font-size: 1rem;">Docker Socket:</span>
-                            <span style="font-weight: 600; font-size: 1rem; color: var(--text-primary); text-align: right;">${host.docker_socket_status || 'N/A'}</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="color: var(--text-secondary); font-size: 1rem;">Latencia API:</span>
-                            <span style="font-weight: 800; font-size: 1.1rem; color: ${host.docker_api_latency < 500 ? '#4ade80' : '#eab308'};">${host.docker_api_latency || 0} ms</span>
-                        </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: var(--text-secondary); font-size: 1rem; font-weight: 500;">Servicio Docker:</span>
+                        <span style="font-weight: 800; font-size: 1rem; color: ${host.docker_service_status === 'active' ? '#4ade80' : '#ef4444'}; text-transform: uppercase;">
+                            ${host.docker_service_status || 'offline'}
+                        </span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: var(--text-secondary); font-size: 1rem;">Docker Socket:</span>
+                        <span style="font-weight: 600; font-size: 1rem; color: var(--text-primary); text-align: right;">${host.docker_socket_status || 'N/A'}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: var(--text-secondary); font-size: 1rem;">Latencia API:</span>
+                        <span style="font-weight: 800; font-size: 1.1rem; color: ${host.docker_api_latency < 500 ? '#4ade80' : '#eab308'};">${host.docker_api_latency || 0} ms</span>
                     </div>
                 </div>
             </div>
 
-            <div class="glass-panel" style="margin-top: 30px; padding: 25px;">
+            <!-- Right Column: Containers -->
+            <div class="glass-panel" style="padding: 25px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
                     <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9;">
                         Contenedores Activos
@@ -1090,6 +1083,8 @@ async function fetchFirewallHosts() {
 
         if (selectedFirewallHostId) {
             renderFirewallHostDetails(selectedFirewallHostId);
+        } else {
+            renderFirewallSummary();
         }
 
         // Update config button visibility after fetching hosts
@@ -1744,7 +1739,29 @@ function renderDockerSummary() {
             <h2 style="margin:0; font-size: 1.5rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen</h2>
         </div>
 
+        <div class="glass-panel" style="padding: 80px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+            <div style="font-size: 1.1rem; color: var(--text-secondary); opacity: 0.6; font-weight: 500;">
+                <i class="fa-solid fa-arrow-up" style="margin-right: 8px;"></i> Selecciona un Host Node para ver sus contenedores
+            </div>
+        </div>
+    `;
+}
 
+// Render Firewall Summary
+function renderFirewallSummary() {
+    const containerTool = document.getElementById('container-scanner-tool');
+    const scannerSection = containerTool.querySelector('.scanner-section');
+    if (!scannerSection) return;
+
+    scannerSection.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="margin:0; font-size: 1.5rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen</h2>
+        </div>
+
+        <div class="glass-panel" style="padding: 80px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+            <div style="font-size: 1.1rem; color: var(--text-secondary); opacity: 0.6; font-weight: 500;">
+                <i class="fa-solid fa-arrow-up" style="margin-right: 8px;"></i> Selecciona un Host Node para ver su estado
+            </div>
         </div>
     `;
 }
