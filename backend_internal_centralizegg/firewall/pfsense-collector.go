@@ -49,6 +49,7 @@ func (mc *PfsenseCollector) CollectAll() {
 			mc.DB.SetPFSenseServerStatus(s.ID, "offline")
 			continue
 		}
+		log.Printf("[PFSenseCollector] Successfully collected from %s.", s.Name)
 		mc.DB.SetPFSenseServerStatus(s.ID, "online")
 	}
 }

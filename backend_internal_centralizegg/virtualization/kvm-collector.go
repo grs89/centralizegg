@@ -66,6 +66,7 @@ func (mc *MultiCollector) CollectAll() {
 			mc.DB.SetServerStatus(s.ID, "offline")
 			continue
 		}
+		log.Printf("[KVMCollector] Successfully collected from %s.", s.Name)
 		mc.DB.SetServerStatus(s.ID, "online")
 	}
 }
