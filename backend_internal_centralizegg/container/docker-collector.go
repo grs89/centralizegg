@@ -121,6 +121,28 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 	dc.runCommand(client, "docker version")
 	apiLatency := int(time.Since(start).Milliseconds())
 
+	// Docker Storage Metrics
+	storageUsed := uint64(0)
+	storageTotal := uint64(0)
+	inodesUsage := ""
+	dockerLogsSize := uint64(0)
+
+	// Usage for /var/lib/docker
+	storageRaw, _ := dc.runCommand(client, "df -B1 /var/lib/docker | tail -1 | awk '{print $3,$2}'")
+	fmt.Sscanf(strings.TrimSpace(storageRaw), "%d %d", &storageUsed, &storageTotal)
+
+	// Inodes for /var/lib/docker
+	inodesRaw, _ := dc.runCommand(client, "df -i /var/lib/docker | tail -1 | awk '{print $(NF-1)}'")
+	inodesUsage = strings.TrimSpace(inodesRaw)
+
+	// Log size for all containers
+	// Note: We use find and du -cb to get the total sum of all json-log files
+	logsRaw, _ := dc.runCommand(client, "du -sb /var/lib/docker/containers/ 2>/dev/null | awk '{print $1}'")
+	logsTrimmed := strings.TrimSpace(logsRaw)
+	if logsTrimmed != "" {
+		fmt.Sscanf(logsTrimmed, "%d", &dockerLogsSize)
+	}
+
 	hostID, err := dc.DB.UpsertDockerHost(data_centralizegg.DockerHost{
 		ServerID:      s.ID,
 		Hostname:      hostname,
@@ -135,6 +157,10 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 		ServiceStatus: serviceStatus,
 		SocketStatus:  socketStatus,
 		APILatency:    apiLatency,
+		StorageUsed:   storageUsed,
+		StorageTotal:  storageTotal,
+		InodesUsage:   inodesUsage,
+		LogsSize:      dockerLogsSize,
 		UpdateStatus:  "Up to Date",
 	})
 	if err != nil {
@@ -199,11 +225,34 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 			continue
 		}
 
-		st := statsMap[dps.Names]
+		st, found := statsMap[dps.Names]
+		if !found {
+			// Try by ID if name match fails
+			for _, s := range statsMap {
+				// docker stats ID is short, dps.ID is likely short too but we check prefix
+				if (s.ID != "" && strings.HasPrefix(dps.ID, s.ID)) || (s.Name != "" && s.Name == dps.Names) {
+					st = s
+					found = true
+					break
+				}
+			}
+		}
+
+		// Handle PIDs as interface (can be int or string like "--")
+		var pids int
+		switch v := st.PIDs.(type) {
+		case float64:
+			pids = int(v)
+		case int:
+			pids = v
+		default:
+			pids = 0
+		}
 
 		c := data_centralizegg.Container{
 			Name:      dps.Names,
 			Image:     dps.Image,
+			Ports:     dps.Ports,
 			State:     dps.State,
 			Status:    dps.Status,
 			CPUUsage:  dc.parsePercent(st.CPUPerc),
@@ -213,31 +262,36 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 			NetTX:     dc.parseNetBytes(st.NetIO, false),
 			BlockIn:   dc.parseNetBytes(st.BlockIO, true),
 			BlockOut:  dc.parseNetBytes(st.BlockIO, false),
-			PIDs:      st.PIDs,
+			PIDs:      pids,
 			IPAddress: ipMap[dps.Names],
 			OOMKilled: oomMap[dps.Names],
 			HostID:    hostID,
 		}
 
-		dc.DB.UpsertContainer(c)
+		if err := dc.DB.UpsertContainer(c); err != nil {
+			log.Printf("[DockerCollector] Failed to upsert container %s: %v", c.Name, err)
+		}
 	}
 
 	return nil
 }
 
 type containerStats struct {
-	Name     string `json:"Name"`
-	CPUPerc  string `json:"CPUPerc"`
-	MemUsage string `json:"MemUsage"`
-	MemLimit string `json:"MemLimit"`
-	NetIO    string `json:"NetIO"`
-	BlockIO  string `json:"BlockIO"`
-	PIDs     int    `json:"PIDs"`
+	ID       string      `json:"ID"`
+	Name     string      `json:"Name"`
+	CPUPerc  string      `json:"CPUPerc"`
+	MemUsage string      `json:"MemUsage"`
+	MemLimit string      `json:"MemLimit"`
+	NetIO    string      `json:"NetIO"`
+	BlockIO  string      `json:"BlockIO"`
+	PIDs     interface{} `json:"PIDs"` // Can be int or string "--"
 }
 
 type dockerPS struct {
+	ID     string `json:"ID"`
 	Names  string `json:"Names"`
 	Image  string `json:"Image"`
+	Ports  string `json:"Ports"`
 	State  string `json:"State"`
 	Status string `json:"Status"`
 }

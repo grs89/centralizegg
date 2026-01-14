@@ -80,12 +80,17 @@ type DockerHost struct {
 	ServiceStatus string  `json:"docker_service_status"`
 	SocketStatus  string  `json:"docker_socket_status"`
 	APILatency    int     `json:"docker_api_latency"`
+	StorageUsed   uint64  `json:"docker_storage_used"`
+	StorageTotal  uint64  `json:"docker_storage_total"`
+	InodesUsage   string  `json:"docker_inodes_usage"`
+	LogsSize      uint64  `json:"docker_logs_size"`
 }
 
 type Container struct {
 	ID        int64     `json:"id"`
 	Name      string    `json:"name"`
 	Image     string    `json:"image"`
+	Ports     string    `json:"ports"`
 	State     string    `json:"state"`
 	Status    string    `json:"status"`
 	CPUUsage  float64   `json:"cpu_usage"`
@@ -315,13 +320,23 @@ func ensureSchema(db *sql.DB) {
 			docker_service_status VARCHAR(50) DEFAULT 'unknown',
 			docker_socket_status VARCHAR(50) DEFAULT 'unknown',
 			docker_api_latency INT DEFAULT 0,
+			docker_storage_used BIGINT DEFAULT 0,
+			docker_storage_total BIGINT DEFAULT 0,
+			docker_inodes_usage VARCHAR(255) DEFAULT '',
+			docker_logs_size BIGINT DEFAULT 0,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`,
+		"ALTER TABLE containers.hosts ADD COLUMN IF NOT EXISTS docker_storage_used BIGINT DEFAULT 0",
+		"ALTER TABLE containers.hosts ADD COLUMN IF NOT EXISTS docker_storage_total BIGINT DEFAULT 0",
+		"ALTER TABLE containers.hosts ADD COLUMN IF NOT EXISTS docker_inodes_usage VARCHAR(255) DEFAULT ''",
+		"ALTER TABLE containers.hosts ADD COLUMN IF NOT EXISTS docker_logs_size BIGINT DEFAULT 0",
+		"ALTER TABLE containers.hosts ALTER COLUMN docker_inodes_usage TYPE VARCHAR(255)",
 		`CREATE TABLE IF NOT EXISTS containers.containers (
 			id SERIAL PRIMARY KEY,
 			host_id INT REFERENCES containers.hosts(id) ON DELETE CASCADE,
 			name VARCHAR(255) NOT NULL,
 			image VARCHAR(255) NOT NULL,
+			ports VARCHAR(255) DEFAULT '',
 			state VARCHAR(50) DEFAULT 'unknown',
 			status VARCHAR(255) DEFAULT '',
 			cpu_usage DOUBLE PRECISION DEFAULT 0,
@@ -337,6 +352,7 @@ func ensureSchema(db *sql.DB) {
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE(host_id, name)
 		)`,
+		"ALTER TABLE containers.containers ADD COLUMN IF NOT EXISTS ports VARCHAR(255) DEFAULT ''",
 	}
 
 	for _, q := range queries {
@@ -831,12 +847,12 @@ func (d *DB) UpsertDockerHost(h DockerHost) (int64, error) {
 	err := d.Conn.QueryRow("SELECT id FROM containers.hosts WHERE server_id = $1", h.ServerID).Scan(&id)
 	if err == sql.ErrNoRows {
 		err = d.Conn.QueryRow(`
-			INSERT INTO containers.hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, public_ip, dns_servers, uptime, update_status, temperature, disks, docker_version, docker_service_status, docker_socket_status, docker_api_latency)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING id`,
-			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.PublicIP, h.DNSServers, h.Uptime, h.UpdateStatus, h.Temperature, h.Disks, h.DockerVer, h.ServiceStatus, h.SocketStatus, h.APILatency).Scan(&id)
+			INSERT INTO containers.hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, public_ip, dns_servers, uptime, update_status, temperature, disks, docker_version, docker_service_status, docker_socket_status, docker_api_latency, docker_storage_used, docker_storage_total, docker_inodes_usage, docker_logs_size)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22) RETURNING id`,
+			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.PublicIP, h.DNSServers, h.Uptime, h.UpdateStatus, h.Temperature, h.Disks, h.DockerVer, h.ServiceStatus, h.SocketStatus, h.APILatency, h.StorageUsed, h.StorageTotal, h.InodesUsage, h.LogsSize).Scan(&id)
 	} else if err == nil {
-		_, err = d.Conn.Exec(`UPDATE containers.hosts SET hostname=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, public_ip=$8, dns_servers=$9, uptime=$10, update_status=$11, temperature=$12, disks=$13, docker_version=$14, docker_service_status=$15, docker_socket_status=$16, docker_api_latency=$17 WHERE id=$18`,
-			h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.PublicIP, h.DNSServers, h.Uptime, h.UpdateStatus, h.Temperature, h.Disks, h.DockerVer, h.ServiceStatus, h.SocketStatus, h.APILatency, id)
+		_, err = d.Conn.Exec(`UPDATE containers.hosts SET hostname=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, public_ip=$8, dns_servers=$9, uptime=$10, update_status=$11, temperature=$12, disks=$13, docker_version=$14, docker_service_status=$15, docker_socket_status=$16, docker_api_latency=$17, docker_storage_used=$18, docker_storage_total=$19, docker_inodes_usage=$20, docker_logs_size=$21 WHERE id=$22`,
+			h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.PublicIP, h.DNSServers, h.Uptime, h.UpdateStatus, h.Temperature, h.Disks, h.DockerVer, h.ServiceStatus, h.SocketStatus, h.APILatency, h.StorageUsed, h.StorageTotal, h.InodesUsage, h.LogsSize, id)
 	}
 	return id, err
 }
@@ -847,21 +863,21 @@ func (d *DB) UpsertContainer(c Container) error {
 
 	if err == sql.ErrNoRows {
 		_, err = d.Conn.Exec(`
-			INSERT INTO containers.containers (name, image, state, status, cpu_usage, memory_usage, memory_limit, net_rx, net_tx, block_in, block_out, pids, ip_address, oom_killed, host_id, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW())`,
-			c.Name, c.Image, c.State, c.Status, c.CPUUsage, c.MemUsage, c.MemLimit, c.NetRX, c.NetTX, c.BlockIn, c.BlockOut, c.PIDs, c.IPAddress, c.OOMKilled, c.HostID)
+			INSERT INTO containers.containers (name, image, ports, state, status, cpu_usage, memory_usage, memory_limit, net_rx, net_tx, block_in, block_out, pids, ip_address, oom_killed, host_id, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW())`,
+			c.Name, c.Image, c.Ports, c.State, c.Status, c.CPUUsage, c.MemUsage, c.MemLimit, c.NetRX, c.NetTX, c.BlockIn, c.BlockOut, c.PIDs, c.IPAddress, c.OOMKilled, c.HostID)
 	} else if err == nil {
 		_, err = d.Conn.Exec(`
-			UPDATE containers.containers SET image=$1, state=$2, status=$3, cpu_usage=$4, memory_usage=$5, memory_limit=$6, net_rx=$7, net_tx=$8, block_in=$9, block_out=$10, pids=$11, ip_address=$12, oom_killed=$13, updated_at=NOW()
-			WHERE id=$14`,
-			c.Image, c.State, c.Status, c.CPUUsage, c.MemUsage, c.MemLimit, c.NetRX, c.NetTX, c.BlockIn, c.BlockOut, c.PIDs, c.IPAddress, c.OOMKilled, id)
+			UPDATE containers.containers SET image=$1, ports=$2, state=$3, status=$4, cpu_usage=$5, memory_usage=$6, memory_limit=$7, net_rx=$8, net_tx=$9, block_in=$10, block_out=$11, pids=$12, ip_address=$13, oom_killed=$14, updated_at=NOW()
+			WHERE id=$15`,
+			c.Image, c.Ports, c.State, c.Status, c.CPUUsage, c.MemUsage, c.MemLimit, c.NetRX, c.NetTX, c.BlockIn, c.BlockOut, c.PIDs, c.IPAddress, c.OOMKilled, id)
 	}
 	return err
 }
 
 func (d *DB) GetDockerHosts() ([]DockerHost, error) {
 	rows, err := d.Conn.Query(`
-		SELECT h.id, h.server_id, h.hostname, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, h.public_ip, h.dns_servers, h.uptime, h.update_status, h.temperature, h.disks, h.docker_version, h.docker_service_status, h.docker_socket_status, h.docker_api_latency, ds.name, ds.ip_address
+		SELECT h.id, h.server_id, h.hostname, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, h.public_ip, h.dns_servers, h.uptime, h.update_status, h.temperature, h.disks, h.docker_version, h.docker_service_status, h.docker_socket_status, h.docker_api_latency, h.docker_storage_used, h.docker_storage_total, h.docker_inodes_usage, h.docker_logs_size, ds.name, ds.ip_address
 		FROM containers.hosts h
 		JOIN containers.docker_servers ds ON h.server_id = ds.id`)
 	if err != nil {
@@ -872,7 +888,7 @@ func (d *DB) GetDockerHosts() ([]DockerHost, error) {
 	var hosts []DockerHost
 	for rows.Next() {
 		var h DockerHost
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.PublicIP, &h.DNSServers, &h.Uptime, &h.UpdateStatus, &h.Temperature, &h.Disks, &h.DockerVer, &h.ServiceStatus, &h.SocketStatus, &h.APILatency, &h.ServerName, &h.IPAddress); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.PublicIP, &h.DNSServers, &h.Uptime, &h.UpdateStatus, &h.Temperature, &h.Disks, &h.DockerVer, &h.ServiceStatus, &h.SocketStatus, &h.APILatency, &h.StorageUsed, &h.StorageTotal, &h.InodesUsage, &h.LogsSize, &h.ServerName, &h.IPAddress); err != nil {
 			return nil, err
 		}
 		hosts = append(hosts, h)
@@ -881,7 +897,7 @@ func (d *DB) GetDockerHosts() ([]DockerHost, error) {
 }
 
 func (d *DB) GetAllContainers() ([]Container, error) {
-	rows, err := d.Conn.Query("SELECT id, name, image, state, status, cpu_usage, memory_usage, memory_limit, net_rx, net_tx, block_in, block_out, pids, ip_address, oom_killed, host_id, updated_at FROM containers.containers")
+	rows, err := d.Conn.Query("SELECT id, name, image, ports, state, status, cpu_usage, memory_usage, memory_limit, net_rx, net_tx, block_in, block_out, pids, ip_address, oom_killed, host_id, updated_at FROM containers.containers")
 	if err != nil {
 		return nil, err
 	}
@@ -890,7 +906,7 @@ func (d *DB) GetAllContainers() ([]Container, error) {
 	var containers []Container
 	for rows.Next() {
 		var c Container
-		if err := rows.Scan(&c.ID, &c.Name, &c.Image, &c.State, &c.Status, &c.CPUUsage, &c.MemUsage, &c.MemLimit, &c.NetRX, &c.NetTX, &c.BlockIn, &c.BlockOut, &c.PIDs, &c.IPAddress, &c.OOMKilled, &c.HostID, &c.UpdatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Image, &c.Ports, &c.State, &c.Status, &c.CPUUsage, &c.MemUsage, &c.MemLimit, &c.NetRX, &c.NetTX, &c.BlockIn, &c.BlockOut, &c.PIDs, &c.IPAddress, &c.OOMKilled, &c.HostID, &c.UpdatedAt); err != nil {
 			return nil, err
 		}
 		containers = append(containers, c)
