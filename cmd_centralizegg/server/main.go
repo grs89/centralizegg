@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/grs/centralizegg/backend_internal_centralizegg/container"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/data_centralizegg"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/firewall"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/virtualization"
@@ -48,6 +49,9 @@ func main() {
 
 	pfCol := firewall.NewPFSenseCollector(db)
 	go pfCol.Start(3 * time.Second) // Check every 3 seconds
+
+	dockerCol := container.NewDockerCollector(db)
+	go dockerCol.Start(10 * time.Second)
 
 	// Router
 	r := mux.NewRouter()
@@ -88,6 +92,32 @@ func main() {
 			return
 		}
 		json.NewEncoder(w).Encode(hosts)
+	}).Methods("GET")
+
+	// Docker hosts API
+	r.HandleFunc("/api/containers/hosts", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s", r.Method, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		hosts, err := db.GetDockerHosts()
+		if err != nil {
+			log.Printf("Error GetDockerHosts: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(hosts)
+	}).Methods("GET")
+
+	// Docker containers API
+	r.HandleFunc("/api/containers/containers", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s", r.Method, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		containers, err := db.GetAllContainers()
+		if err != nil {
+			log.Printf("Error GetAllContainers: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(containers)
 	}).Methods("GET")
 
 	// Firewall servers config API
