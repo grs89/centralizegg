@@ -910,15 +910,24 @@ header {
     margin: 0 2rem;
 }
 
-.search-icon {
+.search-btn {
     position: absolute;
-    left: 15px;
+    left: 10px;
     top: 50%;
     transform: translateY(-50%);
+    background: transparent;
+    border: none;
     color: var(--text-secondary);
     font-size: 0.9rem;
-    pointer-events: none;
+    cursor: pointer;
     transition: color 0.3s ease;
+    padding: 8px;
+    z-index: 2;
+}
+
+.search-btn:hover,
+.search-btn:active {
+    color: var(--accent-color);
 }
 
 #global-search {
@@ -940,9 +949,6 @@ header {
     box-shadow: 0 0 15px var(--accent-glow);
 }
 
-#global-search:focus+.search-icon {
-    color: var(--accent-color);
-}
 
 #global-search::placeholder {
     color: var(--text-secondary);

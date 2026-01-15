@@ -703,6 +703,17 @@ console.log('[DEBUG] Application core initialized.');
 // Search Input Listener
 const searchInput = document.getElementById('global-search');
 const suggestionsContainer = document.getElementById('search-suggestions');
+const searchBtn = document.getElementById('search-btn');
+
+if (searchBtn && searchInput) {
+    searchBtn.addEventListener('click', () => {
+        searchInput.focus();
+        // Optional: Trigger a search update if value exists (refresh)
+        if (searchInput.value.trim() !== "") {
+            searchInput.dispatchEvent(new Event('input'));
+        }
+    });
+}
 
 searchInput?.addEventListener('input', (e) => {
     searchQuery = e.target.value.toLowerCase().trim();
@@ -787,34 +798,58 @@ function updateSuggestions() {
 
     const suggestions = [];
 
-    // Match Hosts
+    // Match KVM Hosts
     allHostsCache.forEach(host => {
         if (host.server_name.toLowerCase().includes(searchQuery) ||
             host.hostname.toLowerCase().includes(searchQuery) ||
             host.ip_address.toLowerCase().includes(searchQuery)) {
-            suggestions.push({
-                type: 'host',
-                id: host.id,
-                title: host.server_name,
-                subtitle: `${host.hostname} | ${host.ip_address}`,
-                icon: 'fa-solid fa-server',
-                original: host
-            });
+            suggestions.push({ type: 'host', id: host.id, title: host.server_name, subtitle: `${host.hostname} | ${host.ip_address}`, icon: 'fa-solid fa-server', tool: 'kvm' });
         }
     });
 
-    // Match VMs
+    // Match KVM VMs
     allVMsCache.forEach(vm => {
         if (vm.name.toLowerCase().includes(searchQuery)) {
             const host = allHostsCache.find(h => h.id === vm.host_id);
-            suggestions.push({
-                type: 'vm',
-                id: vm.host_id, // We want to select the host to see the VM
-                title: vm.name,
-                subtitle: host ? `Host: ${host.server_name}` : 'Virtual Machine',
-                icon: 'fa-solid fa-desktop',
-                original: vm
-            });
+            suggestions.push({ type: 'vm', id: vm.host_id, title: vm.name, subtitle: host ? `KVM Host: ${host.server_name}` : 'Virtual Machine', icon: 'fa-solid fa-desktop', tool: 'kvm' });
+        }
+    });
+
+    // Match Docker Hosts
+    // Assuming cached in allHostsCache using generic loader, but dedicated cache might be better. 
+    // Currently using lazy loading, so we search currently loaded "allHostsCache" which only holds CURRENT tool hosts.
+    // IMPROVEMENT: Search across specific caches if available or assume lazy loading limits search to active tool?
+    // User wants "Search Everything". We need to iterate known caches.
+    // NOTE: Caches are populated only when tool is visited. We might need to fetchAll or live with visited-only.
+    // For now, let's search specifically defined global caches.
+
+    // Docker Containers
+    allContainersCache.forEach(c => {
+        const name = c.Names ? c.Names[0].replace('/', '') : c.Id.substring(0, 12);
+        if (name.toLowerCase().includes(searchQuery) || c.Image.toLowerCase().includes(searchQuery)) {
+            suggestions.push({ type: 'container', id: null, title: name, subtitle: `Docker Image: ${c.Image}`, icon: 'fa-brands fa-docker', tool: 'docker', contextId: selectedDockerHostId });
+        }
+    });
+
+    // NAS Volumes
+    allNasVolumesCache.forEach(v => {
+        if (v.name.toLowerCase().includes(searchQuery) || v.mount_point.toLowerCase().includes(searchQuery)) {
+            suggestions.push({ type: 'volume', id: v.host_id, title: v.name, subtitle: `NAS Vol: ${v.mount_point}`, icon: 'fa-solid fa-hdd', tool: 'nas' });
+        }
+    });
+
+    // NAS Disks
+    allNasDisksCache.forEach(d => {
+        if (d.name.toLowerCase().includes(searchQuery) || d.model.toLowerCase().includes(searchQuery)) {
+            suggestions.push({ type: 'disk', id: d.host_id, title: d.name, subtitle: `NAS Disk: ${d.model}`, icon: 'fa-regular fa-hard-drive', tool: 'nas' });
+        }
+    });
+
+    // Podman Containers
+    allPodmanContainersCache.forEach(c => {
+        const name = c.Names ? c.Names[0].replace('/', '') : c.Id.substring(0, 12);
+        if (name.toLowerCase().includes(searchQuery) || c.Image.toLowerCase().includes(searchQuery)) {
+            suggestions.push({ type: 'container', id: null, title: name, subtitle: `Podman Image: ${c.Image}`, icon: 'fa-solid fa-box-archive', tool: 'podman', contextId: selectedPodmanHostId });
         }
     });
 
@@ -828,32 +863,46 @@ function updateSuggestions() {
     const limitedSuggestions = suggestions.slice(0, 8);
 
     suggestionsContainer.innerHTML = limitedSuggestions.map((s, idx) => `
-        <div class="suggestion-item" onclick="applySuggestion('${s.type}', ${s.id}, '${s.title.replace(/'/g, "\\'")}')">
+        <div class="suggestion-item" onclick="applySuggestion('${s.type}', '${s.id}', '${s.title.replace(/'/g, "\\'")}', '${s.tool}')">
             <i class="${s.icon}"></i>
             <div class="suggestion-content">
                 <span class="suggestion-title">${s.title}</span>
                 <span class="suggestion-subtitle">${s.subtitle}</span>
             </div>
-            <span class="suggestion-category">${s.type}</span>
+            <span class="suggestion-category">${s.tool.toUpperCase()}</span>
         </div>
     `).join('');
 
     suggestionsContainer.classList.remove('hidden');
 }
 
-window.applySuggestion = (type, hostId, title) => {
+window.applySuggestion = (type, hostId, title, tool) => {
     searchQuery = title.toLowerCase();
     searchInput.value = title;
     suggestionsContainer.classList.add('hidden');
 
-    // If it's KVM, select the host
-    if (currentTool === 'kvm' || !currentTool) {
-        if (currentTool !== 'kvm') switchTool('kvm');
-        selectHost(hostId);
+    if (tool && tool !== currentTool) {
+        switchTool(tool);
     }
 
-    renderHosts();
-    renderVMs();
+    // Handling specific tool selections
+    if (tool === 'kvm') {
+        if (hostId && hostId !== 'null') selectHost(parseInt(hostId));
+    } else if (tool === 'nas') {
+        if (hostId && hostId !== 'null') selectNasHost(parseInt(hostId));
+    } else if (tool === 'docker') {
+        // Docker host selection logic might be needed if hostId is available
+        // currently contextId is used in generation but not passed fully, usually docker is single host or needs selectDockerHost
+    }
+    // Add other tool handlers as needed
+
+    // Trigger re-render to highlight/filter
+    if (tool === 'kvm') {
+        renderHosts();
+        renderVMs();
+    } else if (tool === 'nas') {
+        renderNasSummary(); // or similar
+    }
 };
 
 
