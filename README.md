@@ -97,11 +97,12 @@ graph TD
     
     subgraph Backend["Backend (Go)"]
         API[API REST<br/>Gorilla Mux]
-        Collector[Colector Unificado<br/>KVM + pfSense + Docker]
+        Collector[Colector Unificado<br/>KVM + pfSense + Docker + NAS]
         Libvirt[Libvirt Client]
         SSH[SSH Client]
         Docker[Docker SSH Client]
         pfSense[pfSense Client]
+        NAS[NAS Client (SSH)]
     end
     
     subgraph Database["Base de Datos"]
@@ -115,7 +116,7 @@ graph TD
         KVMN[Servidor KVM N]
         pfSense1[pfSense 1]
         pfSense2[pfSense 2]
-        pfSenseN[pfSense N]
+        NAS1[NAS Server 1]
     end
     
     UI -->|HTTP Requests| API
@@ -134,7 +135,9 @@ graph TD
     Collector -->|"SSH Tunnel (pfSense)"| pfSense
     pfSense -->|SSH Commands| pfSense1
     pfSense -->|SSH Commands| pfSense2
-    pfSense -->|SSH Commands| pfSenseN
+
+    Collector -->|"SSH Tunnel (NAS)"| NAS
+    NAS -->|SSH Commands (df, lsblk)| NAS1
     
     Collector -->|Upsert Data| PG
     PG -->|Response| API
