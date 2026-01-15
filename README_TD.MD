@@ -22,7 +22,7 @@
 
 - [Arquitectura](#-arquitectura)
 - [API REST](#-api-rest)
-- [Base de Datos](#-base-de-datos)
+- [Base de Datos](#-base-de-datos) Base de Datos
 - [Funcionalidades del Frontend](#-funcionalidades-del-frontend)
 - [Desarrollo](#-desarrollo)
 - [Tech Stack](#️-tech-stack)

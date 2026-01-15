@@ -23,9 +23,6 @@
 - [Estructura del Proyecto](#-estructura-del-proyecto)
 - [Instalación Rápida](#-instalación-rápida)
 - [Configuración](#-configuración)
-- [API REST](#-api-rest)
-- [Base de Datos](#-base-de-datos)
-- [Funcionalidades del Frontend](#-funcionalidades-del-frontend)
 - [Troubleshooting](#-troubleshooting)
 
 
