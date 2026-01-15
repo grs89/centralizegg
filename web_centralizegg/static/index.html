@@ -140,20 +140,11 @@
                     </div>
                 </div>
 
-                <!-- Log Dropdown -->
-                <div class="dropdown">
-                    <button class="dropbtn" id="log-btn">
-                        <i class="fa-solid fa-file-lines"></i> Log <i class="fa-solid fa-chevron-down"
-                            style="font-size: 0.8rem; margin-left: 5px;"></i>
-                    </button>
-                    <div class="dropdown-content glass-panel">
-                        <a href="javascript:void(0)" data-tool="log_web"><i class="fa-solid fa-code"></i>
-                            Log servicios
-                            web</a>
-                        <a href="javascript:void(0)" data-tool="log_db"><i class="fa-solid fa-database"></i>
-                            Servicios db</a>
-                    </div>
-                </div>
+                <!-- Log Button -->
+                <button id="log-btn" class="nav-config-btn" data-tool="logs" title="Logs de sistema">
+                    <i class="fa-solid fa-file-lines"></i>
+                    <span>Log</span>
+                </button>
                 <button id="config-btn" class="nav-config-btn" data-tool="settings" title="Configuración de servidores">
                     <i class="fa-solid fa-gear"></i>
                 </button>
@@ -294,6 +285,42 @@
                             </div>
                             <div id="settings-server-list" class="settings-server-grid">
                                 <!-- Dinámico -->
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- Logs Tool (Unified Logs) -->
+            <div id="logs-tool" class="hidden">
+                <div class="logs-layout"
+                    style="display: grid; grid-template-columns: 280px 1fr; gap: 30px; margin-top: 10px;">
+                    <!-- Sidebar -->
+                    <aside id="logs-sidebar" class="settings-sidebar">
+                        <!-- Items rendered dynamically via app.js -->
+                    </aside>
+
+                    <!-- Main Content -->
+                    <section class="logs-content-wrapper settings-content-wrapper">
+                        <div class="settings-header"
+                            style="display: flex; justify-content: space-between; align-items: flex-start;">
+                            <div>
+                                <h2 id="logs-category-title">Logs de Sistema</h2>
+                                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 5px;">
+                                    Visualiza los registros y eventos en tiempo real para este módulo.
+                                </p>
+                            </div>
+                            <button id="close-logs-btn" class="secondary-btn" title="Cerrar Logs"
+                                style="background: rgba(255, 255, 255, 0.05); border: 1px solid var(--glass-border); color: var(--text-secondary); width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.3s;">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+
+                        <div class="logs-viewer-container glass-panel"
+                            style="background: rgba(0,0,0,0.4); border-radius: 16px; padding: 20px; font-family: 'JetBrains Mono', monospace; height: 60vh; overflow-y: auto; border: 1px solid var(--glass-border);">
+                            <div id="logs-content" style="color: #a1a1aa; font-size: 0.85rem; line-height: 1.6;">
+                                <!-- Logs rendered dynamically -->
+                                <div style="opacity: 0.5;">Esperando datos de logs...</div>
                             </div>
                         </div>
                     </section>

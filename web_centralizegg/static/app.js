@@ -356,17 +356,10 @@ const tools = {
         categoryBtnId: 'firewall-btn',
         categoryName: 'Firewall'
     },
-    'log_web': {
-        name: 'Log servicios web',
-        icon: 'fa-solid fa-file-code',
-        elementId: 'container-scanner-tool',
-        categoryBtnId: 'log-btn',
-        categoryName: 'Log'
-    },
-    'log_db': {
-        name: 'Log servicios db',
+    'logs': {
+        name: 'Logs',
         icon: 'fa-solid fa-file-lines',
-        elementId: 'container-scanner-tool',
+        elementId: 'logs-tool',
         categoryBtnId: 'log-btn',
         categoryName: 'Log'
     },
@@ -399,7 +392,7 @@ function switchTool(toolKey) {
     // Update Category Button Identity (Skip for config-btn to avoid layout break)
     try {
         const categoryBtn = document.getElementById(tool.categoryBtnId);
-        if (categoryBtn && tool.categoryBtnId !== 'config-btn') {
+        if (categoryBtn && tool.categoryBtnId !== 'config-btn' && tool.categoryBtnId !== 'log-btn') {
             categoryBtn.innerHTML = `
                 <i class="${tool.icon}"></i> ${tool.name} <i class="fa-solid fa-chevron-down" style="font-size: 0.8rem; margin-left: 5px;"></i>
             `;
@@ -414,6 +407,7 @@ function switchTool(toolKey) {
     const virtTool = document.getElementById('virtualization-tool');
     const containerTool = document.getElementById('container-scanner-tool');
     const settingsTool = document.getElementById('settings-tool');
+    const logsTool = document.getElementById('logs-tool');
 
     if (welcomeScreen) welcomeScreen.style.display = 'none';
 
@@ -437,8 +431,20 @@ function switchTool(toolKey) {
         }
     }
 
+    if (logsTool) {
+        const logBtn = document.getElementById('log-btn');
+        if (toolKey === 'logs') {
+            logsTool.classList.remove('hidden');
+            if (logBtn) logBtn.classList.add('active');
+            initLogs();
+        } else {
+            logsTool.classList.add('hidden');
+            if (logBtn) logBtn.classList.remove('active');
+        }
+    }
+
     if (containerTool) {
-        if (['kvm', 'settings'].includes(toolKey)) {
+        if (['kvm', 'settings', 'logs'].includes(toolKey)) {
             containerTool.classList.add('hidden');
         } else {
             containerTool.classList.remove('hidden');
@@ -2803,6 +2809,72 @@ const SETTINGS_CONFIG = {
     }
 };
 
+const LOGS_CONFIG = {
+    'kvm': { name: 'Virtualización (KVM)', icon: 'fa-solid fa-microchip', title: 'Logs de Virtualización' },
+    'nas': { name: 'NAS', icon: 'fa-solid fa-hdd', title: 'Logs de NAS' },
+    'ceph': { name: 'Ceph', icon: 'fa-solid fa-cubes', title: 'Logs de Ceph' },
+    'pfsense': { name: 'Firewall (pfSense)', icon: 'fa-brands fa-freebsd', title: 'Logs de Firewall' },
+    'docker': { name: 'Contenedores (Docker)', icon: 'fa-brands fa-docker', title: 'Logs de Docker' },
+    'kubernetes': { name: 'Kubernetes (K8s)', icon: 'fa-solid fa-dharmachakra', title: 'Logs de Kubernetes' },
+    'podman': { name: 'Podman', icon: 'fa-solid fa-box-archive', title: 'Logs de Podman' },
+    'proxmox': { name: 'Virtualización (Proxmox)', icon: 'fa-solid fa-server', title: 'Logs de Proxmox' }
+};
+
+function renderLogsSidebar() {
+    const sidebar = document.getElementById('logs-sidebar');
+    if (!sidebar) return;
+
+    sidebar.innerHTML = Object.entries(LOGS_CONFIG).map(([id, config]) => `
+        <div class="settings-menu-item ${id === logsCurrentCategory ? 'active' : ''}" data-category="${id}">
+            <i class="${config.icon}"></i>
+            <span>${config.name}</span>
+        </div>
+        `).join('');
+
+    const menuItems = sidebar.querySelectorAll('#logs-sidebar .settings-menu-item');
+    menuItems.forEach(item => {
+        item.addEventListener('click', () => {
+            menuItems.forEach(i => i.classList.remove('active'));
+            item.classList.add('active');
+            loadLogsCategory(item.dataset.category);
+        });
+    });
+}
+
+function loadLogsCategory(category) {
+    logsCurrentCategory = category;
+    const config = LOGS_CONFIG[category];
+    const title = document.getElementById('logs-category-title');
+    const content = document.getElementById('logs-content');
+
+    if (title && config) title.innerText = config.title;
+    if (content) {
+        content.innerHTML = `
+            <div style="color: #6ee7b7; margin-bottom: 5px;">[${new Date().toLocaleTimeString()}] Sistema de logs listo para ${config.name}</div>
+            <div style="opacity: 0.7;">> Esperando eventos entrantes de los colectores...</div>
+            <div style="opacity: 0.5; margin-top: 10px;">(Simulación de logs activa)</div>
+        `;
+    }
+}
+
+function initLogs() {
+    if (logsInitialized) return;
+    renderLogsSidebar();
+    const closeBtn = document.getElementById('close-logs-btn');
+    if (closeBtn) {
+        closeBtn.onclick = () => {
+            window.location.hash = '';
+            document.getElementById('logs-tool').classList.add('hidden');
+            document.getElementById('welcome-screen').style.display = 'flex';
+            currentTool = null;
+        };
+    }
+    logsInitialized = true;
+    loadLogsCategory('kvm');
+}
+
+let logsCurrentCategory = 'kvm';
+let logsInitialized = false;
 let settingsCurrentCategory = 'kvm';
 let settingsInitialized = false;
 

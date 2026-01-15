@@ -206,15 +206,21 @@ header {
     color: var(--text-secondary);
     border: 1px solid var(--glass-border);
     border-radius: 10px;
-    width: 42px;
+    min-width: 42px;
     height: 42px;
+    padding: 0 14px;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     transition: all 0.3s ease;
+    font-weight: 600;
+    font-size: 0.9rem;
+    gap: 8px;
+}
+
+#log-btn {
     margin-left: auto;
-    /* Push to the right */
 }
 
 .nav-config-btn:hover,
