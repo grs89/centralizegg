@@ -211,23 +211,8 @@
             <div id="settings-tool" class="hidden">
                 <div class="settings-layout">
                     <!-- Sidebar -->
-                    <aside class="settings-sidebar">
-                        <div class="settings-menu-item active" data-category="kvm">
-                            <i class="fa-solid fa-microchip"></i>
-                            <span>Virtualización (KVM)</span>
-                        </div>
-                        <div class="settings-menu-item" data-category="storage">
-                            <i class="fa-solid fa-database"></i>
-                            <span>Almacenamiento (NAS/Ceph)</span>
-                        </div>
-                        <div class="settings-menu-item" data-category="pfsense">
-                            <i class="fa-brands fa-freebsd"></i>
-                            <span>Firewall (pfSense)</span>
-                        </div>
-                        <div class="settings-menu-item" data-category="docker">
-                            <i class="fa-brands fa-docker"></i>
-                            <span>Contenedores (Docker)</span>
-                        </div>
+                    <aside id="settings-sidebar" class="settings-sidebar">
+                        <!-- Items rendered dynamically via app.js -->
                     </aside>
 
                     <!-- Main Content -->

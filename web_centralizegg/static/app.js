@@ -2152,12 +2152,63 @@ function renderFirewallSummary() {
 }
 
 // Settings Tool Logic
+const SETTINGS_CONFIG = {
+    'kvm': {
+        name: 'Virtualización (KVM)',
+        icon: 'fa-solid fa-microchip',
+        title: 'Configuración de Virtualización',
+        api: API_CONFIG_SERVERS
+    },
+    'storage': {
+        name: 'Almacenamiento (NAS/Ceph)',
+        icon: 'fa-solid fa-database',
+        title: 'Configuración de Almacenamiento',
+        api: '/api/config/nas' // Adjust as needed for specific storage APIs
+    },
+    'pfsense': {
+        name: 'Firewall (pfSense)',
+        icon: 'fa-brands fa-freebsd',
+        title: 'Configuración de Firewall',
+        api: API_FIREWALL_SERVERS
+    },
+    'docker': {
+        name: 'Contenedores (Docker)',
+        icon: 'fa-brands fa-docker',
+        title: 'Configuración de Contenedores',
+        api: '/api/config/docker'
+    }
+};
+
 let settingsCurrentCategory = 'kvm';
 let settingsInitialized = false;
+
+function renderSettingsSidebar() {
+    const sidebar = document.getElementById('settings-sidebar');
+    if (!sidebar) return;
+
+    sidebar.innerHTML = Object.entries(SETTINGS_CONFIG).map(([id, config]) => `
+        <div class="settings-menu-item ${id === settingsCurrentCategory ? 'active' : ''}" data-category="${id}">
+            <i class="${config.icon}"></i>
+            <span>${config.name}</span>
+        </div>
+    `).join('');
+
+    // Re-attach listeners to new items
+    const menuItems = sidebar.querySelectorAll('.settings-menu-item');
+    menuItems.forEach(item => {
+        item.addEventListener('click', () => {
+            menuItems.forEach(i => i.classList.remove('active'));
+            item.classList.add('active');
+            loadSettingsCategory(item.dataset.category);
+        });
+    });
+}
 
 function initSettings() {
     if (settingsInitialized) return;
     console.log('[DEBUG] Initializing Settings Tool');
+
+    renderSettingsSidebar();
 
     // Auth type toggle
     const authTypeRadios = document.querySelectorAll('input[name="settingsAuthType"]');
@@ -2179,17 +2230,7 @@ function initSettings() {
         });
     }
 
-    // Category selection (sidebar)
-    const menuItems = document.querySelectorAll('.settings-menu-item');
-    if (menuItems.length > 0) {
-        menuItems.forEach(item => {
-            item.addEventListener('click', () => {
-                menuItems.forEach(i => i.classList.remove('active'));
-                item.classList.add('active');
-                loadSettingsCategory(item.dataset.category);
-            });
-        });
-    }
+    // Category selection (sidebar items now handled in renderSettingsSidebar)
 
     // Save button
     const saveBtn = document.getElementById('settings-save-btn');
@@ -2205,14 +2246,12 @@ function initSettings() {
 
 async function loadSettingsCategory(category) {
     settingsCurrentCategory = category;
+    const config = SETTINGS_CONFIG[category];
     const title = document.getElementById('settings-category-title');
-    const titles = {
-        'kvm': 'Configuración de Virtualización',
-        'docker': 'Configuración de Contenedores',
-        'pfsense': 'Configuración de Firewall',
-        'storage': 'Configuración de Almacenamiento'
-    };
-    title.innerText = titles[category] || 'Configuración';
+
+    if (title && config) {
+        title.innerText = config.title;
+    }
 
     resetSettingsForm();
     renderSettingsServerList();
