@@ -52,6 +52,51 @@
     - **Monitoreo de GPU**: Carga, temperatura y VRAM para GPUs NVIDIA mediante `nvidia-smi`.
     - **Seguridad (CVE)**: Escaneo automático de vulnerabilidades en imágenes con `docker scout`.
     - **Almacenamiento**: Detalle de `/var/lib/docker`, inodos y tamaños de volúmenes individuales.
+### Esquema Firewall
+
+#### Tabla: `firewall.pfsense_servers`
+Almacena configuración de servidores pfSense.
+
+#### Tabla: `firewall.hosts`
+Almacena métricas de hosts pfSense (Estado de tablas, CPU, Memoria).
+
+#### Tabla: `firewall.interfaces`
+Almacena estadísticas de interfaces de red de pfSense.
+
+### Esquema Storage (NAS)
+
+#### Tabla: `storage.nas_hosts`
+Información detallada del servidor NAS (Modelo, Serial, Versión Kernel).
+
+#### Tabla: `storage.nas_volumes`
+Volúmenes lógicos montados (espacio usado/total, punto de montaje).
+
+#### Tabla: `storage.nas_disks`
+Discos físicos (Modelo, Serial, Temperatura, Estado S.M.A.R.T).
+
+### Esquema Containers (Docker & Podman)
+
+#### Tablas: `containers.hosts` / `containers.podman_hosts`
+Hosts de contenedores con métricas de GPU (`gpu_info`), versión de Docker/Podman y almacenamiento.
+
+#### Tablas: `containers.containers` / `containers.podman_containers`
+Estado de contenedores, vulnerabilidades detectadas, y uso de recursos.
+
+### Esquema Kubernetes
+
+#### Tabla: `kubernetes.nodes`
+Nodos del cluster con roles (control-plane, worker), versión de Kubelet y capacidad.
+
+#### Tabla: `kubernetes.pods`
+Pods en ejecución con namespace, estado y reinicios.
+
+### Esquema Virtualization (Proxmox)
+
+#### Tabla: `virtualization.proxmox_hosts`
+Nodos del cluster Proxmox.
+
+#### Tabla: `virtualization.proxmox_vms`
+VMs y Contenedores LXC alojados en Proxmox.
 *   **Monitoreo de Firewall**: Soporte completo para **pfSense** vía SSH.
     - Métricas de sistema (CPU, Memoria, Disco)
     - Información de interfaces de red con estadísticas de tráfico
@@ -169,8 +214,29 @@ Centralizegg sigue una arquitectura de tres capas: Frontend, Backend API y Base 
    - `GET /api/hosts` - Retorna hosts con información completa
    - `GET /api/vms` - Retorna todas las VMs
    - `GET/POST/PUT/DELETE /api/config/servers` - Gestión de servidores
+#### `GET /api/firewall/servers`
+Obtiene servidores pfSense configurados.
 
-3. **Frontend**: Interfaz de usuario reactiva
+#### `POST /api/firewall/servers`
+Agrega un nuevo servidor pfSense.
+
+#### `PUT/DELETE /api/firewall/servers/{id}`
+Actualiza o elimina servidores pfSense.
+
+### Otros Endpoints (NAS, Proxmox, Contenedores)
+
+Centralizegg expone endpoints estandarizados para el resto de herramientas:
+
+*   **NAS**: `/api/nas/hosts`, `/api/nas/volumes`, `/api/nas/disks`
+*   **Proxmox**: `/api/proxmox/hosts`, `/api/proxmox/vms`
+*   **Kubernetes**: `/api/kubernetes/nodes`, `/api/kubernetes/pods`
+*   **Docker**: `/api/containers/hosts`, `/api/containers/containers`
+*   **Podman**: `/api/podman/hosts`, `/api/podman/containers`
+*   **Configuración Genérica**: `/api/config/{tool}` (donde tool = nas, proxmox, docker, etc.)
+
+## 🗄️ Base de Datos
+
+Centralizegg utiliza PostgreSQL con esquemas dedicados para cada módulo.
    - Auto-refresh cada 5 segundos
    - Búsqueda en tiempo real
    - Filtrado por host seleccionado
