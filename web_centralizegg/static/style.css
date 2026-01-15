@@ -1541,6 +1541,14 @@ header {
     animation: fadeIn 0.4s ease-out;
 }
 
+.logs-layout {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 30px;
+    margin-top: 10px;
+    animation: fadeIn 0.4s ease-out;
+}
+
 .settings-sidebar {
     display: flex;
     flex-direction: column;
