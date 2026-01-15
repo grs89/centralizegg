@@ -59,6 +59,9 @@
 *   **QEMU Guest Agent**: Integración avanzada para obtener telemetría detallada del sistema invitado:
     - Nombre y versión del Sistema Operativo
     - Direcciones IP internas
+*   **Proxmox VE**: Integración nativa con clusters Proxmox.
+    - Monitoreo de nodos, VMs y Contenedores LXC.
+    - Métricas de almacenamiento ZFS y Ceph (vía API).
 *   **Visualización Multi-Disco**: Barras de uso individuales para cada disco virtual adjunto a la VM.
 *   **Mapa de Tráfico Mundial**: Visualización geográfica premium con animaciones "Flight Path" (Bezier curvos).
     - **GeoIP Proxy Integrado**: Resolución de IPs backend para privacidad y seguridad (evita Mixed Content).
@@ -69,6 +72,9 @@
         - ⚠️ Advertencia (>0% Pérdida de paquetes): Resaltado ámbar.
         - 🚨 Crítico (>10% Pérdida de paquetes): **Animación de pulso rojo** y sombras dinámicas para atención inmediata.
     - Métricas precisas de RTT y Desviación estándar.
+*   **Monitoreo de Kubernetes (K8s)**:
+    - Visualización de Nodos y Pods en tiempo real.
+    - Métricas de consumo de recursos por Namespace.
 *   **Sparklines de Red**: Gráficos lineales en tiempo real para visualizar tendencias de tráfico RX/TX.
 *   **Filtrado Inteligente**: Selecciona un host para filtrar instantáneamente su cuadrícula de máquinas virtuales.
 *   **Búsqueda Global ("Search Everything")**:
@@ -87,21 +93,16 @@
 
 Centralizegg sigue una arquitectura de tres capas: Frontend, Backend API y Base de Datos, con un colector de datos que se ejecuta en segundo plano.
 
-```mermaid
-graph TD
-    subgraph Frontend["Frontend (Vanilla JS)"]
-        UI[Dashboard Web]
-        Search[Búsqueda Global]
-        Config[Configuración UI]
-    end
-    
     subgraph Backend["Backend (Go)"]
         API[API REST<br/>Gorilla Mux]
-        Collector[Colector Unificado<br/>KVM + pfSense + Docker + NAS]
+        Collector[Colector Unificado]
         Libvirt[Libvirt Client]
-        SSH[SSH Client]
-        Docker[Docker SSH Client]
-        pfSense[pfSense Client]
+        SSH["SSH Client"]
+        Docker["Docker Client"]
+        Podman["Podman Client"]
+        K8s["K8s Client"]
+        Prox["Proxmox Client"]
+        pfSense["pfSense Client"]
         NAS["NAS Client (SSH)"]
     end
     
@@ -111,12 +112,12 @@ graph TD
     end
     
     subgraph Remote["Servidores Remotos"]
-        KVM1[Servidor KVM 1]
-        KVM2[Servidor KVM 2]
-        KVMN[Servidor KVM N]
-        pfSense1[pfSense 1]
-        pfSense2[pfSense 2]
-        NAS1[NAS Server 1]
+        KVM1[KVM Server]
+        Prox1[Proxmox Node]
+        K8s1[K8s Cluster]
+        Dock1[Docker Host]
+        pfSense1[pfSense Gateway]
+        NAS1[NAS Server]
     end
     
     UI -->|HTTP Requests| API
@@ -126,17 +127,22 @@ graph TD
     
     Collector -->|Query| PG
     
-    Collector -->|"SSH Tunnel (KVM)"| SSH
-    SSH -->|Unix Socket| Libvirt
-    Libvirt -->|Libvirt Protocol| KVM1
-    Libvirt -->|Libvirt Protocol| KVM2
-    Libvirt -->|Libvirt Protocol| KVMN
+    Collector -->|"SSH/Libvirt"| Libvirt
+    Libvirt --> KVM1
     
-    Collector -->|"SSH Tunnel (pfSense)"| pfSense
-    pfSense -->|SSH Commands| pfSense1
-    pfSense -->|SSH Commands| pfSense2
+    Collector -->|"SSH/API"| Prox
+    Prox --> Prox1
+    
+    Collector -->|"KubeAPI"| K8s
+    K8s --> K8s1
 
-    Collector -->|"SSH Tunnel (NAS)"| NAS
+    Collector -->|"SSH/Socket"| Docker
+    Docker --> Dock1
+    
+    Collector -->|"SSH Tunnel"| pfSense
+    pfSense --> pfSense1
+
+    Collector -->|"SSH Tunnel"| NAS
     NAS -->|"SSH Commands (df, lsblk)"| NAS1
     
     Collector -->|Upsert Data| PG
@@ -181,11 +187,16 @@ Centralizegg/
 │   ├── data_centralizegg/
 │   │   └── postgres.go            # Capa de acceso a datos (PostgreSQL)
 │   ├── virtualization/
-│   │   └── kvm-collector.go       # Colector de métricas KVM
+│   │   ├── kvm-collector.go       # Colector de métricas KVM/Libvirt
+│   │   └── proxmox-collector.go   # Colector de API Proxmox
 │   ├── firewall/
 │   │   └── pfsense-collector.go   # Colector de métricas pfSense (SSH)
-│   └── container/
-│       └── docker-collector.go    # Colector de métricas Docker/Podman
+│   ├── container/
+│   │   ├── docker-collector.go    # Colector Docker
+│   │   ├── podman-collector.go    # Colector Podman
+│   │   └── kubernetes-collector.go # Colector K8s
+│   └── storage/
+│       └── nas-collector.go       # Colector NAS (SSH)
 ├── web_centralizegg/
 │   └── static/
 │       ├── index.html             # Interfaz principal
