@@ -19,75 +19,14 @@
 
 ## 📋 Tabla de Contenidos
 
-- [Características Principales](#-características-principales)
+
 - [Arquitectura](#-arquitectura)
-- [Estructura del Proyecto](#-estructura-del-proyecto)
-- [Instalación Rápida](#-instalación-rápida)
-- [Configuración](#-configuración)
 - [API REST](#-api-rest)
 - [Base de Datos](#-base-de-datos)
 - [Funcionalidades del Frontend](#-funcionalidades-del-frontend)
 - [Desarrollo](#-desarrollo)
-- [Troubleshooting](#-troubleshooting)
 - [Tech Stack](#️-tech-stack)
 
-## ✨ Características Principales
-
-*   **Detección de SO**: Identificación automática del Sistema Operativo de cada host mediante `/etc/os-release` con iconos representativos (Ubuntu, Debian, Fedora, CentOS, Windows, Red Hat, SUSE).
-*   **Métricas Premium**: Ventanas flotantes (popovers) interactivas para CPU y Memoria con barras de progreso en tiempo real.
-*   **Colector Automático**: Recopilación de métricas cada 10 segundos desde todos los servidores configurados.
-*   **Métricas Completas**: 
-    - CPU: Uso calculado basado en tiempo de CPU acumulado
-    - Memoria: Total, libre y utilizada
-    - Memoria: Total, libre y utilizada
-    - **Almacenamiento (NAS)**: Monitoreo vía SSH de servidores Linux/NAS:
-        - Inventario de discos (`lsblk`) y particiones.
-        - Gráficos de barra para uso de volúmenes montados.
-        - Alertas de capacidad por volumen.
-    - Red: Tráfico RX/TX con **Sparklines** en tiempo real.
-    - **Interfaces Bridge**: Monitoreo dedicado de estados y tráfico para puentes de red (`br0`, `virbr0`, etc.).
-    - Estado de VMs: Running, Blocked, Paused, Shutdown, Shutoff, Crashed, Suspended
-*   **Monitoreo de Contenedores**: Soporte avanzado para **Docker & Podman**.
-    - **Mapa de Topología**: Visualización interactiva animada de la red (Contenedores -> Redes -> Internet).
-    - **Monitoreo de GPU**: Carga, temperatura y VRAM para GPUs NVIDIA mediante `nvidia-smi`.
-    - **Seguridad (CVE)**: Escaneo automático de vulnerabilidades en imágenes con `docker scout`.
-    - **Almacenamiento**: Detalle de `/var/lib/docker`, inodos y tamaños de volúmenes individuales.
-*   **Monitoreo de Firewall**: Soporte completo para **pfSense** vía SSH.
-    - Métricas de sistema (CPU, Memoria, Disco)
-    - Información de interfaces de red con estadísticas de tráfico
-    - Detección de arquitectura multi-plataforma (x86_64, ARM/AArch64) con insignias visuales.
-*   **QEMU Guest Agent**: Integración avanzada para obtener telemetría detallada del sistema invitado:
-    - Nombre y versión del Sistema Operativo
-    - Direcciones IP internas
-*   **Proxmox VE**: Integración nativa con clusters Proxmox.
-    - Monitoreo de nodos, VMs y Contenedores LXC.
-    - Métricas de almacenamiento ZFS y Ceph (vía API).
-*   **Visualización Multi-Disco**: Barras de uso individuales para cada disco virtual adjunto a la VM.
-*   **Mapa de Tráfico Mundial**: Visualización geográfica premium con animaciones "Flight Path" (Bezier curvos).
-    - **GeoIP Proxy Integrado**: Resolución de IPs backend para privacidad y seguridad (evita Mixed Content).
-    - **Animaciones Fluidas**: Líneas curvas con pulso dinámico (Rojo: Entrante, Verde: Saliente).
-    - **Modo Depuración**: Overlay accesible desde la UI para diagnosticar la resolución de IPs.
-*   **Monitoreo de Gateways**: Estado en tiempo real de los gateways de pfSense (WAN/VPN).
-    - **Alertas Visuales**: 
-        - ⚠️ Advertencia (>0% Pérdida de paquetes): Resaltado ámbar.
-        - 🚨 Crítico (>10% Pérdida de paquetes): **Animación de pulso rojo** y sombras dinámicas para atención inmediata.
-    - Métricas precisas de RTT y Desviación estándar.
-*   **Monitoreo de Kubernetes (K8s)**:
-    - Visualización de Nodos y Pods en tiempo real.
-    - Métricas de consumo de recursos por Namespace.
-*   **Sparklines de Red**: Gráficos lineales en tiempo real para visualizar tendencias de tráfico RX/TX.
-*   **Filtrado Inteligente**: Selecciona un host para filtrar instantáneamente su cuadrícula de máquinas virtuales.
-*   **Búsqueda Global ("Search Everything")**:
-    - Barra de búsqueda unificada que indexa **KVM Hosts, VMs, Contenedores Docker/Podman y Volúmenes NAS**.
-    - Navegación inteligente: Al seleccionar un resultado, cambia automáticamente a la herramienta correspondiente.
-    - Acceso rápido mediante atajo de teclado o botón dedicado.
-*   **Logs Unificados**: Panel lateral deslizable para ver logs de todos los sistemas (KVM, Docker, NAS) en un solo lugar.
-*   **Orden Alfabético**: Organización automática de hosts y VMs para una navegación más rápida.
-*   **Notificaciones**: Sistema de notificaciones para servidores offline.
-*   **Navegación Optimizada**: Acceso rápido a la configuración y cambio de herramientas desde la barra superior.
-*   **Web-Based Config**: Añade, edita o elimina servidores KVM directamente desde el dashboard.
-*   **Seguridad**: Soporte para puertos SSH personalizados y autenticación robusta (Clave/Contraseña).
-*   **Auto-refresh**: Actualización automática de datos cada 5 segundos en el frontend.
 
 ## 🏗️ Arquitectura
 
@@ -528,6 +467,48 @@ Almacena métricas de hosts pfSense.
 #### Tabla: `firewall.interfaces`
 Almacena estadísticas de interfaces de red de pfSense.
 
+#### Tabla: `firewall.pfsense_servers`
+Almacena configuración de servidores pfSense.
+
+#### Tabla: `firewall.hosts`
+Almacena métricas de hosts pfSense (Estado de tablas, CPU, Memoria).
+
+#### Tabla: `firewall.interfaces`
+Almacena estadísticas de interfaces de red de pfSense.
+
+### Esquema Storage (NAS)
+
+#### Tabla: `storage.nas_hosts`
+Información detallada del servidor NAS (Modelo, Serial, Versión Kernel).
+
+#### Tabla: `storage.nas_volumes`
+Volúmenes lógicos montados (espacio usado/total, punto de montaje).
+
+#### Tabla: `storage.nas_disks`
+Discos físicos (Modelo, Serial, Temperatura, Estado S.M.A.R.T).
+
+### Esquema Containers (Docker & Podman)
+
+#### Tablas: `containers.hosts` / `containers.podman_hosts`
+Hosts de contenedores con métricas de GPU (`gpu_info`), versión de Docker/Podman y almacenamiento.
+
+#### Tablas: `containers.containers` / `containers.podman_containers`
+Estado de contenedores, vulnerabilidades detectadas, y uso de recursos.
+
+### Esquema Kubernetes
+
+#### Tabla: `kubernetes.nodes`
+Nodos del cluster con roles (control-plane, worker), versión de Kubelet y capacidad.
+
+#### Tabla: `kubernetes.pods`
+Pods en ejecución con namespace, estado y reinicios.
+
+### Esquema Virtualization (Proxmox)
+
+#### Tabla: `virtualization.proxmox_hosts`
+Nodos del cluster Proxmox.
+
+
 ## 🎨 Funcionalidades del Frontend
 
 ### Interfaz de Usuario
@@ -642,55 +623,6 @@ go build -o centralizegg ./cmd_centralizegg/server
 - **`backend_internal_centralizegg/data_centralizegg/postgres.go`**: Acceso a datos, queries SQL
 - **`backend_internal_centralizegg/virtualization/kvm-collector.go`**: Lógica de recopilación de métricas
 
-## 🔧 Troubleshooting
-
-### Problemas de Conexión SSH
-
-**Error**: `ssh dial: connection refused`
-- Verifica que el servidor esté accesible desde el contenedor
-- Revisa el puerto SSH configurado
-- Verifica que el firewall permita conexiones SSH
-
-**Error**: `ssh dial: authentication failed`
-- Verifica que la clave SSH esté en `~/.ssh/id_rsa`
-- Asegúrate de que la clave tenga permisos correctos (`chmod 600 ~/.ssh/id_rsa`)
-- Si usas contraseña, verifica que sea correcta
-- Verifica que el usuario SSH tenga permisos para acceder a Libvirt
-
-### Problemas de Base de Datos
-
-**Error**: `Could not connect to DB`
-- Verifica que PostgreSQL esté corriendo: `docker-compose ps`
-- Revisa las variables de entorno en `docker-compose.yml`
-- Verifica los logs: `docker-compose logs db`
-
-**Error**: `relation "virtualization.hosts" does not exist`
-- Ejecuta el script de inicialización: `psql -f deploy_centralizegg/postgres/init.sql`
-
-### Problemas de Libvirt
-
-**Error**: `remote libvirt socket: connection refused`
-- Verifica que Libvirt esté corriendo en el servidor remoto
-- Asegúrate de que el socket esté en `/var/run/libvirt/libvirt-sock`
-- Verifica permisos del usuario SSH para acceder al socket
-
-**Error**: `libvirt connect: authentication failed`
-- Verifica configuración de Libvirt en el servidor remoto
-- Revisa políticas de acceso en `/etc/libvirt/libvirt.conf`
-
-### Servidores Aparecen como Offline
-
-1. Verifica conectividad de red
-2. Revisa logs del colector: `docker-compose logs app | grep "Failed to collect"`
-3. Verifica credenciales SSH en la configuración
-4. Asegúrate de que Libvirt esté accesible vía SSH
-
-### Frontend No Muestra Datos
-
-1. Abre la consola del navegador (F12) y revisa errores
-2. Verifica que la API esté respondiendo: `curl http://localhost:8080/api/hosts`
-3. Revisa logs del backend: `docker-compose logs app`
-4. Verifica CORS si accedes desde otro dominio
 
 ## 🛠️ Tech Stack
 

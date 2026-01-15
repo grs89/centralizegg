@@ -20,16 +20,15 @@
 ## 📋 Tabla de Contenidos
 
 - [Características Principales](#-características-principales)
-- [Arquitectura](#-arquitectura)
 - [Estructura del Proyecto](#-estructura-del-proyecto)
 - [Instalación Rápida](#-instalación-rápida)
 - [Configuración](#-configuración)
 - [API REST](#-api-rest)
 - [Base de Datos](#-base-de-datos)
 - [Funcionalidades del Frontend](#-funcionalidades-del-frontend)
-- [Desarrollo](#-desarrollo)
 - [Troubleshooting](#-troubleshooting)
-- [Tech Stack](#️-tech-stack)
+
+
 
 ## ✨ Características Principales
 
@@ -52,48 +51,45 @@
     - **Monitoreo de GPU**: Carga, temperatura y VRAM para GPUs NVIDIA mediante `nvidia-smi`.
     - **Seguridad (CVE)**: Escaneo automático de vulnerabilidades en imágenes con `docker scout`.
     - **Almacenamiento**: Detalle de `/var/lib/docker`, inodos y tamaños de volúmenes individuales.
-### Esquema Firewall
+*   **Monitoreo de Firewall**: Soporte completo para **pfSense** vía SSH.
+    - Métricas de sistema (CPU, Memoria, Disco)
+    - Información de interfaces de red con estadísticas de tráfico
+    - Detección de arquitectura multi-plataforma (x86_64, ARM/AArch64) con insignias visuales.
+*   **QEMU Guest Agent**: Integración avanzada para obtener telemetría detallada del sistema invitado:
+    - Nombre y versión del Sistema Operativo
+    - Direcciones IP internas
+*   **Proxmox VE**: Integración nativa con clusters Proxmox.
+    - Monitoreo de nodos, VMs y Contenedores LXC.
+    - Métricas de almacenamiento ZFS y Ceph (vía API).
+*   **Visualización Multi-Disco**: Barras de uso individuales para cada disco virtual adjunto a la VM.
+*   **Mapa de Tráfico Mundial**: Visualización geográfica premium con animaciones "Flight Path" (Bezier curvos).
+    - **GeoIP Proxy Integrado**: Resolución de IPs backend para privacidad y seguridad (evita Mixed Content).
+    - **Animaciones Fluidas**: Líneas curvas con pulso dinámico (Rojo: Entrante, Verde: Saliente).
+    - **Modo Depuración**: Overlay accesible desde la UI para diagnosticar la resolución de IPs.
+*   **Monitoreo de Gateways**: Estado en tiempo real de los gateways de pfSense (WAN/VPN).
+    - **Alertas Visuales**: 
+        - ⚠️ Advertencia (>0% Pérdida de paquetes): Resaltado ámbar.
+        - 🚨 Crítico (>10% Pérdida de paquetes): **Animación de pulso rojo** y sombras dinámicas para atención inmediata.
+    - Métricas precisas de RTT y Desviación estándar.
+*   **Monitoreo de Kubernetes (K8s)**:
+    - Visualización de Nodos y Pods en tiempo real.
+    - Métricas de consumo de recursos por Namespace.
+*   **Sparklines de Red**: Gráficos lineales en tiempo real para visualizar tendencias de tráfico RX/TX.
+*   **Filtrado Inteligente**: Selecciona un host para filtrar instantáneamente su cuadrícula de máquinas virtuales.
+*   **Búsqueda Global ("Search Everything")**:
+    - Barra de búsqueda unificada que indexa **KVM Hosts, VMs, Contenedores Docker/Podman y Volúmenes NAS**.
+    - Navegación inteligente: Al seleccionar un resultado, cambia automáticamente a la herramienta correspondiente.
+    - Acceso rápido mediante atajo de teclado o botón dedicado.
+*   **Logs Unificados**: Panel lateral deslizable para ver logs de todos los sistemas (KVM, Docker, NAS) en un solo lugar.
+*   **Orden Alfabético**: Organización automática de hosts y VMs para una navegación más rápida.
+*   **Notificaciones**: Sistema de notificaciones para servidores offline.
+*   **Navegación Optimizada**: Acceso rápido a la configuración y cambio de herramientas desde la barra superior.
+*   **Web-Based Config**: Añade, edita o elimina servidores KVM directamente desde el dashboard.
+*   **Seguridad**: Soporte para puertos SSH personalizados y autenticación robusta (Clave/Contraseña).
+*   **Auto-refresh**: Actualización automática de datos cada 5 segundos en el frontend.
 
-#### Tabla: `firewall.pfsense_servers`
-Almacena configuración de servidores pfSense.
 
-#### Tabla: `firewall.hosts`
-Almacena métricas de hosts pfSense (Estado de tablas, CPU, Memoria).
 
-#### Tabla: `firewall.interfaces`
-Almacena estadísticas de interfaces de red de pfSense.
-
-### Esquema Storage (NAS)
-
-#### Tabla: `storage.nas_hosts`
-Información detallada del servidor NAS (Modelo, Serial, Versión Kernel).
-
-#### Tabla: `storage.nas_volumes`
-Volúmenes lógicos montados (espacio usado/total, punto de montaje).
-
-#### Tabla: `storage.nas_disks`
-Discos físicos (Modelo, Serial, Temperatura, Estado S.M.A.R.T).
-
-### Esquema Containers (Docker & Podman)
-
-#### Tablas: `containers.hosts` / `containers.podman_hosts`
-Hosts de contenedores con métricas de GPU (`gpu_info`), versión de Docker/Podman y almacenamiento.
-
-#### Tablas: `containers.containers` / `containers.podman_containers`
-Estado de contenedores, vulnerabilidades detectadas, y uso de recursos.
-
-### Esquema Kubernetes
-
-#### Tabla: `kubernetes.nodes`
-Nodos del cluster con roles (control-plane, worker), versión de Kubelet y capacidad.
-
-#### Tabla: `kubernetes.pods`
-Pods en ejecución con namespace, estado y reinicios.
-
-### Esquema Virtualization (Proxmox)
-
-#### Tabla: `virtualization.proxmox_hosts`
-Nodos del cluster Proxmox.
 
 #### Tabla: `virtualization.proxmox_vms`
 VMs y Contenedores LXC alojados en Proxmox.
@@ -134,66 +130,6 @@ VMs y Contenedores LXC alojados en Proxmox.
 *   **Seguridad**: Soporte para puertos SSH personalizados y autenticación robusta (Clave/Contraseña).
 *   **Auto-refresh**: Actualización automática de datos cada 5 segundos en el frontend.
 
-## 🏗️ Arquitectura
-
-Centralizegg sigue una arquitectura de tres capas: Frontend, Backend API y Base de Datos, con un colector de datos que se ejecuta en segundo plano.
-
-    subgraph Backend["Backend (Go)"]
-        API[API REST<br/>Gorilla Mux]
-        Collector[Colector Unificado]
-        Libvirt[Libvirt Client]
-        SSH["SSH Client"]
-        Docker["Docker Client"]
-        Podman["Podman Client"]
-        K8s["K8s Client"]
-        Prox["Proxmox Client"]
-        pfSense["pfSense Client"]
-        NAS["NAS Client (SSH)"]
-    end
-    
-    subgraph Database["Base de Datos"]
-        PG[(PostgreSQL)]
-        Schema[Esquema virtualization]
-    end
-    
-    subgraph Remote["Servidores Remotos"]
-        KVM1[KVM Server]
-        Prox1[Proxmox Node]
-        K8s1[K8s Cluster]
-        Dock1[Docker Host]
-        pfSense1[pfSense Gateway]
-        NAS1[NAS Server]
-    end
-    
-    UI -- "HTTP Requests" --> API
-    Search -- "HTTP Requests" --> API
-    Config -- "HTTP Requests" --> API
-    API -- "Query/Insert/Update" --> PG
-    
-    Collector -- "Query" --> PG
-    
-    Collector -- "SSH/Libvirt" --> Libvirt
-    Libvirt --> KVM1
-    
-    Collector -- "SSH/API" --> Prox
-    Prox --> Prox1
-    
-    Collector -- "KubeAPI" --> K8s
-    K8s --> K8s1
-
-    Collector -- "SSH/Socket" --> Docker
-    Docker --> Dock1
-    
-    Collector -- "SSH Tunnel" --> pfSense
-    pfSense --> pfSense1
-
-    Collector -- "SSH Tunnel" --> NAS
-    NAS -- "SSH Commands (df, lsblk)" --> NAS1
-    
-    Collector -- "Upsert Data" --> PG
-    PG -- "Response" --> API
-    API -- "JSON Response" --> UI
-```
 
 ### Flujo de Datos
 
@@ -410,34 +346,7 @@ Los servidores KVM se configuran a través del dashboard web:
 3. Revisa logs del backend: `docker-compose logs app`
 4. Verifica CORS si accedes desde otro dominio
 
-## 🛠️ Tech Stack
-
-*   **Backend**: Go 1.23.2 (Golang) + Gorilla Mux + Libvirt + SSH
-*   **Database**: PostgreSQL 15
-*   **Frontend**: Vanilla JavaScript + CSS3 (Glassmorphism design)
-*   **Deployment**: Docker Compose
-*   **Libraries**:
-    - `github.com/digitalocean/go-libvirt` - Cliente Libvirt
-    - `golang.org/x/crypto/ssh` - Cliente SSH
-    - `github.com/gorilla/mux` - Router HTTP
-    - `github.com/lib/pq` - Driver PostgreSQL
-    - `github.com/beevik/etree` - Parser XML
-    - **Frontend Libs**:
-        - `Leaflet.js` - Mapas interactivos con soporte táctil
-        - `leaflet-ant-path` - Animaciones de tráfico fluidas (Bezier/Flight-Path)
-        - `Interactive SVG Engine` - Renderizado de topología de red con flujos animados
-        - `Custom Sparklines` - Renderizado SVG ultraligero para métricas en tiempo real
-
-### Debugging AntPath Map
-Si el mapa no muestra líneas de tráfico:
-1. Abre la consola del navegador (F12).
-2. Busca mensajes con el prefijo `[AntPath]`.
-3. Verifica el estado en la esquina inferior izquierda del mapa:
-   - **GeoReady**: Debe ser "Yes".
-   - **HomeIP**: Debe mostrar tu IP pública.
 
 ---
-
-
 
 © 2026 Centralizegg Contributors - MIT License
