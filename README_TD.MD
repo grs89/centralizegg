@@ -20,12 +20,12 @@
 ## 📋 Tabla de Contenidos
 
 
-- [Arquitectura](#arquitectura)
-- [API REST](#api-rest)
-- [Base de Datos](#base-de-datos)
-- [Funcionalidades del Frontend](#funcionalidades-del-frontend)
-- [Desarrollo](#desarrollo)
-- [Tech Stack](#tech-stack)
+- [Arquitectura](#-arquitectura)
+- [API REST](#-api-rest)
+- [Base de Datos](#-base-de-datos)
+- [Funcionalidades del Frontend](#-funcionalidades-del-frontend)
+- [Desarrollo](#-desarrollo)
+- [Tech Stack](#️-tech-stack)
 
 
 ## 🏗️ Arquitectura
