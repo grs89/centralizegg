@@ -14,6 +14,7 @@ import (
 	"github.com/grs/centralizegg/backend_internal_centralizegg/container"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/data_centralizegg"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/firewall"
+	"github.com/grs/centralizegg/backend_internal_centralizegg/storage"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/virtualization"
 )
 
@@ -61,6 +62,9 @@ func main() {
 
 	proxmoxCol := virtualization.NewProxmoxCollector(db)
 	go proxmoxCol.Start(15 * time.Second)
+
+	nasCol := storage.NewNasCollector(db)
+	go nasCol.Start(30 * time.Second)
 
 	// Router
 	r := mux.NewRouter()
@@ -205,6 +209,45 @@ func main() {
 			return
 		}
 		json.NewEncoder(w).Encode(vms)
+	}).Methods("GET")
+
+	// NAS hosts API
+	r.HandleFunc("/api/nas/hosts", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s", r.Method, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		hosts, err := db.GetNasHosts()
+		if err != nil {
+			log.Printf("Error GetNasHosts: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(hosts)
+	}).Methods("GET")
+
+	// NAS volumes API
+	r.HandleFunc("/api/nas/volumes", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s", r.Method, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		volumes, err := db.GetAllNasVolumes()
+		if err != nil {
+			log.Printf("Error GetAllNasVolumes: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(volumes)
+	}).Methods("GET")
+
+	// NAS disks API
+	r.HandleFunc("/api/nas/disks", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s", r.Method, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		disks, err := db.GetAllNasDisks()
+		if err != nil {
+			log.Printf("Error GetAllNasDisks: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(disks)
 	}).Methods("GET")
 
 	// Firewall servers config API

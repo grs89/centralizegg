@@ -12,6 +12,9 @@ const API_PODMAN_HOSTS = '/api/podman/hosts';
 const API_PODMAN_CONTAINERS = '/api/podman/containers';
 const API_PROXMOX_HOSTS = '/api/proxmox/hosts';
 const API_PROXMOX_VMS = '/api/proxmox/vms';
+const API_NAS_HOSTS = '/api/nas/hosts';
+const API_NAS_VOLUMES = '/api/nas/volumes';
+const API_NAS_DISKS = '/api/nas/disks';
 
 // Helper function to get config API endpoint for current tool
 function getConfigAPIForTool(toolKey) {
@@ -57,10 +60,13 @@ let selectedDockerHostId = null;
 let selectedKubernetesNodeId = null;
 let selectedPodmanHostId = null;
 let selectedProxmoxHostId = null;
+let selectedNasHostId = null;
 let allContainersCache = [];
 let allPodsCache = [];
 let allPodmanContainersCache = [];
 let allProxmoxVMsCache = [];
+let allNasVolumesCache = [];
+let allNasDisksCache = [];
 
 function updateNetworkHistory(vms) {
     const now = Date.now();
@@ -452,15 +458,15 @@ function switchTool(toolKey) {
                     if (toolKey === 'pfsense') {
                         renderFirewallSummary();
                     } else if (toolKey === 'docker') {
-                        placeholderHtml = `
-                            <div style="font-size: 4rem; color: var(--accent-color); margin-bottom: 2rem; opacity: 0.5;">
-                                <i class="fa-brands fa-docker"></i>
-                            </div>
-                            <h2 style="margin-bottom: 1rem;"><i class="fa-solid fa-list-ul"></i> Resumen</h2>
-                            <p style="color: var(--text-secondary); max-width: 500px; margin: 0 auto 2rem auto;">
-                                Selecciona un Host Node arriba para ver sus contenedores y estadísticas en tiempo real.
-                            </p>
-                        `;
+                        renderDockerSummary();
+                    } else if (toolKey === 'kubernetes') {
+                        renderKubernetesSummary();
+                    } else if (toolKey === 'podman') {
+                        renderPodmanSummary();
+                    } else if (toolKey === 'proxmox') {
+                        renderProxmoxSummary();
+                    } else if (toolKey === 'nas') {
+                        renderNasSummary();
                     } else {
                         placeholderHtml = `
                             <div style="font-size: 4rem; color: var(--accent-color); margin-bottom: 2rem; opacity: 0.5;">
@@ -853,7 +859,8 @@ function getHostsAPIForTool(toolKey) {
         'pfsense': API_FIREWALL_HOSTS,
         'docker': API_CONTAINER_HOSTS,
         'kubernetes': API_KUBERNETES_NODES,
-        'podman': API_PODMAN_HOSTS
+        'podman': API_PODMAN_HOSTS,
+        'nas': API_NAS_HOSTS
     };
     return toolHostsMap[toolKey] || null;
 }
@@ -942,6 +949,20 @@ async function checkAndFetchHostsForTool(toolKey) {
                             renderProxmoxSummary();
                         }
                         fetchProxmoxVMs();
+                    } else if (toolKey === 'nas') {
+                        allHostsCache = hosts || [];
+                        renderHostNodes('host-nodes-container-generic', {
+                            icon: tools[toolKey].icon,
+                            showOSInfo: true,
+                            showStats: true,
+                            onHostClick: 'selectNasHost'
+                        });
+                        if (selectedNasHostId) {
+                            renderNasHostDetails(selectedNasHostId);
+                        } else {
+                            renderNasSummary();
+                        }
+                        fetchNasData();
                     } else {
                         fetchHosts();
                     }
@@ -2593,6 +2614,143 @@ function renderProxmoxSummary() {
     `;
 }
 
+async function fetchNasData() {
+    try {
+        const [volumesResp, disksResp] = await Promise.all([
+            fetch(API_NAS_VOLUMES),
+            fetch(API_NAS_DISKS)
+        ]);
+        if (volumesResp.ok) allNasVolumesCache = await volumesResp.json();
+        if (disksResp.ok) allNasDisksCache = await disksResp.json();
+
+        if (currentTool === 'nas') {
+            if (selectedNasHostId) {
+                renderNasHostDetails(selectedNasHostId);
+            } else {
+                renderNasSummary();
+            }
+        }
+    } catch (e) {
+        console.error('Error fetching NAS data:', e);
+    }
+}
+
+function selectNasHost(id) {
+    selectedNasHostId = id;
+    renderHostNodes('host-nodes-container-generic', {
+        icon: tools['nas'].icon,
+        showOSInfo: true,
+        showStats: true,
+        onHostClick: 'selectNasHost'
+    });
+    renderNasHostDetails(id);
+}
+window.selectNasHost = selectNasHost;
+
+function renderNasHostDetails(hostId) {
+    const container = document.getElementById('container-scanner-tool');
+    if (!container) return;
+    const scannerSection = container.querySelector('.scanner-section');
+    if (!scannerSection) return;
+
+    const host = allHostsCache.find(h => h.id === hostId);
+    if (!host) return;
+
+    const volumes = allNasVolumesCache.filter(v => v.host_id === hostId);
+    const disks = allNasDisksCache.filter(d => d.host_id === hostId);
+
+    scannerSection.innerHTML = `
+        <div class="glass-panel" style="padding: 24px; text-align: left; margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+                <div>
+                    <h3 style="margin:0; font-size: 1.3rem;">${host.hostname}</h3>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
+                        ${host.os_name} | ${host.uptime}
+                    </div>
+                </div>
+                <div class="status-badge ${host.status === 'online' ? 'online' : 'offline'}">
+                    ${host.status}
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
+                <div class="mini-stat-card">
+                    <span class="label">CPU Usage</span>
+                    <span class="value">${(host.cpu_usage || 0).toFixed(1)}%</span>
+                </div>
+                <div class="mini-stat-card">
+                    <span class="label">Memory</span>
+                    <span class="value">${formatBytes(host.total_memory - host.free_memory)} / ${formatBytes(host.total_memory)}</span>
+                </div>
+                <div class="mini-stat-card">
+                    <span class="label">Kernel</span>
+                    <span class="value" style="font-size:0.7rem;">${host.kernel_version}</span>
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <h4 style="margin-bottom: 15px;"><i class="fa-solid fa-hard-drive"></i> Volúmenes de Almacenamiento (${volumes.length})</h4>
+            <div class="vm-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px;">
+                ${volumes.map(v => {
+        const pct = (v.used_size / v.total_size * 100) || 0;
+        return `
+                    <div class="glass-panel" style="padding: 15px;">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                            <div style="font-weight: 700;">${v.name}</div>
+                            <div style="font-size: 0.75rem; opacity: 0.6;">${v.type}</div>
+                        </div>
+                        <div class="progress-container" style="height: 8px; margin-bottom: 8px;">
+                            <div class="progress-bar" style="width: ${pct}%; background: ${getStatusColor(pct)};"></div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-size: 0.8rem;">
+                            <span>${formatBytes(v.used_size)} / ${formatBytes(v.total_size)}</span>
+                            <span style="font-weight: 600;">${pct.toFixed(1)}%</span>
+                        </div>
+                    </div>
+                `}).join('')}
+            </div>
+        </div>
+
+        <div>
+            <h4 style="margin-bottom: 15px;"><i class="fa-solid fa-compact-disc"></i> Discos Físicos (${disks.length})</h4>
+            <div class="container-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px;">
+                ${disks.map(d => `
+                    <div class="glass-panel" style="padding: 15px; border-left: 4px solid ${d.status === 'healthy' ? '#4ade80' : '#f87171'};">
+                        <div style="display: flex; justify-content: space-between; align-items: start;">
+                            <div style="font-weight: 600;">${d.name}</div>
+                            <div style="font-size: 0.75rem; color: ${d.temp > 45 ? '#fbbf24' : 'inherit'};">
+                                <i class="fa-solid fa-temperature-half"></i> ${d.temp}°C
+                            </div>
+                        </div>
+                        <div style="font-size: 0.75rem; opacity: 0.6; margin: 4px 0;">${d.model}</div>
+                        <div style="font-size: 0.8rem; margin-top: 8px;">Capacidad: ${formatBytes(d.size)}</div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+}
+
+function renderNasSummary() {
+    const container = document.getElementById('container-scanner-tool');
+    if (!container) return;
+    const scannerSection = container.querySelector('.scanner-section');
+    if (!scannerSection) return;
+
+    scannerSection.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="margin:0; font-size: 1.5rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen NAS</h2>
+        </div>
+
+        <div class="glass-panel" style="padding: 80px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+            <div style="font-size: 1.1rem; color: var(--text-secondary); opacity: 0.6; font-weight: 500;">
+                <i class="fa-solid fa-arrow-up" style="margin-right: 8px;"></i> Selecciona un Servidor NAS para ver su almacenamiento
+            </div>
+        </div>
+    `;
+}
+
 // Settings Tool Logic
 const SETTINGS_CONFIG = {
     'kvm': {
@@ -2601,11 +2759,17 @@ const SETTINGS_CONFIG = {
         title: 'Configuración de Virtualización',
         api: API_CONFIG_SERVERS
     },
-    'storage': {
-        name: 'Almacenamiento (NAS/Ceph)',
-        icon: 'fa-solid fa-database',
-        title: 'Configuración de Almacenamiento',
-        api: '/api/config/nas' // Adjust as needed for specific storage APIs
+    'nas': {
+        name: 'NAS',
+        icon: 'fa-solid fa-hdd',
+        title: 'Configuración de NAS',
+        api: '/api/config/nas'
+    },
+    'ceph': {
+        name: 'Ceph',
+        icon: 'fa-solid fa-cubes',
+        title: 'Configuración de Ceph',
+        api: '/api/config/ceph'
     },
     'pfsense': {
         name: 'Firewall (pfSense)',
@@ -2647,11 +2811,11 @@ function renderSettingsSidebar() {
     if (!sidebar) return;
 
     sidebar.innerHTML = Object.entries(SETTINGS_CONFIG).map(([id, config]) => `
-        <div class="settings-menu-item ${id === settingsCurrentCategory ? 'active' : ''}" data-category="${id}">
+        < div class="settings-menu-item ${id === settingsCurrentCategory ? 'active' : ''}" data - category="${id}" >
             <i class="${config.icon}"></i>
             <span>${config.name}</span>
-        </div>
-    `).join('');
+        </div >
+        `).join('');
 
     // Re-attach listeners to new items
     const menuItems = sidebar.querySelectorAll('.settings-menu-item');
@@ -2736,7 +2900,7 @@ async function renderSettingsServerList() {
         listContainer.innerHTML = servers.map(srv => {
             const sshPort = srv.ssh_port || srv.port || 22;
             return `
-                <div class="settings-server-card">
+        < div class="settings-server-card" >
                     <div class="settings-server-meta">
                         <div class="settings-server-name">${srv.name}</div>
                         <div class="settings-server-addr">
@@ -2750,8 +2914,8 @@ async function renderSettingsServerList() {
                         <button class="settings-action-btn delete" onclick="deleteSettingsServer(${srv.id})">
                             <i class="fa-solid fa-trash"></i>
                         </button>
-                    </div>
-                </div>
+                    </div >
+                </div >
         `;
         }).join('');
     } catch (e) {
@@ -2847,6 +3011,7 @@ async function saveSettingsServer() {
             if (currentTool === 'podman') checkAndFetchHostsForTool('podman');
             if (currentTool === 'proxmox') checkAndFetchHostsForTool('proxmox');
             if (currentTool === 'kubernetes') checkAndFetchHostsForTool('kubernetes');
+            if (currentTool === 'nas') checkAndFetchHostsForTool('nas');
         } else {
             const err = await response.text();
             alert('Error al guardar: ' + err);
@@ -2870,6 +3035,7 @@ window.deleteSettingsServer = async (id) => {
             if (currentTool === 'podman') checkAndFetchHostsForTool('podman');
             if (currentTool === 'proxmox') checkAndFetchHostsForTool('proxmox');
             if (currentTool === 'kubernetes') checkAndFetchHostsForTool('kubernetes');
+            if (currentTool === 'nas') checkAndFetchHostsForTool('nas');
         } else {
             alert('Error al eliminar.');
         }

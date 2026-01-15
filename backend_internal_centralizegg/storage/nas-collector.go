@@ -1,0 +1,203 @@
+package storage
+
+import (
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"log"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/grs/centralizegg/backend_internal_centralizegg/data_centralizegg"
+	"golang.org/x/crypto/ssh"
+)
+
+type NasCollector struct {
+	DB *data_centralizegg.DB
+}
+
+func NewNasCollector(db *data_centralizegg.DB) *NasCollector {
+	return &NasCollector{
+		DB: db,
+	}
+}
+
+func (nc *NasCollector) Start(interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	// Run once immediately
+	go nc.CollectAll()
+	go func() {
+		for range ticker.C {
+			nc.CollectAll()
+		}
+	}()
+}
+
+func (nc *NasCollector) CollectAll() {
+	log.Printf("[NasCollector] Starting collection cycle...")
+	servers, err := nc.DB.GetGenericServers("nas")
+	if err != nil {
+		log.Printf("[NasCollector] Failed to get NAS servers: %v", err)
+		return
+	}
+
+	for _, s := range servers {
+		if err := nc.collectOne(s); err != nil {
+			log.Printf("[NasCollector] Failed to collect from NAS %s (%s): %v", s.Name, s.IPAddress, err)
+			nc.DB.SetGenericServerStatus("nas", s.ID, "offline")
+			continue
+		}
+		nc.DB.SetGenericServerStatus("nas", s.ID, "online")
+	}
+}
+
+func (nc *NasCollector) collectOne(s data_centralizegg.GenericServer) error {
+	client, err := nc.getSSHClient(s)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	// 1. Get System Info
+	hostname, _ := nc.runCommand(client, "hostname")
+	uname, _ := nc.runCommand(client, "uname -srm")
+	uptime, _ := nc.runCommand(client, "uptime -p")
+
+	// CPU Info
+	cpuModelRaw, _ := nc.runCommand(client, "grep 'model name' /proc/cpuinfo | head -n 1 | cut -d ':' -f 2")
+	cpuCoresRaw, _ := nc.runCommand(client, "grep -c 'processor' /proc/cpuinfo")
+	cpuCores, _ := strconv.Atoi(strings.TrimSpace(cpuCoresRaw))
+
+	// Memory Info
+	memTotalRaw, _ := nc.runCommand(client, "free -b | grep Mem | awk '{print $2}'")
+	memFreeRaw, _ := nc.runCommand(client, "free -b | grep Mem | awk '{print $7}'")
+	memTotal, _ := strconv.ParseUint(strings.TrimSpace(memTotalRaw), 10, 64)
+	memFree, _ := strconv.ParseUint(strings.TrimSpace(memFreeRaw), 10, 64)
+
+	// CPU Usage (rough estimate via top)
+	cpuUsageRaw, _ := nc.runCommand(client, "top -bn1 | grep 'Cpu(s)' | awk '{print $2}' | cut -d '%' -f 1")
+	cpuUsage, _ := strconv.ParseFloat(strings.TrimSpace(cpuUsageRaw), 64)
+
+	// OS Info
+	osName, _ := nc.runCommand(client, "grep '^PRETTY_NAME=' /etc/os-release | cut -d '\"' -f 2")
+	if osName == "" {
+		osName = "Unknown Linux"
+	}
+
+	hostID, err := nc.DB.UpsertNasHost(data_centralizegg.NasHost{
+		ServerID:    s.ID,
+		Hostname:    strings.TrimSpace(hostname),
+		Status:      "online",
+		CPUModel:    strings.TrimSpace(cpuModelRaw),
+		CPUCores:    cpuCores,
+		TotalMemory: memTotal,
+		FreeMemory:  memFree,
+		CPUUsage:    cpuUsage,
+		OSName:      strings.TrimSpace(osName),
+		KernelVer:   strings.TrimSpace(uname),
+		Uptime:      strings.TrimSpace(uptime),
+	})
+	if err != nil {
+		return err
+	}
+
+	// 2. Get Volumes (df -B1)
+	dfOut, _ := nc.runCommand(client, "df -B1 --output=target,fstype,size,used,pcent")
+	lines := strings.Split(dfOut, "\n")
+	for i, line := range lines {
+		if i == 0 || strings.TrimSpace(line) == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) >= 5 {
+			path := fields[0]
+			fsType := fields[1]
+			total, _ := strconv.ParseUint(fields[2], 10, 64)
+			used, _ := strconv.ParseUint(fields[3], 10, 64)
+
+			// Only track significant volumes (skip tempfs, etc. or keep all and filter frontend)
+			if !strings.HasPrefix(path, "/dev") && !strings.HasPrefix(path, "/run") && !strings.HasPrefix(path, "/sys") && path != "/proc" {
+				nc.DB.UpsertNasVolume(data_centralizegg.NasVolume{
+					HostID:    hostID,
+					Name:      path,
+					Path:      path,
+					Status:    "online",
+					TotalSize: total,
+					UsedSize:  used,
+					Type:      fsType,
+				})
+			}
+		}
+	}
+
+	// 3. Get Disks (lsblk -J if available)
+	lsblkOut, _ := nc.runCommand(client, "lsblk -J -b -o NAME,MODEL,SERIAL,SIZE,TEMP")
+	var lsblkData struct {
+		BlockDevices []struct {
+			Name   string `json:"name"`
+			Model  string `json:"model"`
+			Serial string `json:"serial"`
+			Size   int64  `json:"size"`
+			Temp   string `json:"temp"`
+		} `json:"blockdevices"`
+	}
+	if err := json.Unmarshal([]byte(lsblkOut), &lsblkData); err == nil {
+		for _, d := range lsblkData.BlockDevices {
+			if strings.HasPrefix(d.Name, "sd") || strings.HasPrefix(d.Name, "nv") || strings.HasPrefix(d.Name, "hd") {
+				temp, _ := strconv.Atoi(strings.TrimSuffix(d.Temp, "C"))
+				nc.DB.UpsertNasDisk(data_centralizegg.NasDisk{
+					HostID: hostID,
+					Name:   d.Name,
+					Model:  d.Model,
+					Serial: d.Serial,
+					Size:   uint64(d.Size),
+					Status: "healthy",
+					Temp:   temp,
+				})
+			}
+		}
+	}
+
+	return nil
+}
+
+func (nc *NasCollector) getSSHClient(s data_centralizegg.GenericServer) (*ssh.Client, error) {
+	var authMethods []ssh.AuthMethod
+	if s.Password != "" {
+		authMethods = append(authMethods, ssh.Password(s.Password))
+	}
+	if s.SSHKeyPath != "" {
+		key, err := ioutil.ReadFile(s.SSHKeyPath)
+		if err == nil {
+			signer, err := ssh.ParsePrivateKey(key)
+			if err == nil {
+				authMethods = append(authMethods, ssh.PublicKeys(signer))
+			}
+		}
+	}
+
+	config := &ssh.ClientConfig{
+		User:            s.Username,
+		Auth:            authMethods,
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         10 * time.Second,
+	}
+
+	addr := fmt.Sprintf("%s:%d", s.IPAddress, s.SSHPort)
+	if s.SSHPort == 0 {
+		addr = fmt.Sprintf("%s:22", s.IPAddress)
+	}
+	return ssh.Dial("tcp", addr, config)
+}
+
+func (nc *NasCollector) runCommand(client *ssh.Client, cmd string) (string, error) {
+	session, err := client.NewSession()
+	if err != nil {
+		return "", err
+	}
+	defer session.Close()
+
+	output, err := session.CombinedOutput(cmd)
+	return string(output), err
+}

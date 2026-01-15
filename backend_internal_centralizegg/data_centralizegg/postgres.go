@@ -209,6 +209,49 @@ type ProxmoxVM struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
+type NasHost struct {
+	ID          int64   `json:"id"`
+	ServerID    int64   `json:"server_id"`
+	Hostname    string  `json:"hostname"`
+	ServerName  string  `json:"server_name"`
+	IPAddress   string  `json:"ip_address"`
+	Status      string  `json:"status"` // online, offline
+	CPUModel    string  `json:"cpu_model"`
+	CPUCores    int     `json:"cpu_cores"`
+	TotalMemory uint64  `json:"total_memory"`
+	FreeMemory  uint64  `json:"free_memory"`
+	CPUUsage    float64 `json:"cpu_usage"`
+	OSName      string  `json:"os_name"`
+	KernelVer   string  `json:"kernel_version"`
+	Uptime      string  `json:"uptime"`
+	Model       string  `json:"model"`
+	Serial      string  `json:"serial"`
+}
+
+type NasVolume struct {
+	ID        int64     `json:"id"`
+	HostID    int64     `json:"host_id"`
+	Name      string    `json:"name"`
+	Path      string    `json:"path"`
+	Status    string    `json:"status"`
+	TotalSize uint64    `json:"total_size"`
+	UsedSize  uint64    `json:"used_size"`
+	Type      string    `json:"type"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type NasDisk struct {
+	ID        int64     `json:"id"`
+	HostID    int64     `json:"host_id"`
+	Name      string    `json:"name"`
+	Model     string    `json:"model"`
+	Serial    string    `json:"serial"`
+	Size      uint64    `json:"size"`
+	Status    string    `json:"status"`
+	Temp      int       `json:"temp"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type KVMServer struct {
 	ID         int64  `json:"id"`
 	Name       string `json:"name"`
@@ -588,6 +631,49 @@ func ensureSchema(db *sql.DB) {
 			net_tx BIGINT DEFAULT 0,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE(host_id, vmid)
+		)`,
+		// NAS Tables
+		`CREATE TABLE IF NOT EXISTS storage.nas_hosts (
+			id SERIAL PRIMARY KEY,
+			server_id INT REFERENCES storage.nas_servers(id) ON DELETE CASCADE,
+			hostname VARCHAR(255) NOT NULL,
+			status VARCHAR(50) DEFAULT 'unknown',
+			cpu_model VARCHAR(255),
+			cpu_cores INT,
+			total_memory BIGINT,
+			free_memory BIGINT DEFAULT 0,
+			cpu_usage DOUBLE PRECISION DEFAULT 0,
+			os_name VARCHAR(255),
+			kernel_version VARCHAR(255),
+			uptime VARCHAR(255),
+			model VARCHAR(255),
+			serial VARCHAR(255),
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(server_id, hostname)
+		)`,
+		`CREATE TABLE IF NOT EXISTS storage.nas_volumes (
+			id SERIAL PRIMARY KEY,
+			host_id INT REFERENCES storage.nas_hosts(id) ON DELETE CASCADE,
+			name VARCHAR(255) NOT NULL,
+			path VARCHAR(255) NOT NULL,
+			status VARCHAR(50) DEFAULT 'online',
+			total_size BIGINT,
+			used_size BIGINT,
+			type VARCHAR(50),
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(host_id, path)
+		)`,
+		`CREATE TABLE IF NOT EXISTS storage.nas_disks (
+			id SERIAL PRIMARY KEY,
+			host_id INT REFERENCES storage.nas_hosts(id) ON DELETE CASCADE,
+			name VARCHAR(255) NOT NULL,
+			model VARCHAR(255),
+			serial VARCHAR(255),
+			size BIGINT,
+			status VARCHAR(50) DEFAULT 'healthy',
+			temp INT DEFAULT 0,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(host_id, name)
 		)`,
 	}
 
@@ -1376,4 +1462,117 @@ func (d *DB) GetAllProxmoxVMs() ([]ProxmoxVM, error) {
 		vms = append(vms, vm)
 	}
 	return vms, nil
+}
+
+// NAS specific methods
+func (d *DB) UpsertNasHost(h NasHost) (int64, error) {
+	var id int64
+	err := d.Conn.QueryRow("SELECT id FROM storage.nas_hosts WHERE server_id = $1 AND hostname = $2", h.ServerID, h.Hostname).Scan(&id)
+
+	if err == sql.ErrNoRows {
+		err = d.Conn.QueryRow(`
+			INSERT INTO storage.nas_hosts (server_id, hostname, status, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, kernel_version, uptime, model, serial)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
+			h.ServerID, h.Hostname, h.Status, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.KernelVer, h.Uptime, h.Model, h.Serial).Scan(&id)
+	} else if err == nil {
+		_, err = d.Conn.Exec(`
+			UPDATE storage.nas_hosts SET status=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, kernel_version=$8, uptime=$9, model=$10, serial=$11
+			WHERE id=$12`,
+			h.Status, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.KernelVer, h.Uptime, h.Model, h.Serial, id)
+	}
+
+	return id, err
+}
+
+func (d *DB) UpsertNasVolume(v NasVolume) error {
+	var id int64
+	err := d.Conn.QueryRow("SELECT id FROM storage.nas_volumes WHERE host_id = $1 AND path = $2", v.HostID, v.Path).Scan(&id)
+
+	if err == sql.ErrNoRows {
+		_, err = d.Conn.Exec(`
+			INSERT INTO storage.nas_volumes (host_id, name, path, status, total_size, used_size, type, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+			v.HostID, v.Name, v.Path, v.Status, v.TotalSize, v.UsedSize, v.Type)
+	} else if err == nil {
+		_, err = d.Conn.Exec(`
+			UPDATE storage.nas_volumes SET name=$1, status=$2, total_size=$3, used_size=$4, type=$5, updated_at=NOW()
+			WHERE id=$6`,
+			v.Name, v.Status, v.TotalSize, v.UsedSize, v.Type, id)
+	}
+	return err
+}
+
+func (d *DB) UpsertNasDisk(disk NasDisk) error {
+	var id int64
+	err := d.Conn.QueryRow("SELECT id FROM storage.nas_disks WHERE host_id = $1 AND name = $2", disk.HostID, disk.Name).Scan(&id)
+
+	if err == sql.ErrNoRows {
+		_, err = d.Conn.Exec(`
+			INSERT INTO storage.nas_disks (host_id, name, model, serial, size, status, temp, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+			disk.HostID, disk.Name, disk.Model, disk.Serial, disk.Size, disk.Status, disk.Temp)
+	} else if err == nil {
+		_, err = d.Conn.Exec(`
+			UPDATE storage.nas_disks SET model=$1, serial=$2, size=$3, status=$4, temp=$5, updated_at=NOW()
+			WHERE id=$6`,
+			disk.Model, disk.Serial, disk.Size, disk.Status, disk.Temp, id)
+	}
+	return err
+}
+
+func (d *DB) GetNasHosts() ([]NasHost, error) {
+	rows, err := d.Conn.Query(`
+		SELECT nh.id, nh.server_id, nh.hostname, ns.name, ns.ip_address, nh.status, nh.cpu_model, nh.cpu_cores, nh.total_memory, nh.free_memory, nh.cpu_usage, nh.os_name, nh.kernel_version, nh.uptime, nh.model, nh.serial
+		FROM storage.nas_hosts nh
+		JOIN storage.nas_servers ns ON nh.server_id = ns.id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var hosts []NasHost
+	for rows.Next() {
+		var h NasHost
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.Status, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.KernelVer, &h.Uptime, &h.Model, &h.Serial); err != nil {
+			return nil, err
+		}
+		hosts = append(hosts, h)
+	}
+	return hosts, nil
+}
+
+func (d *DB) GetAllNasVolumes() ([]NasVolume, error) {
+	rows, err := d.Conn.Query("SELECT id, host_id, name, path, status, total_size, used_size, type, updated_at FROM storage.nas_volumes")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var volumes []NasVolume
+	for rows.Next() {
+		var v NasVolume
+		if err := rows.Scan(&v.ID, &v.HostID, &v.Name, &v.Path, &v.Status, &v.TotalSize, &v.UsedSize, &v.Type, &v.UpdatedAt); err != nil {
+			return nil, err
+		}
+		volumes = append(volumes, v)
+	}
+	return volumes, nil
+}
+
+func (d *DB) GetAllNasDisks() ([]NasDisk, error) {
+	rows, err := d.Conn.Query("SELECT id, host_id, name, model, serial, size, status, temp, updated_at FROM storage.nas_disks")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var disks []NasDisk
+	for rows.Next() {
+		var disk NasDisk
+		if err := rows.Scan(&disk.ID, &disk.HostID, &disk.Name, &disk.Model, &disk.Serial, &disk.Size, &disk.Status, &disk.Temp, &disk.UpdatedAt); err != nil {
+			return nil, err
+		}
+		disks = append(disks, disk)
+	}
+	return disks, nil
 }
