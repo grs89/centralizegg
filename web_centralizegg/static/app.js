@@ -2766,13 +2766,13 @@ const SETTINGS_CONFIG = {
         api: API_CONFIG_SERVERS
     },
     'nas': {
-        name: 'NAS',
+        name: 'NAS (Almacenamiento)',
         icon: 'fa-solid fa-hdd',
         title: 'Configuración de NAS',
         api: '/api/config/nas'
     },
     'ceph': {
-        name: 'Ceph',
+        name: 'Ceph (Almacenamiento)',
         icon: 'fa-solid fa-cubes',
         title: 'Configuración de Ceph',
         api: '/api/config/ceph'
@@ -2784,19 +2784,19 @@ const SETTINGS_CONFIG = {
         api: API_FIREWALL_SERVERS
     },
     'docker': {
-        name: 'Contenedores (Docker)',
+        name: 'Docker (Contenedores)',
         icon: 'fa-brands fa-docker',
         title: 'Configuración de Contenedores',
         api: '/api/config/docker'
     },
     'kubernetes': {
-        name: 'Kubernetes (K8s)',
+        name: 'Kubernetes (Contenedores)',
         icon: 'fa-solid fa-dharmachakra',
         title: 'Configuración de Kubernetes',
         api: '/api/config/kubernetes'
     },
     'podman': {
-        name: 'Podman',
+        name: 'Podman (Contenedores)',
         icon: 'fa-solid fa-box-archive',
         title: 'Configuración de Podman',
         api: '/api/config/podman'
@@ -2811,8 +2811,8 @@ const SETTINGS_CONFIG = {
 
 const LOGS_CONFIG = {
     'kvm': { name: 'Virtualización (KVM)', icon: 'fa-solid fa-microchip', title: 'Logs de Virtualización' },
-    'nas': { name: 'NAS', icon: 'fa-solid fa-hdd', title: 'Logs de NAS' },
-    'ceph': { name: 'Ceph', icon: 'fa-solid fa-cubes', title: 'Logs de Ceph' },
+    'nas': { name: 'NAS (Almacenamiento)', icon: 'fa-solid fa-hdd', title: 'Logs de NAS' },
+    'ceph': { name: 'Ceph (Almacenamiento)', icon: 'fa-solid fa-cubes', title: 'Logs de Ceph' },
     'pfsense': { name: 'Firewall (pfSense)', icon: 'fa-brands fa-freebsd', title: 'Logs de Firewall' },
     'docker': { name: 'Contenedores (Docker)', icon: 'fa-brands fa-docker', title: 'Logs de Docker' },
     'kubernetes': { name: 'Kubernetes (K8s)', icon: 'fa-solid fa-dharmachakra', title: 'Logs de Kubernetes' },
