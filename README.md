@@ -120,34 +120,34 @@ Centralizegg sigue una arquitectura de tres capas: Frontend, Backend API y Base 
         NAS1[NAS Server]
     end
     
-    UI -->|HTTP Requests| API
-    Search -->|HTTP Requests| API
-    Config -->|HTTP Requests| API
-    API -->|Query/Insert/Update| PG
+    UI -- "HTTP Requests" --> API
+    Search -- "HTTP Requests" --> API
+    Config -- "HTTP Requests" --> API
+    API -- "Query/Insert/Update" --> PG
     
-    Collector -->|Query| PG
+    Collector -- "Query" --> PG
     
-    Collector -->|"SSH/Libvirt"| Libvirt
+    Collector -- "SSH/Libvirt" --> Libvirt
     Libvirt --> KVM1
     
-    Collector -->|"SSH/API"| Prox
+    Collector -- "SSH/API" --> Prox
     Prox --> Prox1
     
-    Collector -->|"KubeAPI"| K8s
+    Collector -- "KubeAPI" --> K8s
     K8s --> K8s1
 
-    Collector -->|"SSH/Socket"| Docker
+    Collector -- "SSH/Socket" --> Docker
     Docker --> Dock1
     
-    Collector -->|"SSH Tunnel"| pfSense
+    Collector -- "SSH Tunnel" --> pfSense
     pfSense --> pfSense1
 
-    Collector -->|"SSH Tunnel"| NAS
-    NAS -->|"SSH Commands (df, lsblk)"| NAS1
+    Collector -- "SSH Tunnel" --> NAS
+    NAS -- "SSH Commands (df, lsblk)" --> NAS1
     
-    Collector -->|Upsert Data| PG
-    PG -->|Response| API
-    API -->|JSON Response| UI
+    Collector -- "Upsert Data" --> PG
+    PG -- "Response" --> API
+    API -- "JSON Response" --> UI
 ```
 
 ### Flujo de Datos
