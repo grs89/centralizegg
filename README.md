@@ -102,7 +102,7 @@ graph TD
         SSH[SSH Client]
         Docker[Docker SSH Client]
         pfSense[pfSense Client]
-        NAS[NAS Client (SSH)]
+        NAS["NAS Client (SSH)"]
     end
     
     subgraph Database["Base de Datos"]
