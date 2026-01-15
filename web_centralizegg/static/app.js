@@ -6,6 +6,10 @@ const API_FIREWALL_HOSTS = '/api/firewall/hosts';
 const API_FIREWALL_SERVERS = '/api/firewall/servers';
 const API_CONTAINER_HOSTS = '/api/containers/hosts';
 const API_CONTAINER_CONTAINERS = '/api/containers/containers';
+const API_KUBERNETES_NODES = '/api/kubernetes/nodes';
+const API_KUBERNETES_PODS = '/api/kubernetes/pods';
+const API_PODMAN_HOSTS = '/api/podman/hosts';
+const API_PODMAN_CONTAINERS = '/api/podman/containers';
 
 // Helper function to get config API endpoint for current tool
 function getConfigAPIForTool(toolKey) {
@@ -16,7 +20,8 @@ function getConfigAPIForTool(toolKey) {
         'nas': '/api/config/nas',
         'ceph': '/api/config/ceph',
         'docker': '/api/config/docker',
-        'podman': '/api/config/podman'
+        'podman': '/api/config/podman',
+        'kubernetes': '/api/config/kubernetes'
     };
     return apiMap[toolKey] || API_CONFIG_SERVERS;
 }
@@ -47,7 +52,11 @@ let lastRenderedVMsHash = "";
 
 let selectedFirewallHostId = null;
 let selectedDockerHostId = null;
+let selectedKubernetesNodeId = null;
+let selectedPodmanHostId = null;
 let allContainersCache = [];
+let allPodsCache = [];
+let allPodmanContainersCache = [];
 
 function updateNetworkHistory(vms) {
     const now = Date.now();
@@ -305,6 +314,13 @@ const tools = {
     'podman': {
         name: 'Podman',
         icon: 'fa-solid fa-box-archive',
+        elementId: 'container-scanner-tool',
+        categoryBtnId: 'containers-btn',
+        categoryName: 'Contenedores'
+    },
+    'kubernetes': {
+        name: 'Kubernetes',
+        icon: 'fa-solid fa-dharmachakra',
         elementId: 'container-scanner-tool',
         categoryBtnId: 'containers-btn',
         categoryName: 'Contenedores'
@@ -832,7 +848,8 @@ function getHostsAPIForTool(toolKey) {
         'proxmox': API_HOSTS, // Proxmox uses same as KVM for now
         'pfsense': API_FIREWALL_HOSTS,
         'docker': API_CONTAINER_HOSTS,
-        // Add more mappings as needed
+        'kubernetes': API_KUBERNETES_NODES,
+        'podman': API_PODMAN_HOSTS
     };
     return toolHostsMap[toolKey] || null;
 }
@@ -879,6 +896,34 @@ async function checkAndFetchHostsForTool(toolKey) {
                             renderDockerSummary();
                         }
                         fetchContainers();
+                    } else if (toolKey === 'kubernetes') {
+                        allHostsCache = hosts || [];
+                        renderHostNodes('host-nodes-container-generic', {
+                            icon: tools[toolKey].icon,
+                            showOSInfo: true,
+                            showStats: true,
+                            onHostClick: 'selectKubernetesNode'
+                        });
+                        if (selectedKubernetesNodeId) {
+                            renderKubernetesNodeDetails(selectedKubernetesNodeId);
+                        } else {
+                            renderKubernetesSummary();
+                        }
+                        fetchPods();
+                    } else if (toolKey === 'podman') {
+                        allHostsCache = hosts || [];
+                        renderHostNodes('host-nodes-container-generic', {
+                            icon: tools[toolKey].icon,
+                            showOSInfo: true,
+                            showStats: true,
+                            onHostClick: 'selectPodmanHost'
+                        });
+                        if (selectedPodmanHostId) {
+                            renderPodmanHostDetails(selectedPodmanHostId);
+                        } else {
+                            renderPodmanSummary();
+                        }
+                        fetchPodmanContainers();
                     } else {
                         fetchHosts();
                     }
@@ -2151,6 +2196,257 @@ function renderFirewallSummary() {
     `;
 }
 
+async function fetchPods() {
+    try {
+        const response = await fetch(API_KUBERNETES_PODS);
+        if (!response.ok) throw new Error('Failed to fetch pods');
+        allPodsCache = await response.json();
+        if (currentTool === 'kubernetes') {
+            if (selectedKubernetesNodeId) {
+                renderKubernetesNodeDetails(selectedKubernetesNodeId);
+            } else {
+                renderKubernetesSummary();
+            }
+        }
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+function selectKubernetesNode(id) {
+    selectedKubernetesNodeId = id;
+    renderHostNodes('host-nodes-container-generic', {
+        icon: tools['kubernetes']?.icon || 'fa-solid fa-dharmachakra',
+        showOSInfo: true,
+        showStats: true,
+        onHostClick: 'selectKubernetesNode'
+    });
+    renderKubernetesNodeDetails(id);
+}
+window.selectKubernetesNode = selectKubernetesNode;
+
+function renderKubernetesNodeDetails(nodeId) {
+    const container = document.getElementById('container-scanner-tool');
+    if (!container) return;
+    const scannerSection = container.querySelector('.scanner-section');
+    if (!scannerSection) return;
+
+    const node = allHostsCache.find(n => n.id === nodeId);
+    if (!node) return;
+
+    let filteredPods = allPodsCache.filter(p => p.node_id === nodeId);
+    filteredPods.sort((a, b) => (a.namespace || "").localeCompare(b.namespace || "") || (a.name || "").localeCompare(b.name || ""));
+
+    if (searchQuery) {
+        filteredPods = filteredPods.filter(p =>
+            p.name.toLowerCase().includes(searchQuery) ||
+            p.namespace.toLowerCase().includes(searchQuery)
+        );
+    }
+
+    scannerSection.innerHTML = `
+        <div class="glass-panel" style="padding: 24px; text-align: left; margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+                <div>
+                    <h3 style="margin:0; font-size: 1.3rem;">${node.hostname}</h3>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
+                        ${node.version} | ${node.os_name}
+                    </div>
+                </div>
+                <div class="status-badge ${node.status === 'Ready' ? 'online' : 'offline'}">
+                    ${node.status}
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
+                <div class="mini-stat-card">
+                    <span class="label">Pods</span>
+                    <span class="value">${node.pods_count || 0}</span>
+                </div>
+                <div class="mini-stat-card">
+                    <span class="label">CPU Usage</span>
+                    <span class="value">${(node.cpu_usage || 0).toFixed(1)}%</span>
+                </div>
+                <div class="mini-stat-card">
+                    <span class="label">Memory</span>
+                    <span class="value">${formatBytes(node.total_memory - node.free_memory)} / ${formatBytes(node.total_memory)}</span>
+                </div>
+            </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h4 style="margin:0;"><i class="fa-solid fa-cubes"></i> Pods en este Nodo (${filteredPods.length})</h4>
+        </div>
+
+        <div class="pod-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px;">
+            ${filteredPods.map(p => `
+                <div class="glass-panel pod-card" style="padding: 15px; border-left: 4px solid ${p.state === 'Running' ? '#4ade80' : '#ef4444'};">
+                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                        <div style="max-width: 200px;">
+                            <div style="font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase;">${p.namespace}</div>
+                            <div style="font-weight: 700; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${p.name}">${p.name}</div>
+                        </div>
+                        <div style="font-size: 0.75rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: rgba(255,255,255,0.05);">
+                            ${p.state}
+                        </div>
+                    </div>
+                    <div style="margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.8rem; color: var(--text-secondary);">
+                        <div><i class="fa-solid fa-redo" style="font-size: 0.7rem;"></i> ${p.restarts} restarts</div>
+                        <div><i class="fa-solid fa-clock" style="font-size: 0.7rem;"></i> ${p.age}</div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function renderKubernetesSummary() {
+    const container = document.getElementById('container-scanner-tool');
+    if (!container) return;
+    const scannerSection = container.querySelector('.scanner-section');
+    if (!scannerSection) return;
+
+    scannerSection.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="margin:0; font-size: 1.5rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen Kubernetes</h2>
+        </div>
+
+        <div class="glass-panel" style="padding: 80px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+            <div style="font-size: 1.1rem; color: var(--text-secondary); opacity: 0.6; font-weight: 500;">
+                <i class="fa-solid fa-arrow-up" style="margin-right: 8px;"></i> Selecciona un Nodo para ver sus Pods
+            </div>
+        </div>
+    `;
+}
+
+async function fetchPodmanContainers() {
+    try {
+        const response = await fetch(API_PODMAN_CONTAINERS);
+        if (!response.ok) throw new Error('Failed to fetch podman containers');
+        allPodmanContainersCache = await response.json();
+        if (currentTool === 'podman') {
+            if (selectedPodmanHostId) {
+                renderPodmanHostDetails(selectedPodmanHostId);
+            } else {
+                renderPodmanSummary();
+            }
+        }
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+function selectPodmanHost(id) {
+    selectedPodmanHostId = id;
+    renderHostNodes('host-nodes-container-generic', {
+        icon: tools['podman']?.icon || 'fa-solid fa-box-archive',
+        showOSInfo: true,
+        showStats: true,
+        onHostClick: 'selectPodmanHost'
+    });
+    renderPodmanHostDetails(id);
+}
+window.selectPodmanHost = selectPodmanHost;
+
+function renderPodmanHostDetails(hostId) {
+    const container = document.getElementById('container-scanner-tool');
+    if (!container) return;
+    const scannerSection = container.querySelector('.scanner-section');
+    if (!scannerSection) return;
+
+    const host = allHostsCache.find(h => h.id === hostId);
+    if (!host) return;
+
+    let filteredContainers = allPodmanContainersCache.filter(c => c.host_id === hostId);
+    filteredContainers.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+    if (searchQuery) {
+        filteredContainers = filteredContainers.filter(c =>
+            c.name.toLowerCase().includes(searchQuery) ||
+            c.image.toLowerCase().includes(searchQuery)
+        );
+    }
+
+    scannerSection.innerHTML = `
+        <div class="glass-panel" style="padding: 24px; text-align: left; margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+                <div>
+                    <h3 style="margin:0; font-size: 1.3rem;">${host.hostname}</h3>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
+                        Podman ${host.podman_version} | ${host.os_name}
+                    </div>
+                </div>
+                <div class="status-badge online">
+                    ${host.podman_service_status}
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
+                <div class="mini-stat-card">
+                    <span class="label">CPU Usage</span>
+                    <span class="value">${(host.cpu_usage || 0).toFixed(1)}%</span>
+                </div>
+                <div class="mini-stat-card">
+                    <span class="label">Memory</span>
+                    <span class="value">${formatBytes(host.total_memory - host.free_memory)} / ${formatBytes(host.total_memory)}</span>
+                </div>
+                <div class="mini-stat-card">
+                    <span class="label">Storage</span>
+                    <span class="value">${formatBytes(host.podman_storage_used)} / ${formatBytes(host.podman_storage_total)}</span>
+                </div>
+            </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h4 style="margin:0;"><i class="fa-solid fa-box-archive"></i> Contenedores Podman (${filteredContainers.length})</h4>
+        </div>
+
+        <div class="container-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 15px;">
+            ${filteredContainers.map(c => `
+                <div class="glass-panel container-card" style="padding: 15px; border-left: 4px solid ${c.state === 'running' ? '#4ade80' : '#6b7280'};">
+                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                        <div style="max-width: 220px;">
+                            <div style="font-weight: 700; font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${c.name}">${c.name}</div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${c.image}</div>
+                        </div>
+                        <div style="font-size: 0.7rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: rgba(255,255,255,0.05);">
+                            ${c.status}
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div class="mini-stat">
+                            <i class="fa-solid fa-microchip"></i> ${(c.cpu_usage || 0).toFixed(1)}%
+                        </div>
+                        <div class="mini-stat">
+                            <i class="fa-solid fa-memory"></i> ${formatBytes(c.memory_usage)}
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function renderPodmanSummary() {
+    const container = document.getElementById('container-scanner-tool');
+    if (!container) return;
+    const scannerSection = container.querySelector('.scanner-section');
+    if (!scannerSection) return;
+
+    scannerSection.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="margin:0; font-size: 1.5rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen Podman</h2>
+        </div>
+
+        <div class="glass-panel" style="padding: 80px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+            <div style="font-size: 1.1rem; color: var(--text-secondary); opacity: 0.6; font-weight: 500;">
+                <i class="fa-solid fa-arrow-up" style="margin-right: 8px;"></i> Selecciona un Host Podman para ver sus contenedores
+            </div>
+        </div>
+    `;
+}
+
 // Settings Tool Logic
 const SETTINGS_CONFIG = {
     'kvm': {
@@ -2176,6 +2472,18 @@ const SETTINGS_CONFIG = {
         icon: 'fa-brands fa-docker',
         title: 'Configuración de Contenedores',
         api: '/api/config/docker'
+    },
+    'kubernetes': {
+        name: 'Kubernetes (K8s)',
+        icon: 'fa-solid fa-dharmachakra',
+        title: 'Configuración de Kubernetes',
+        api: '/api/config/kubernetes'
+    },
+    'podman': {
+        name: 'Podman',
+        icon: 'fa-solid fa-box-archive',
+        title: 'Configuración de Podman',
+        api: '/api/config/podman'
     }
 };
 

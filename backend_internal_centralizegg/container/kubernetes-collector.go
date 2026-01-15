@@ -1,0 +1,357 @@
+package container
+
+import (
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"log"
+	"strings"
+	"time"
+
+	"github.com/grs/centralizegg/backend_internal_centralizegg/data_centralizegg"
+	"golang.org/x/crypto/ssh"
+)
+
+type KubernetesCollector struct {
+	DB *data_centralizegg.DB
+}
+
+func NewKubernetesCollector(db *data_centralizegg.DB) *KubernetesCollector {
+	return &KubernetesCollector{
+		DB: db,
+	}
+}
+
+func (kc *KubernetesCollector) Start(interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	// Run once immediately
+	go kc.CollectAll()
+	go func() {
+		for range ticker.C {
+			kc.CollectAll()
+		}
+	}()
+}
+
+func (kc *KubernetesCollector) CollectAll() {
+	log.Printf("[KubernetesCollector] Starting collection cycle...")
+	servers, err := kc.DB.GetGenericServers("kubernetes")
+	if err != nil {
+		log.Printf("[KubernetesCollector] Failed to get kubernetes servers: %v", err)
+		return
+	}
+
+	if len(servers) == 0 {
+		log.Printf("[KubernetesCollector] No kubernetes servers configured.")
+		return
+	}
+
+	for _, s := range servers {
+		log.Printf("[KubernetesCollector] Collecting from %s (%s)...", s.Name, s.IPAddress)
+		if err := kc.collectOne(s); err != nil {
+			log.Printf("[KubernetesCollector] Failed to collect from Kubernetes %s (%s): %v", s.Name, s.IPAddress, err)
+			kc.DB.SetGenericServerStatus("kubernetes", s.ID, "offline")
+			continue
+		}
+		log.Printf("[KubernetesCollector] Successfully collected from %s.", s.Name)
+		kc.DB.SetGenericServerStatus("kubernetes", s.ID, "online")
+	}
+}
+
+func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) error {
+	client, err := kc.getSSHClient(s)
+	if err != nil {
+		return fmt.Errorf("ssh connection failed: %w", err)
+	}
+	defer client.Close()
+
+	// 1. Get Nodes
+	nodesJSON, err := kc.runCommand(client, "kubectl get nodes -o json")
+	if err != nil {
+		return fmt.Errorf("kubectl get nodes: %w", err)
+	}
+
+	var nodeListView struct {
+		Items []struct {
+			Metadata struct {
+				Name string `json:"name"`
+			} `json:"metadata"`
+			Status struct {
+				Capacity struct {
+					CPU    string `json:"cpu"`
+					Memory string `json:"memory"`
+				} `json:"capacity"`
+				Allocatable struct {
+					CPU    string `json:"cpu"`
+					Memory string `json:"memory"`
+				} `json:"allocatable"`
+				Conditions []struct {
+					Type   string `json:"type"`
+					Status string `json:"status"`
+				} `json:"conditions"`
+				NodeInfo struct {
+					KubeletVersion          string `json:"kubeletVersion"`
+					OSImage                 string `json:"osImage"`
+					KernelVersion           string `json:"kernelVersion"`
+					ContainerRuntimeVersion string `json:"containerRuntimeVersion"`
+				} `json:"nodeInfo"`
+				Addresses []struct {
+					Type    string `json:"type"`
+					Address string `json:"address"`
+				} `json:"addresses"`
+			} `json:"status"`
+		} `json:"items"`
+	}
+
+	if err := json.Unmarshal([]byte(nodesJSON), &nodeListView); err != nil {
+		return fmt.Errorf("parse nodes json: %w", err)
+	}
+
+	// Get Node Metrics if metrics-server is available
+	nodeMetricsRaw, _ := kc.runCommand(client, "kubectl top nodes --no-headers")
+	metricsMap := make(map[string]struct {
+		CPUUsage float64
+		MemUsage uint64
+	})
+	lines := strings.Split(strings.TrimSpace(nodeMetricsRaw), "\n")
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) >= 3 {
+			name := fields[0]
+			cpuPercent := 0.0
+			fmt.Sscanf(strings.TrimSuffix(fields[2], "%"), "%f", &cpuPercent)
+			memBytes := kc.parseK8sQuantity(fields[3])
+			metricsMap[name] = struct {
+				CPUUsage float64
+				MemUsage uint64
+			}{CPUUsage: cpuPercent, MemUsage: memBytes}
+		}
+	}
+
+	nodeIDMap := make(map[string]int64)
+
+	for _, item := range nodeListView.Items {
+		name := item.Metadata.Name
+		status := "Unknown"
+		for _, cond := range item.Status.Conditions {
+			if cond.Type == "Ready" {
+				if cond.Status == "True" {
+					status = "Ready"
+				} else {
+					status = "NotReady"
+				}
+				break
+			}
+		}
+
+		ip := ""
+		for _, addr := range item.Status.Addresses {
+			if addr.Type == "InternalIP" {
+				ip = addr.Address
+				break
+			}
+		}
+
+		cpuCores := 0
+		fmt.Sscanf(item.Status.Capacity.CPU, "%d", &cpuCores)
+		totalMem := kc.parseK8sQuantity(item.Status.Capacity.Memory)
+
+		m := metricsMap[name]
+
+		nodeID, err := kc.DB.UpsertKubernetesNode(data_centralizegg.KubernetesNode{
+			ServerID:         s.ID,
+			Hostname:         name,
+			IPAddress:        ip,
+			Status:           status,
+			Version:          item.Status.NodeInfo.KubeletVersion,
+			OSName:           item.Status.NodeInfo.OSImage,
+			KernelVer:        item.Status.NodeInfo.KernelVersion,
+			ContainerRuntime: item.Status.NodeInfo.ContainerRuntimeVersion,
+			CPUCores:         cpuCores,
+			TotalMemory:      totalMem,
+			CPUUsage:         m.CPUUsage,
+			FreeMemory:       totalMem - m.MemUsage,
+		})
+		if err != nil {
+			log.Printf("[KubernetesCollector] Failed to upsert node %s: %v", name, err)
+			continue
+		}
+		nodeIDMap[name] = nodeID
+	}
+
+	// 2. Get Pods
+	podsJSON, err := kc.runCommand(client, "kubectl get pods -A -o json")
+	if err == nil {
+		var podListView struct {
+			Items []struct {
+				Metadata struct {
+					Name      string `json:"name"`
+					Namespace string `json:"namespace"`
+				} `json:"metadata"`
+				Spec struct {
+					NodeName string `json:"nodeName"`
+				} `json:"spec"`
+				Status struct {
+					Phase             string `json:"phase"`
+					PodIP             string `json:"podIP"`
+					ContainerStatuses []struct {
+						RestartCount int                    `json:"restartCount"`
+						State        map[string]interface{} `json:"state"`
+					} `json:"containerStatuses"`
+					StartTime string `json:"startTime"`
+				} `json:"status"`
+			} `json:"items"`
+		}
+
+		if err := json.Unmarshal([]byte(podsJSON), &podListView); err == nil {
+			// Get Pod Metrics
+			podMetricsRaw, _ := kc.runCommand(client, "kubectl top pods -A --no-headers")
+			podMetricsMap := make(map[string]struct {
+				CPU float64
+				Mem uint64
+			})
+			pLines := strings.Split(strings.TrimSpace(podMetricsRaw), "\n")
+			for _, pLine := range pLines {
+				pFields := strings.Fields(pLine)
+				if len(pFields) >= 4 {
+					key := pFields[0] + "/" + pFields[1] // namespace/name
+					// kubectl top pods shows CPU in cores (e.g. 5m), we'll try to parse it
+					// but for now let's just keep it simple or zero if complex
+					podMetricsMap[key] = struct {
+						CPU float64
+						Mem uint64
+					}{CPU: 0, Mem: kc.parseK8sQuantity(pFields[3])}
+				}
+			}
+
+			nodePodsCount := make(map[string]int)
+
+			for _, item := range podListView.Items {
+				nodeID, ok := nodeIDMap[item.Spec.NodeName]
+				if !ok {
+					continue
+				}
+				nodePodsCount[item.Spec.NodeName]++
+
+				restarts := 0
+				state := "unknown"
+				for _, cs := range item.Status.ContainerStatuses {
+					restarts += cs.RestartCount
+					for k := range cs.State {
+						state = k
+					}
+				}
+
+				key := item.Metadata.Namespace + "/" + item.Metadata.Name
+				m := podMetricsMap[key]
+
+				age := ""
+				if item.Status.StartTime != "" {
+					if t, err := time.Parse(time.RFC3339, item.Status.StartTime); err == nil {
+						age = time.Since(t).Round(time.Second).String()
+					}
+				}
+
+				p := data_centralizegg.KubernetesPod{
+					NodeID:    nodeID,
+					Name:      item.Metadata.Name,
+					Namespace: item.Metadata.Namespace,
+					State:     item.Status.Phase,
+					Status:    state,
+					IPAddress: item.Status.PodIP,
+					Restarts:  restarts,
+					Age:       age,
+					CPUUsage:  m.CPU,
+					MemUsage:  m.Mem,
+				}
+
+				if err := kc.DB.UpsertKubernetesPod(p); err != nil {
+					log.Printf("[KubernetesCollector] Failed to upsert pod %s: %v", p.Name, err)
+				}
+			}
+
+			// Update nodes with pod count
+			for nodeName, count := range nodePodsCount {
+				if nodeID, ok := nodeIDMap[nodeName]; ok {
+					kc.DB.Conn.Exec("UPDATE kubernetes.nodes SET pods_count = $1 WHERE id = $2", count, nodeID)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func (kc *KubernetesCollector) getSSHClient(s data_centralizegg.GenericServer) (*ssh.Client, error) {
+	var authMethods []ssh.AuthMethod
+	if s.Password != "" {
+		authMethods = append(authMethods, ssh.Password(s.Password))
+	}
+	if s.SSHKeyPath != "" {
+		key, err := ioutil.ReadFile(s.SSHKeyPath)
+		if err == nil {
+			signer, err := ssh.ParsePrivateKey(key)
+			if err == nil {
+				authMethods = append(authMethods, ssh.PublicKeys(signer))
+			}
+		}
+	}
+
+	config := &ssh.ClientConfig{
+		User:            s.Username,
+		Auth:            authMethods,
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         15 * time.Second,
+	}
+
+	addr := fmt.Sprintf("%s:%d", s.IPAddress, s.SSHPort)
+	if s.SSHPort == 0 {
+		addr = fmt.Sprintf("%s:22", s.IPAddress)
+	}
+	return ssh.Dial("tcp", addr, config)
+}
+
+func (kc *KubernetesCollector) runCommand(client *ssh.Client, cmd string) (string, error) {
+	session, err := client.NewSession()
+	if err != nil {
+		return "", err
+	}
+	defer session.Close()
+
+	output, err := session.CombinedOutput(cmd)
+	return string(output), err
+}
+
+func (kc *KubernetesCollector) parseK8sQuantity(s string) uint64 {
+	// Simple parser for K8s quantities (e.g. 8Gi, 512Mi, 40000ki, 500m)
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0
+	}
+
+	var val float64
+	var unit string
+
+	// Check for Ki, Mi, Gi, etc.
+	if strings.HasSuffix(s, "Ki") {
+		fmt.Sscanf(strings.TrimSuffix(s, "Ki"), "%f", &val)
+		return uint64(val * 1024)
+	}
+	if strings.HasSuffix(s, "Mi") {
+		fmt.Sscanf(strings.TrimSuffix(s, "Mi"), "%f", &val)
+		return uint64(val * 1024 * 1024)
+	}
+	if strings.HasSuffix(s, "Gi") {
+		fmt.Sscanf(strings.TrimSuffix(s, "Gi"), "%f", &val)
+		return uint64(val * 1024 * 1024 * 1024)
+	}
+	if strings.HasSuffix(s, "m") {
+		// Millicores or similar, return as is or scale if needed
+		fmt.Sscanf(strings.TrimSuffix(s, "m"), "%f", &val)
+		return uint64(val)
+	}
+
+	// Default to just number
+	fmt.Sscanf(s, "%f%s", &val, &unit)
+	return uint64(val)
+}

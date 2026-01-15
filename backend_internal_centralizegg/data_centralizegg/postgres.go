@@ -89,6 +89,34 @@ type DockerHost struct {
 	GPUInfo       string  `json:"gpu_info"`
 }
 
+type PodmanHost struct {
+	ID            int64   `json:"id"`
+	ServerID      int64   `json:"server_id"`
+	Hostname      string  `json:"hostname"`
+	ServerName    string  `json:"server_name"`
+	IPAddress     string  `json:"ip_address"`
+	PublicIP      string  `json:"public_ip"`
+	DNSServers    string  `json:"dns_servers"`
+	Uptime        string  `json:"uptime"`
+	UpdateStatus  string  `json:"update_status"`
+	Temperature   float64 `json:"temperature"`
+	Disks         string  `json:"disks"`
+	CPUModel      string  `json:"cpu_model"`
+	CPUCores      int     `json:"cpu_cores"`
+	TotalMemory   uint64  `json:"total_memory"`
+	FreeMemory    uint64  `json:"free_memory"`
+	CPUUsage      float64 `json:"cpu_usage"`
+	OSName        string  `json:"os_name"`
+	PodmanVer     string  `json:"podman_version"`
+	ServiceStatus string  `json:"podman_service_status"`
+	APILatency    int     `json:"podman_api_latency"`
+	StorageUsed   uint64  `json:"podman_storage_used"`
+	StorageTotal  uint64  `json:"podman_storage_total"`
+	InodesUsage   string  `json:"podman_inodes_usage"`
+	Volumes       string  `json:"podman_volumes"`
+	Networks      string  `json:"podman_networks"`
+}
+
 type Container struct {
 	ID              int64     `json:"id"`
 	Name            string    `json:"name"`
@@ -109,6 +137,41 @@ type Container struct {
 	Vulnerabilities string    `json:"vulnerabilities"`
 	HostID          int64     `json:"host_id"`
 	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+type KubernetesNode struct {
+	ID               int64   `json:"id"`
+	ServerID         int64   `json:"server_id"`
+	Hostname         string  `json:"hostname"`
+	ServerName       string  `json:"server_name"`
+	IPAddress        string  `json:"ip_address"`
+	Status           string  `json:"status"`
+	Roles            string  `json:"roles"`
+	Version          string  `json:"version"`
+	CPUModel         string  `json:"cpu_model"`
+	CPUCores         int     `json:"cpu_cores"`
+	TotalMemory      uint64  `json:"total_memory"`
+	FreeMemory       uint64  `json:"free_memory"`
+	CPUUsage         float64 `json:"cpu_usage"`
+	OSName           string  `json:"os_name"`
+	KernelVer        string  `json:"kernel_version"`
+	ContainerRuntime string  `json:"container_runtime"`
+	PodsCount        int     `json:"pods_count"`
+}
+
+type KubernetesPod struct {
+	ID        int64     `json:"id"`
+	NodeID    int64     `json:"node_id"`
+	Name      string    `json:"name"`
+	Namespace string    `json:"namespace"`
+	State     string    `json:"state"`
+	Status    string    `json:"status"`
+	CPUUsage  float64   `json:"cpu_usage"`
+	MemUsage  uint64    `json:"memory_usage"`
+	IPAddress string    `json:"ip_address"`
+	Restarts  int       `json:"restarts"`
+	Age       string    `json:"age"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type KVMServer struct {
@@ -153,7 +216,7 @@ func NewPostgresDB(connStr string) (*DB, error) {
 }
 
 func ensureSchema(db *sql.DB) {
-	schemas := []string{"virtualization", "firewall", "storage", "containers"}
+	schemas := []string{"virtualization", "firewall", "storage", "containers", "kubernetes"}
 	for _, s := range schemas {
 		_, _ = db.Exec(fmt.Sprintf("CREATE SCHEMA IF NOT EXISTS %s", s))
 	}
@@ -361,8 +424,101 @@ func ensureSchema(db *sql.DB) {
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE(host_id, name)
 		)`,
-		"ALTER TABLE containers.containers ADD COLUMN IF NOT EXISTS ports VARCHAR(255) DEFAULT ''",
 		"ALTER TABLE containers.containers ADD COLUMN IF NOT EXISTS vulnerabilities TEXT DEFAULT ''",
+		// Kubernetes Tables
+		`CREATE TABLE IF NOT EXISTS kubernetes.kubernetes_servers (
+			id SERIAL PRIMARY KEY,
+			name VARCHAR(255) NOT NULL,
+			ip_address VARCHAR(255) NOT NULL,
+			ssh_port INT DEFAULT 22,
+			username VARCHAR(255) NOT NULL,
+			status VARCHAR(50) DEFAULT 'unknown',
+			password VARCHAR(255),
+			ssh_key_path VARCHAR(255) DEFAULT '/root/.ssh/id_rsa',
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS kubernetes.nodes (
+			id SERIAL PRIMARY KEY,
+			server_id INT REFERENCES kubernetes.kubernetes_servers(id) ON DELETE CASCADE,
+			hostname VARCHAR(255) NOT NULL,
+			status VARCHAR(50) DEFAULT 'unknown',
+			roles VARCHAR(255) DEFAULT '',
+			version VARCHAR(50) DEFAULT '',
+			cpu_model VARCHAR(255),
+			cpu_cores INT,
+			total_memory BIGINT,
+			free_memory BIGINT DEFAULT 0,
+			cpu_usage DOUBLE PRECISION DEFAULT 0,
+			os_name VARCHAR(255),
+			kernel_version VARCHAR(255),
+			container_runtime VARCHAR(255),
+			pods_count INT DEFAULT 0,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS kubernetes.pods (
+			id SERIAL PRIMARY KEY,
+			node_id INT REFERENCES kubernetes.nodes(id) ON DELETE CASCADE,
+			name VARCHAR(255) NOT NULL,
+			namespace VARCHAR(255) NOT NULL,
+			state VARCHAR(50) DEFAULT 'unknown',
+			status VARCHAR(255) DEFAULT '',
+			cpu_usage DOUBLE PRECISION DEFAULT 0,
+			memory_usage BIGINT DEFAULT 0,
+			ip_address VARCHAR(255) DEFAULT '',
+			restarts INT DEFAULT 0,
+			age VARCHAR(50) DEFAULT '',
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(node_id, name, namespace)
+		)`,
+		// Podman Tables
+		`CREATE TABLE IF NOT EXISTS containers.podman_hosts (
+			id SERIAL PRIMARY KEY,
+			server_id INT REFERENCES containers.podman_servers(id) ON DELETE CASCADE,
+			hostname VARCHAR(255) NOT NULL,
+			cpu_model VARCHAR(255),
+			cpu_cores INT,
+			total_memory BIGINT,
+			free_memory BIGINT DEFAULT 0,
+			cpu_usage DOUBLE PRECISION DEFAULT 0,
+			os_name VARCHAR(255),
+			public_ip VARCHAR(255) DEFAULT '',
+			dns_servers TEXT DEFAULT '',
+			uptime VARCHAR(255) DEFAULT '',
+			update_status VARCHAR(50) DEFAULT 'Unknown',
+			temperature DOUBLE PRECISION DEFAULT 0,
+			disks TEXT DEFAULT '[]',
+			podman_version VARCHAR(255) DEFAULT '',
+			podman_service_status VARCHAR(50) DEFAULT 'unknown',
+			podman_api_latency INT DEFAULT 0,
+			podman_storage_used BIGINT DEFAULT 0,
+			podman_storage_total BIGINT DEFAULT 0,
+			podman_inodes_usage VARCHAR(255) DEFAULT '',
+			podman_volumes TEXT DEFAULT '[]',
+			podman_networks TEXT DEFAULT '[]',
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS containers.podman_containers (
+			id SERIAL PRIMARY KEY,
+			host_id INT REFERENCES containers.podman_hosts(id) ON DELETE CASCADE,
+			name VARCHAR(255) NOT NULL,
+			image VARCHAR(255) NOT NULL,
+			ports VARCHAR(255) DEFAULT '',
+			state VARCHAR(50) DEFAULT 'unknown',
+			status VARCHAR(255) DEFAULT '',
+			cpu_usage DOUBLE PRECISION DEFAULT 0,
+			memory_usage BIGINT DEFAULT 0,
+			memory_limit BIGINT DEFAULT 0,
+			net_rx BIGINT DEFAULT 0,
+			net_tx BIGINT DEFAULT 0,
+			block_in BIGINT DEFAULT 0,
+			block_out BIGINT DEFAULT 0,
+			pids INT DEFAULT 0,
+			ip_address VARCHAR(255) DEFAULT '',
+			oom_killed BOOLEAN DEFAULT FALSE,
+			vulnerabilities TEXT DEFAULT '',
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(host_id, name)
+		)`,
 	}
 
 	for _, q := range queries {
@@ -757,11 +913,12 @@ type GenericServer struct {
 
 // Table names for each server type
 var serverTableMap = map[string]string{
-	"proxmox": "virtualization.proxmox_servers",
-	"nas":     "storage.nas_servers",
-	"ceph":    "storage.ceph_servers",
-	"docker":  "containers.docker_servers",
-	"podman":  "containers.podman_servers",
+	"proxmox":    "virtualization.proxmox_servers",
+	"nas":        "storage.nas_servers",
+	"ceph":       "storage.ceph_servers",
+	"docker":     "containers.docker_servers",
+	"podman":     "containers.podman_servers",
+	"kubernetes": "kubernetes.kubernetes_servers",
 }
 
 func (d *DB) GetGenericServers(toolType string) ([]GenericServer, error) {
@@ -917,6 +1074,156 @@ func (d *DB) GetAllContainers() ([]Container, error) {
 	for rows.Next() {
 		var c Container
 		if err := rows.Scan(&c.ID, &c.Name, &c.Image, &c.Ports, &c.State, &c.Status, &c.CPUUsage, &c.MemUsage, &c.MemLimit, &c.NetRX, &c.NetTX, &c.BlockIn, &c.BlockOut, &c.PIDs, &c.IPAddress, &c.OOMKilled, &c.Vulnerabilities, &c.HostID, &c.UpdatedAt); err != nil {
+			return nil, err
+		}
+		containers = append(containers, c)
+	}
+	return containers, nil
+}
+
+// Kubernetes specific methods
+func (d *DB) UpsertKubernetesNode(n KubernetesNode) (int64, error) {
+	var id int64
+	err := d.Conn.QueryRow("SELECT id FROM kubernetes.nodes WHERE server_id = $1 AND hostname = $2", n.ServerID, n.Hostname).Scan(&id)
+	if err == sql.ErrNoRows {
+		err = d.Conn.QueryRow(`
+			INSERT INTO kubernetes.nodes (server_id, hostname, status, roles, version, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, kernel_version, container_runtime, pods_count)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
+			n.ServerID, n.Hostname, n.Status, n.Roles, n.Version, n.CPUModel, n.CPUCores, n.TotalMemory, n.FreeMemory, n.CPUUsage, n.OSName, n.KernelVer, n.ContainerRuntime, n.PodsCount).Scan(&id)
+	} else if err == nil {
+		_, err = d.Conn.Exec(`UPDATE kubernetes.nodes SET status=$1, roles=$2, version=$3, cpu_model=$4, cpu_cores=$5, total_memory=$6, free_memory=$7, cpu_usage=$8, os_name=$9, kernel_version=$10, container_runtime=$11, pods_count=$12 WHERE id=$13`,
+			n.Status, n.Roles, n.Version, n.CPUModel, n.CPUCores, n.TotalMemory, n.FreeMemory, n.CPUUsage, n.OSName, n.KernelVer, n.ContainerRuntime, n.PodsCount, id)
+	}
+	return id, err
+}
+
+func (d *DB) UpsertKubernetesPod(p KubernetesPod) error {
+	var id int64
+	err := d.Conn.QueryRow("SELECT id FROM kubernetes.pods WHERE node_id = $1 AND name = $2 AND namespace = $3", p.NodeID, p.Name, p.Namespace).Scan(&id)
+
+	if err == sql.ErrNoRows {
+		_, err = d.Conn.Exec(`
+			INSERT INTO kubernetes.pods (node_id, name, namespace, state, status, cpu_usage, memory_usage, ip_address, restarts, age, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
+			p.NodeID, p.Name, p.Namespace, p.State, p.Status, p.CPUUsage, p.MemUsage, p.IPAddress, p.Restarts, p.Age)
+	} else if err == nil {
+		_, err = d.Conn.Exec(`
+			UPDATE kubernetes.pods SET state=$1, status=$2, cpu_usage=$3, memory_usage=$4, ip_address=$5, restarts=$6, age=$7, updated_at=NOW()
+			WHERE id=$8`,
+			p.State, p.Status, p.CPUUsage, p.MemUsage, p.IPAddress, p.Restarts, p.Age, id)
+	}
+	return err
+}
+
+func (d *DB) GetKubernetesNodes() ([]KubernetesNode, error) {
+	rows, err := d.Conn.Query(`
+		SELECT n.id, n.server_id, n.hostname, n.status, n.roles, n.version, n.cpu_model, n.cpu_cores, n.total_memory, n.free_memory, n.cpu_usage, n.os_name, n.kernel_version, n.container_runtime, n.pods_count, ks.name, ks.ip_address
+		FROM kubernetes.nodes n
+		JOIN kubernetes.kubernetes_servers ks ON n.server_id = ks.id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var nodes []KubernetesNode
+	for rows.Next() {
+		var n KubernetesNode
+		if err := rows.Scan(&n.ID, &n.ServerID, &n.Hostname, &n.Status, &n.Roles, &n.Version, &n.CPUModel, &n.CPUCores, &n.TotalMemory, &n.FreeMemory, &n.CPUUsage, &n.OSName, &n.KernelVer, &n.ContainerRuntime, &n.PodsCount, &n.ServerName, &n.IPAddress); err != nil {
+			return nil, err
+		}
+		nodes = append(nodes, n)
+	}
+	return nodes, nil
+}
+
+func (d *DB) GetAllKubernetesPods() ([]KubernetesPod, error) {
+	rows, err := d.Conn.Query("SELECT id, node_id, name, namespace, state, status, cpu_usage, memory_usage, ip_address, restarts, age, updated_at FROM kubernetes.pods")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var pods []KubernetesPod
+	for rows.Next() {
+		var p KubernetesPod
+		if err := rows.Scan(&p.ID, &p.NodeID, &p.Name, &p.Namespace, &p.State, &p.Status, &p.CPUUsage, &p.MemUsage, &p.IPAddress, &p.Restarts, &p.Age, &p.UpdatedAt); err != nil {
+			return nil, err
+		}
+		pods = append(pods, p)
+	}
+	return pods, nil
+}
+
+// Podman specific methods
+func (d *DB) UpsertPodmanHost(h PodmanHost) (int64, error) {
+	var id int64
+	err := d.Conn.QueryRow("SELECT id FROM containers.podman_hosts WHERE server_id = $1 AND hostname = $2", h.ServerID, h.Hostname).Scan(&id)
+
+	if err == sql.ErrNoRows {
+		err = d.Conn.QueryRow(`
+			INSERT INTO containers.podman_hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, uptime, podman_version, podman_service_status, podman_api_latency, podman_storage_used, podman_storage_total, podman_inodes_usage, podman_volumes, podman_networks)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
+			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.Uptime, h.PodmanVer, h.ServiceStatus, h.APILatency, h.StorageUsed, h.StorageTotal, h.InodesUsage, h.Volumes, h.Networks).Scan(&id)
+	} else if err == nil {
+		_, err = d.Conn.Exec(`
+			UPDATE containers.podman_hosts SET cpu_model=$1, cpu_cores=$2, total_memory=$3, free_memory=$4, cpu_usage=$5, os_name=$6, uptime=$7, podman_version=$8, podman_service_status=$9, podman_api_latency=$10, podman_storage_used=$11, podman_storage_total=$12, podman_inodes_usage=$13, podman_volumes=$14, podman_networks=$15
+			WHERE id=$16`,
+			h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.Uptime, h.PodmanVer, h.ServiceStatus, h.APILatency, h.StorageUsed, h.StorageTotal, h.InodesUsage, h.Volumes, h.Networks, id)
+	}
+
+	return id, err
+}
+
+func (d *DB) UpsertPodmanContainer(c Container) error {
+	var id int64
+	err := d.Conn.QueryRow("SELECT id FROM containers.podman_containers WHERE host_id = $1 AND name = $2", c.HostID, c.Name).Scan(&id)
+
+	if err == sql.ErrNoRows {
+		_, err = d.Conn.Exec(`
+			INSERT INTO containers.podman_containers (host_id, name, image, ports, state, status, cpu_usage, memory_usage, memory_limit, net_rx, net_tx, block_in, block_out, pids, ip_address, oom_killed, vulnerabilities, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW())`,
+			c.HostID, c.Name, c.Image, c.Ports, c.State, c.Status, c.CPUUsage, c.MemUsage, c.MemLimit, c.NetRX, c.NetTX, c.BlockIn, c.BlockOut, c.PIDs, c.IPAddress, c.OOMKilled, c.Vulnerabilities)
+	} else if err == nil {
+		_, err = d.Conn.Exec(`
+			UPDATE containers.podman_containers SET image=$1, ports=$2, state=$3, status=$4, cpu_usage=$5, memory_usage=$6, memory_limit=$7, net_rx=$8, net_tx=$9, block_in=$10, block_out=$11, pids=$12, ip_address=$13, oom_killed=$14, vulnerabilities=$15, updated_at=NOW()
+			WHERE id=$16`,
+			c.Image, c.Ports, c.State, c.Status, c.CPUUsage, c.MemUsage, c.MemLimit, c.NetRX, c.NetTX, c.BlockIn, c.BlockOut, c.PIDs, c.IPAddress, c.OOMKilled, c.Vulnerabilities, id)
+	}
+	return err
+}
+
+func (d *DB) GetPodmanHosts() ([]PodmanHost, error) {
+	rows, err := d.Conn.Query(`
+		SELECT h.id, h.server_id, h.hostname, ps.name, ps.ip_address, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, h.uptime, h.podman_version, h.podman_service_status, h.podman_api_latency, h.podman_storage_used, h.podman_storage_total, h.podman_inodes_usage, h.podman_volumes, h.podman_networks
+		FROM containers.podman_hosts h
+		JOIN containers.podman_servers ps ON h.server_id = ps.id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var hosts []PodmanHost
+	for rows.Next() {
+		var h PodmanHost
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.Uptime, &h.PodmanVer, &h.ServiceStatus, &h.APILatency, &h.StorageUsed, &h.StorageTotal, &h.InodesUsage, &h.Volumes, &h.Networks); err != nil {
+			return nil, err
+		}
+		hosts = append(hosts, h)
+	}
+	return hosts, nil
+}
+
+func (d *DB) GetAllPodmanContainers() ([]Container, error) {
+	rows, err := d.Conn.Query("SELECT id, host_id, name, image, ports, state, status, cpu_usage, memory_usage, memory_limit, net_rx, net_tx, block_in, block_out, pids, ip_address, oom_killed, vulnerabilities, updated_at FROM containers.podman_containers")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var containers []Container
+	for rows.Next() {
+		var c Container
+		if err := rows.Scan(&c.ID, &c.HostID, &c.Name, &c.Image, &c.Ports, &c.State, &c.Status, &c.CPUUsage, &c.MemUsage, &c.MemLimit, &c.NetRX, &c.NetTX, &c.BlockIn, &c.BlockOut, &c.PIDs, &c.IPAddress, &c.OOMKilled, &c.Vulnerabilities, &c.UpdatedAt); err != nil {
 			return nil, err
 		}
 		containers = append(containers, c)

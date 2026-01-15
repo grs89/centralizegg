@@ -53,6 +53,12 @@ func main() {
 	dockerCol := container.NewDockerCollector(db)
 	go dockerCol.Start(10 * time.Second)
 
+	k8sCol := container.NewKubernetesCollector(db)
+	go k8sCol.Start(15 * time.Second)
+
+	podmanCol := container.NewPodmanCollector(db)
+	go podmanCol.Start(10 * time.Second)
+
 	// Router
 	r := mux.NewRouter()
 
@@ -114,6 +120,58 @@ func main() {
 		containers, err := db.GetAllContainers()
 		if err != nil {
 			log.Printf("Error GetAllContainers: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(containers)
+	}).Methods("GET")
+
+	// Kubernetes nodes API
+	r.HandleFunc("/api/kubernetes/nodes", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s", r.Method, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		nodes, err := db.GetKubernetesNodes()
+		if err != nil {
+			log.Printf("Error GetKubernetesNodes: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(nodes)
+	}).Methods("GET")
+
+	// Kubernetes pods API
+	r.HandleFunc("/api/kubernetes/pods", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s", r.Method, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		pods, err := db.GetAllKubernetesPods()
+		if err != nil {
+			log.Printf("Error GetAllKubernetesPods: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(pods)
+	}).Methods("GET")
+
+	// Podman hosts API
+	r.HandleFunc("/api/podman/hosts", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s", r.Method, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		hosts, err := db.GetPodmanHosts()
+		if err != nil {
+			log.Printf("Error GetPodmanHosts: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(hosts)
+	}).Methods("GET")
+
+	// Podman containers API
+	r.HandleFunc("/api/podman/containers", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s", r.Method, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		containers, err := db.GetAllPodmanContainers()
+		if err != nil {
+			log.Printf("Error GetAllPodmanContainers: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
