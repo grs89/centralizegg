@@ -40,7 +40,10 @@
     - CPU: Uso calculado basado en tiempo de CPU acumulado
     - Memoria: Total, libre y utilizada
     - Memoria: Total, libre y utilizada
-    - **Almacenamiento del Host**: Visualización elegante con **Gríficas de Torta (Donut Charts)** para cada punto de montaje.
+    - **Almacenamiento (NAS)**: Monitoreo vía SSH de servidores Linux/NAS:
+        - Inventario de discos (`lsblk`) y particiones.
+        - Gráficos de barra para uso de volúmenes montados.
+        - Alertas de capacidad por volumen.
     - Red: Tráfico RX/TX con **Sparklines** en tiempo real.
     - **Interfaces Bridge**: Monitoreo dedicado de estados y tráfico para puentes de red (`br0`, `virbr0`, etc.).
     - Estado de VMs: Running, Blocked, Paused, Shutdown, Shutoff, Crashed, Suspended
@@ -68,7 +71,11 @@
     - Métricas precisas de RTT y Desviación estándar.
 *   **Sparklines de Red**: Gráficos lineales en tiempo real para visualizar tendencias de tráfico RX/TX.
 *   **Filtrado Inteligente**: Selecciona un host para filtrar instantáneamente su cuadrícula de máquinas virtuales.
-*   **Búsqueda Global**: Búsqueda en tiempo real con sugerencias para hosts y VMs.
+*   **Búsqueda Global ("Search Everything")**:
+    - Barra de búsqueda unificada que indexa **KVM Hosts, VMs, Contenedores Docker/Podman y Volúmenes NAS**.
+    - Navegación inteligente: Al seleccionar un resultado, cambia automáticamente a la herramienta correspondiente.
+    - Acceso rápido mediante atajo de teclado o botón dedicado.
+*   **Logs Unificados**: Panel lateral deslizable para ver logs de todos los sistemas (KVM, Docker, NAS) en un solo lugar.
 *   **Orden Alfabético**: Organización automática de hosts y VMs para una navegación más rápida.
 *   **Notificaciones**: Sistema de notificaciones para servidores offline.
 *   **Navegación Optimizada**: Acceso rápido a la configuración y cambio de herramientas desde la barra superior.

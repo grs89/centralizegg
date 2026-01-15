@@ -1,22 +1,35 @@
 <div class="doc-content">
-    <h3><i class="fa-solid fa-database"></i> Almacenamiento (NAS & Ceph)</h3>
+    <h3><i class="fa-solid fa-server"></i> Almacenamiento (NAS Linux)</h3>
 
     <div class="doc-section">
         <h4>🚀 Cómo Iniciar</h4>
         <ol>
-            <li>Selecciona <strong>Almacenamiento > NAS / Ceph</strong>.</li>
-            <li>Configura los endpoints de tu clúster o servidor de archivos.</li>
-            <li>(Próximamente) La integración se realizará vía API REST (Ceph Mgr) o SSH (ZFS/LVM).</li>
+            <li>Selecciona <strong>Almacenamiento > NAS</strong>.</li>
+            <li>Haz clic en <strong>Configuración</strong> <i class="fa-solid fa-gear"></i>.</li>
+            <li>Agrega tu servidor Linux/NAS proporcionando la IP, Usuario y Clave SSH.</li>
         </ol>
     </div>
 
     <div class="doc-section">
         <h4>📋 Requerimientos Mínimos</h4>
         <ul>
-            <li><strong>Ceph:</strong> Acceso al Dashboard API (Manager Module) o usuario SSH con acceso a `ceph
-                status`.</li>
-            <li><strong>NAS:</strong> Soporte para consultas SNMP v2c/v3 o agente SSH Linux estándar.</li>
-            <li><strong>Red:</strong> Conectividad a los puertos de gestión (8443, 22).</li>
+            <li><strong>Sistema Operativo:</strong> Linux estándar (Debian, Ubuntu, CentOS, TrueNAS Scale, etc.).</li>
+            <li><strong>Acceso SSH:</strong> Usuario con permisos de lectura.</li>
+            <li><strong>Comandos Requeridos:</strong> `df`, `lsblk`, `free`, `uptime`, `hostnamectl`.</li>
+            <li><strong>Sin Agentes:</strong> No requiere instalar software adicional en el NAS.</li>
+        </ul>
+    </div>
+
+    <div class="doc-section">
+        <h4>✨ Características Principales</h4>
+        <ul>
+            <li><strong>Visualización de Volúmenes:</strong> Gráficos de barra para uso de espacio en todos los puntos
+                de montaje.</li>
+            <li><strong>Inventario de Discos:</strong> Lista detallada de discos físicos (`lsblk`) con modelo, serie y
+                tamaño.</li>
+            <li><strong>Métricas de Sistema:</strong> CPU, RAM y Uptime del servidor de almacenamiento.</li>
+            <li><strong>Alertas de Espacio:</strong> Indicadores visuales (Ámbar/Rojo) cuando el uso de disco supera el
+                80% o 90%.</li>
         </ul>
     </div>
 </div>
