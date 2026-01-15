@@ -59,6 +59,9 @@ func main() {
 	podmanCol := container.NewPodmanCollector(db)
 	go podmanCol.Start(10 * time.Second)
 
+	proxmoxCol := virtualization.NewProxmoxCollector(db)
+	go proxmoxCol.Start(15 * time.Second)
+
 	// Router
 	r := mux.NewRouter()
 
@@ -176,6 +179,32 @@ func main() {
 			return
 		}
 		json.NewEncoder(w).Encode(containers)
+	}).Methods("GET")
+
+	// Proxmox hosts API
+	r.HandleFunc("/api/proxmox/hosts", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s", r.Method, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		hosts, err := db.GetProxmoxHosts()
+		if err != nil {
+			log.Printf("Error GetProxmoxHosts: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(hosts)
+	}).Methods("GET")
+
+	// Proxmox VMs API (includes LXC)
+	r.HandleFunc("/api/proxmox/vms", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s", r.Method, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		vms, err := db.GetAllProxmoxVMs()
+		if err != nil {
+			log.Printf("Error GetAllProxmoxVMs: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(vms)
 	}).Methods("GET")
 
 	// Firewall servers config API

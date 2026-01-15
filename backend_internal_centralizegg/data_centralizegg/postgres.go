@@ -174,6 +174,41 @@ type KubernetesPod struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type ProxmoxHost struct {
+	ID          int64   `json:"id"`
+	ServerID    int64   `json:"server_id"`
+	Hostname    string  `json:"hostname"`
+	ServerName  string  `json:"server_name"`
+	IPAddress   string  `json:"ip_address"`
+	Status      string  `json:"status"` // online, offline
+	CPUModel    string  `json:"cpu_model"`
+	CPUCores    int     `json:"cpu_cores"`
+	TotalMemory uint64  `json:"total_memory"`
+	FreeMemory  uint64  `json:"free_memory"`
+	CPUUsage    float64 `json:"cpu_usage"`
+	OSName      string  `json:"os_name"`
+	KernelVer   string  `json:"kernel_version"`
+	PVEVersion  string  `json:"pve_version"`
+	Uptime      string  `json:"uptime"`
+	VMsCount    int     `json:"vms_count"`
+	Containers  int     `json:"containers_count"`
+}
+
+type ProxmoxVM struct {
+	ID          int64     `json:"id"`
+	HostID      int64     `json:"host_id"`
+	VMID        int       `json:"vmid"`
+	Name        string    `json:"name"`
+	Type        string    `json:"type"` // qemu, lxc
+	State       string    `json:"state"`
+	CPUUsage    float64   `json:"cpu_usage"`
+	MemoryUsage uint64    `json:"memory_usage"`
+	MaxMemory   uint64    `json:"max_memory"`
+	NetRX       uint64    `json:"net_rx"`
+	NetTX       uint64    `json:"net_tx"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
 type KVMServer struct {
 	ID         int64  `json:"id"`
 	Name       string `json:"name"`
@@ -518,6 +553,41 @@ func ensureSchema(db *sql.DB) {
 			vulnerabilities TEXT DEFAULT '',
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE(host_id, name)
+		)`,
+		// Proxmox Tables
+		`CREATE TABLE IF NOT EXISTS virtualization.proxmox_hosts (
+			id SERIAL PRIMARY KEY,
+			server_id INT REFERENCES virtualization.proxmox_servers(id) ON DELETE CASCADE,
+			hostname VARCHAR(255) NOT NULL,
+			status VARCHAR(50) DEFAULT 'unknown',
+			cpu_model VARCHAR(255),
+			cpu_cores INT,
+			total_memory BIGINT,
+			free_memory BIGINT DEFAULT 0,
+			cpu_usage DOUBLE PRECISION DEFAULT 0,
+			os_name VARCHAR(255),
+			kernel_version VARCHAR(255),
+			pve_version VARCHAR(50),
+			uptime VARCHAR(255),
+			vms_count INT DEFAULT 0,
+			containers_count INT DEFAULT 0,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(server_id, hostname)
+		)`,
+		`CREATE TABLE IF NOT EXISTS virtualization.proxmox_vms (
+			id SERIAL PRIMARY KEY,
+			host_id INT REFERENCES virtualization.proxmox_hosts(id) ON DELETE CASCADE,
+			vmid INT NOT NULL,
+			name VARCHAR(255) NOT NULL,
+			type VARCHAR(50) NOT NULL,
+			state VARCHAR(50) DEFAULT 'unknown',
+			cpu_usage DOUBLE PRECISION DEFAULT 0,
+			memory_usage BIGINT DEFAULT 0,
+			max_memory BIGINT DEFAULT 0,
+			net_rx BIGINT DEFAULT 0,
+			net_tx BIGINT DEFAULT 0,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(host_id, vmid)
 		)`,
 	}
 
@@ -1229,4 +1299,81 @@ func (d *DB) GetAllPodmanContainers() ([]Container, error) {
 		containers = append(containers, c)
 	}
 	return containers, nil
+}
+
+// Proxmox specific methods
+func (d *DB) UpsertProxmoxHost(h ProxmoxHost) (int64, error) {
+	var id int64
+	err := d.Conn.QueryRow("SELECT id FROM virtualization.proxmox_hosts WHERE server_id = $1 AND hostname = $2", h.ServerID, h.Hostname).Scan(&id)
+
+	if err == sql.ErrNoRows {
+		err = d.Conn.QueryRow(`
+			INSERT INTO virtualization.proxmox_hosts (server_id, hostname, status, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, kernel_version, pve_version, uptime, vms_count, containers_count)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
+			h.ServerID, h.Hostname, h.Status, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.KernelVer, h.PVEVersion, h.Uptime, h.VMsCount, h.Containers).Scan(&id)
+	} else if err == nil {
+		_, err = d.Conn.Exec(`
+			UPDATE virtualization.proxmox_hosts SET status=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, kernel_version=$8, pve_version=$9, uptime=$10, vms_count=$11, containers_count=$12
+			WHERE id=$13`,
+			h.Status, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.KernelVer, h.PVEVersion, h.Uptime, h.VMsCount, h.Containers, id)
+	}
+
+	return id, err
+}
+
+func (d *DB) UpsertProxmoxVM(vm ProxmoxVM) error {
+	var id int64
+	err := d.Conn.QueryRow("SELECT id FROM virtualization.proxmox_vms WHERE host_id = $1 AND vmid = $2", vm.HostID, vm.VMID).Scan(&id)
+
+	if err == sql.ErrNoRows {
+		_, err = d.Conn.Exec(`
+			INSERT INTO virtualization.proxmox_vms (host_id, vmid, name, type, state, cpu_usage, memory_usage, max_memory, net_rx, net_tx, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
+			vm.HostID, vm.VMID, vm.Name, vm.Type, vm.State, vm.CPUUsage, vm.MemoryUsage, vm.MaxMemory, vm.NetRX, vm.NetTX)
+	} else if err == nil {
+		_, err = d.Conn.Exec(`
+			UPDATE virtualization.proxmox_vms SET name=$1, type=$2, state=$3, cpu_usage=$4, memory_usage=$5, max_memory=$6, net_rx=$7, net_tx=$8, updated_at=NOW()
+			WHERE id=$9`,
+			vm.Name, vm.Type, vm.State, vm.CPUUsage, vm.MemoryUsage, vm.MaxMemory, vm.NetRX, vm.NetTX, id)
+	}
+	return err
+}
+
+func (d *DB) GetProxmoxHosts() ([]ProxmoxHost, error) {
+	rows, err := d.Conn.Query(`
+		SELECT ph.id, ph.server_id, ph.hostname, ps.name, ps.ip_address, ph.status, ph.cpu_model, ph.cpu_cores, ph.total_memory, ph.free_memory, ph.cpu_usage, ph.os_name, ph.kernel_version, ph.pve_version, ph.uptime, ph.vms_count, ph.containers_count
+		FROM virtualization.proxmox_hosts ph
+		JOIN virtualization.proxmox_servers ps ON ph.server_id = ps.id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var hosts []ProxmoxHost
+	for rows.Next() {
+		var h ProxmoxHost
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.Status, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.KernelVer, &h.PVEVersion, &h.Uptime, &h.VMsCount, &h.Containers); err != nil {
+			return nil, err
+		}
+		hosts = append(hosts, h)
+	}
+	return hosts, nil
+}
+
+func (d *DB) GetAllProxmoxVMs() ([]ProxmoxVM, error) {
+	rows, err := d.Conn.Query("SELECT id, host_id, vmid, name, type, state, cpu_usage, memory_usage, max_memory, net_rx, net_tx, updated_at FROM virtualization.proxmox_vms")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var vms []ProxmoxVM
+	for rows.Next() {
+		var vm ProxmoxVM
+		if err := rows.Scan(&vm.ID, &vm.HostID, &vm.VMID, &vm.Name, &vm.Type, &vm.State, &vm.CPUUsage, &vm.MemoryUsage, &vm.MaxMemory, &vm.NetRX, &vm.NetTX, &vm.UpdatedAt); err != nil {
+			return nil, err
+		}
+		vms = append(vms, vm)
+	}
+	return vms, nil
 }

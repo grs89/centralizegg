@@ -10,6 +10,8 @@ const API_KUBERNETES_NODES = '/api/kubernetes/nodes';
 const API_KUBERNETES_PODS = '/api/kubernetes/pods';
 const API_PODMAN_HOSTS = '/api/podman/hosts';
 const API_PODMAN_CONTAINERS = '/api/podman/containers';
+const API_PROXMOX_HOSTS = '/api/proxmox/hosts';
+const API_PROXMOX_VMS = '/api/proxmox/vms';
 
 // Helper function to get config API endpoint for current tool
 function getConfigAPIForTool(toolKey) {
@@ -54,9 +56,11 @@ let selectedFirewallHostId = null;
 let selectedDockerHostId = null;
 let selectedKubernetesNodeId = null;
 let selectedPodmanHostId = null;
+let selectedProxmoxHostId = null;
 let allContainersCache = [];
 let allPodsCache = [];
 let allPodmanContainersCache = [];
+let allProxmoxVMsCache = [];
 
 function updateNetworkHistory(vms) {
     const now = Date.now();
@@ -845,7 +849,7 @@ window.applySuggestion = (type, hostId, title) => {
 function getHostsAPIForTool(toolKey) {
     const toolHostsMap = {
         'kvm': API_HOSTS,
-        'proxmox': API_HOSTS, // Proxmox uses same as KVM for now
+        'proxmox': API_PROXMOX_HOSTS,
         'pfsense': API_FIREWALL_HOSTS,
         'docker': API_CONTAINER_HOSTS,
         'kubernetes': API_KUBERNETES_NODES,
@@ -924,6 +928,20 @@ async function checkAndFetchHostsForTool(toolKey) {
                             renderPodmanSummary();
                         }
                         fetchPodmanContainers();
+                    } else if (toolKey === 'proxmox') {
+                        allHostsCache = hosts || [];
+                        renderHostNodes('host-nodes-container-generic', {
+                            icon: tools[toolKey].icon,
+                            showOSInfo: true,
+                            showStats: true,
+                            onHostClick: 'selectProxmoxHost'
+                        });
+                        if (selectedProxmoxHostId) {
+                            renderProxmoxHostDetails(selectedProxmoxHostId);
+                        } else {
+                            renderProxmoxSummary();
+                        }
+                        fetchProxmoxVMs();
                     } else {
                         fetchHosts();
                     }
@@ -2447,6 +2465,134 @@ function renderPodmanSummary() {
     `;
 }
 
+async function fetchProxmoxVMs() {
+    try {
+        const response = await fetch(API_PROXMOX_VMS);
+        if (!response.ok) throw new Error('Failed to fetch proxmox vms');
+        allProxmoxVMsCache = await response.json();
+        if (currentTool === 'proxmox') {
+            if (selectedProxmoxHostId) {
+                renderProxmoxHostDetails(selectedProxmoxHostId);
+            } else {
+                renderProxmoxSummary();
+            }
+        }
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+function selectProxmoxHost(id) {
+    selectedProxmoxHostId = id;
+    renderHostNodes('host-nodes-container-generic', {
+        icon: tools['proxmox']?.icon || 'fa-solid fa-server',
+        showOSInfo: true,
+        showStats: true,
+        onHostClick: 'selectProxmoxHost'
+    });
+    renderProxmoxHostDetails(id);
+}
+window.selectProxmoxHost = selectProxmoxHost;
+
+function renderProxmoxHostDetails(hostId) {
+    const container = document.getElementById('container-scanner-tool');
+    if (!container) return;
+    const scannerSection = container.querySelector('.scanner-section');
+    if (!scannerSection) return;
+
+    const host = allHostsCache.find(h => h.id === hostId);
+    if (!host) return;
+
+    let filteredVMs = allProxmoxVMsCache.filter(v => v.host_id === hostId);
+    filteredVMs.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+    if (searchQuery) {
+        filteredVMs = filteredVMs.filter(v =>
+            v.name.toLowerCase().includes(searchQuery) ||
+            v.vmid.toString().includes(searchQuery)
+        );
+    }
+
+    scannerSection.innerHTML = `
+        <div class="glass-panel" style="padding: 24px; text-align: left; margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+                <div>
+                    <h3 style="margin:0; font-size: 1.3rem;">${host.hostname}</h3>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
+                        PVE ${host.pve_version} | ${host.os_name}
+                    </div>
+                </div>
+                <div class="status-badge ${host.status === 'online' ? 'online' : 'offline'}">
+                    ${host.status}
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
+                <div class="mini-stat-card">
+                    <span class="label">CPU Usage</span>
+                    <span class="value">${(host.cpu_usage || 0).toFixed(1)}%</span>
+                </div>
+                <div class="mini-stat-card">
+                    <span class="label">Memory</span>
+                    <span class="value">${formatBytes(host.total_memory - host.free_memory)} / ${formatBytes(host.total_memory)}</span>
+                </div>
+                <div class="mini-stat-card">
+                    <span class="label">VMs / LXC</span>
+                    <span class="value">${host.vms_count} / ${host.containers_count}</span>
+                </div>
+            </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h4 style="margin:0;"><i class="fa-solid fa-server"></i> Recursos en este Nodo (${filteredVMs.length})</h4>
+        </div>
+
+        <div class="vm-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 15px;">
+            ${filteredVMs.map(v => `
+                <div class="glass-panel vm-card" style="padding: 15px; border-left: 4px solid ${v.state === 'running' ? '#4ade80' : '#6b7280'};">
+                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                        <div style="max-width: 220px;">
+                            <div style="font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase;">ID: ${v.vmid} | ${v.type.toUpperCase()}</div>
+                            <div style="font-weight: 700; font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${v.name}">${v.name}</div>
+                        </div>
+                        <div style="font-size: 0.7rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: rgba(255,255,255,0.05);">
+                            ${v.state}
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div class="mini-stat">
+                            <i class="fa-solid fa-microchip"></i> ${(v.cpu_usage || 0).toFixed(1)}%
+                        </div>
+                        <div class="mini-stat">
+                            <i class="fa-solid fa-memory"></i> ${formatBytes(v.memory_usage)}
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function renderProxmoxSummary() {
+    const container = document.getElementById('container-scanner-tool');
+    if (!container) return;
+    const scannerSection = container.querySelector('.scanner-section');
+    if (!scannerSection) return;
+
+    scannerSection.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="margin:0; font-size: 1.5rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen Proxmox</h2>
+        </div>
+
+        <div class="glass-panel" style="padding: 80px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+            <div style="font-size: 1.1rem; color: var(--text-secondary); opacity: 0.6; font-weight: 500;">
+                <i class="fa-solid fa-arrow-up" style="margin-right: 8px;"></i> Selecciona un Nodo de Proxmox para ver sus recursos
+            </div>
+        </div>
+    `;
+}
+
 // Settings Tool Logic
 const SETTINGS_CONFIG = {
     'kvm': {
@@ -2484,6 +2630,12 @@ const SETTINGS_CONFIG = {
         icon: 'fa-solid fa-box-archive',
         title: 'Configuración de Podman',
         api: '/api/config/podman'
+    },
+    'proxmox': {
+        name: 'Virtualización (Proxmox)',
+        icon: 'fa-solid fa-server',
+        title: 'Configuración de Proxmox',
+        api: '/api/config/proxmox'
     }
 };
 
@@ -2584,23 +2736,23 @@ async function renderSettingsServerList() {
         listContainer.innerHTML = servers.map(srv => {
             const sshPort = srv.ssh_port || srv.port || 22;
             return `
-            <div class="settings-server-card">
-                <div class="settings-server-meta">
-                    <div class="settings-server-name">${srv.name}</div>
-                    <div class="settings-server-addr">
-                        <i class="fa-solid fa-plug"></i> ${srv.ip_address}:${sshPort}
+                <div class="settings-server-card">
+                    <div class="settings-server-meta">
+                        <div class="settings-server-name">${srv.name}</div>
+                        <div class="settings-server-addr">
+                            <i class="fa-solid fa-plug"></i> ${srv.ip_address}:${sshPort}
+                        </div>
+                    </div>
+                    <div class="settings-server-actions">
+                        <button class="settings-action-btn edit" onclick="editSettingsServer(${JSON.stringify(srv).replace(/"/g, '&quot;')})">
+                            <i class="fa-solid fa-pen"></i>
+                        </button>
+                        <button class="settings-action-btn delete" onclick="deleteSettingsServer(${srv.id})">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
                     </div>
                 </div>
-                <div class="settings-server-actions">
-                    <button class="settings-action-btn edit" onclick="editSettingsServer(${JSON.stringify(srv).replace(/"/g, '&quot;')})">
-                        <i class="fa-solid fa-pen"></i>
-                    </button>
-                    <button class="settings-action-btn delete" onclick="deleteSettingsServer(${srv.id})">
-                        <i class="fa-solid fa-trash"></i>
-                    </button>
-                </div>
-            </div>
-            `;
+        `;
         }).join('');
     } catch (e) {
         listContainer.innerHTML = '<div style="grid-column: 1/-1; color: var(--danger); text-align: center;">Error al cargar servidores.</div>';
@@ -2692,6 +2844,9 @@ async function saveSettingsServer() {
             if (currentTool === 'kvm') refreshAll();
             if (currentTool === 'pfsense') fetchFirewallHosts();
             if (currentTool === 'docker') checkAndFetchHostsForTool('docker');
+            if (currentTool === 'podman') checkAndFetchHostsForTool('podman');
+            if (currentTool === 'proxmox') checkAndFetchHostsForTool('proxmox');
+            if (currentTool === 'kubernetes') checkAndFetchHostsForTool('kubernetes');
         } else {
             const err = await response.text();
             alert('Error al guardar: ' + err);
@@ -2712,6 +2867,9 @@ window.deleteSettingsServer = async (id) => {
             if (currentTool === 'kvm') refreshAll();
             if (currentTool === 'pfsense') fetchFirewallHosts();
             if (currentTool === 'docker') checkAndFetchHostsForTool('docker');
+            if (currentTool === 'podman') checkAndFetchHostsForTool('podman');
+            if (currentTool === 'proxmox') checkAndFetchHostsForTool('proxmox');
+            if (currentTool === 'kubernetes') checkAndFetchHostsForTool('kubernetes');
         } else {
             alert('Error al eliminar.');
         }
