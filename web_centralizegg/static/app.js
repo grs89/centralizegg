@@ -2760,10 +2760,16 @@ function renderNasSummary() {
 // Settings Tool Logic
 const SETTINGS_CONFIG = {
     'kvm': {
-        name: 'Virtualización (KVM)',
+        name: 'KVM (Virtualización)',
         icon: 'fa-solid fa-microchip',
         title: 'Configuración de Virtualización',
         api: API_CONFIG_SERVERS
+    },
+    'proxmox': {
+        name: 'Proxmox (Virtualización)',
+        icon: 'fa-solid fa-server',
+        title: 'Configuración de Proxmox',
+        api: '/api/config/proxmox'
     },
     'nas': {
         name: 'NAS (Almacenamiento)',
@@ -2800,24 +2806,18 @@ const SETTINGS_CONFIG = {
         icon: 'fa-solid fa-box-archive',
         title: 'Configuración de Podman',
         api: '/api/config/podman'
-    },
-    'proxmox': {
-        name: 'Virtualización (Proxmox)',
-        icon: 'fa-solid fa-server',
-        title: 'Configuración de Proxmox',
-        api: '/api/config/proxmox'
     }
 };
 
 const LOGS_CONFIG = {
-    'kvm': { name: 'Virtualización (KVM)', icon: 'fa-solid fa-microchip', title: 'Logs de Virtualización' },
+    'kvm': { name: 'KVM (Virtualización)', icon: 'fa-solid fa-microchip', title: 'Logs de Virtualización' },
+    'proxmox': { name: 'Proxmox (Virtualización)', icon: 'fa-solid fa-server', title: 'Logs de Proxmox' },
     'nas': { name: 'NAS (Almacenamiento)', icon: 'fa-solid fa-hdd', title: 'Logs de NAS' },
     'ceph': { name: 'Ceph (Almacenamiento)', icon: 'fa-solid fa-cubes', title: 'Logs de Ceph' },
     'pfsense': { name: 'Firewall (pfSense)', icon: 'fa-brands fa-freebsd', title: 'Logs de Firewall' },
-    'docker': { name: 'Contenedores (Docker)', icon: 'fa-brands fa-docker', title: 'Logs de Docker' },
-    'kubernetes': { name: 'Kubernetes (K8s)', icon: 'fa-solid fa-dharmachakra', title: 'Logs de Kubernetes' },
-    'podman': { name: 'Podman', icon: 'fa-solid fa-box-archive', title: 'Logs de Podman' },
-    'proxmox': { name: 'Virtualización (Proxmox)', icon: 'fa-solid fa-server', title: 'Logs de Proxmox' }
+    'docker': { name: 'Docker (Contenedores)', icon: 'fa-brands fa-docker', title: 'Logs de Docker' },
+    'kubernetes': { name: 'Kubernetes (Contenedores)', icon: 'fa-solid fa-dharmachakra', title: 'Logs de Kubernetes' },
+    'podman': { name: 'Podman (Contenedores)', icon: 'fa-solid fa-box-archive', title: 'Logs de Podman' }
 };
 
 function renderLogsSidebar() {
