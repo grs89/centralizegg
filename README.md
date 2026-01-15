@@ -19,13 +19,11 @@
 
 ## 📋 Tabla de Contenidos
 
-- [Características Principales](#-características-principales)
-- [Estructura del Proyecto](#-estructura-del-proyecto)
-- [Instalación Rápida](#-instalación-rápida)
-- [Configuración](#-configuración)
-- [Troubleshooting](#-troubleshooting)
-
-
+- [Características Principales](#características-principales)
+- [Estructura del Proyecto](#estructura-del-proyecto)
+- [Instalación Rápida](#instalación-rápida)
+- [Configuración](#configuración)
+- [Troubleshooting](#troubleshooting)
 
 ## ✨ Características Principales
 
