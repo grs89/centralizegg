@@ -343,6 +343,13 @@ const tools = {
         elementId: 'container-scanner-tool',
         categoryBtnId: 'log-btn',
         categoryName: 'Log'
+    },
+    'settings': {
+        name: 'Configuración',
+        icon: 'fa-solid fa-gear',
+        elementId: 'settings-tool',
+        categoryBtnId: 'config-btn',
+        categoryName: 'Configuración'
     }
 };
 
@@ -363,10 +370,10 @@ function switchTool(toolKey) {
     selectedHostId = null;
     lastRenderedVMsHash = "";
 
-    // Update Category Button Identity
+    // Update Category Button Identity (Skip for config-btn to avoid layout break)
     try {
         const categoryBtn = document.getElementById(tool.categoryBtnId);
-        if (categoryBtn) {
+        if (categoryBtn && tool.categoryBtnId !== 'config-btn') {
             categoryBtn.innerHTML = `
                 <i class="${tool.icon}"></i> ${tool.name} <i class="fa-solid fa-chevron-down" style="font-size: 0.8rem; margin-left: 5px;"></i>
             `;
@@ -380,31 +387,41 @@ function switchTool(toolKey) {
     const welcomeScreen = document.getElementById('welcome-screen');
     const virtTool = document.getElementById('virtualization-tool');
     const containerTool = document.getElementById('container-scanner-tool');
+    const settingsTool = document.getElementById('settings-tool');
 
-    if (welcomeScreen) welcomeScreen.style.display = 'none'; // Force hide
+    if (welcomeScreen) welcomeScreen.style.display = 'none';
 
     if (virtTool) {
         if (toolKey === 'kvm') {
             virtTool.classList.remove('hidden');
-            console.log('[DEBUG] Showing virtualization-tool');
         } else {
             virtTool.classList.add('hidden');
         }
     }
 
+    if (settingsTool) {
+        const configBtn = document.getElementById('config-btn');
+        if (toolKey === 'settings') {
+            settingsTool.classList.remove('hidden');
+            if (configBtn) configBtn.classList.add('active');
+            initSettings();
+        } else {
+            settingsTool.classList.add('hidden');
+            if (configBtn) configBtn.classList.remove('active');
+        }
+    }
+
     if (containerTool) {
-        if (toolKey !== 'kvm') {
+        if (['kvm', 'settings'].includes(toolKey)) {
+            containerTool.classList.add('hidden');
+        } else {
             containerTool.classList.remove('hidden');
-            console.log('[DEBUG] Showing container-scanner-tool');
 
             // Update placeholder content
             const scannerSection = containerTool.querySelector('.scanner-section');
             if (scannerSection) {
                 // Always show scanner section for non-KVM tools, including pfSense
                 scannerSection.style.display = 'block';
-                const icon = containerTool.querySelector('.scanner-section i');
-                const title = containerTool.querySelectorAll('.scanner-section h2')[0]; // Be precise
-                const desc = containerTool.querySelector('.scanner-section p');
                 const containerInner = containerTool.querySelector('.scanner-section .glass-panel');
 
                 // Default reset
@@ -435,6 +452,10 @@ function switchTool(toolKey) {
                             </p>
                         `;
                     }
+
+                    if (placeholderHtml) {
+                        containerInner.innerHTML = placeholderHtml;
+                    }
                 }
             }
 
@@ -446,23 +467,16 @@ function switchTool(toolKey) {
 
             // Render host nodes for this tool (will be empty if no hosts configured)
             checkAndFetchHostsForTool(toolKey);
-        } else {
-            containerTool.classList.add('hidden');
         }
     }
-
-    // Update Config Button Visibility - show only if there are configured servers
-    updateConfigButtonVisibility(toolKey);
 
     // Trigger data fetch based on tool
     if (toolKey === 'kvm') {
         console.log('[DEBUG] Refreshing KVM data...');
         refreshAll();
     } else if (toolKey === 'pfsense') {
-        // For PFSense, fetch firewall hosts
         fetchFirewallHosts();
-    } else {
-        // For other tools, check if they have hosts configured
+    } else if (toolKey !== 'settings') {
         checkAndFetchHostsForTool(toolKey);
     }
 }
@@ -472,12 +486,11 @@ document.addEventListener('click', (e) => {
     const toolLink = e.target.closest('[data-tool]');
     if (toolLink) {
         e.preventDefault();
-        e.stopPropagation();
         const toolKey = toolLink.getAttribute('data-tool');
         console.log('[DEBUG] Valid tool click detected:', toolKey);
         switchTool(toolKey);
     }
-}, true); // Navigation to home (welcome screen)
+}); // Navigation to home (welcome screen)
 function goHome() {
     console.log('[DEBUG] Navigating to home screen');
     currentTool = null;
@@ -494,9 +507,10 @@ function goHome() {
     if (virtTool) virtTool.classList.add('hidden');
     if (containerTool) containerTool.classList.add('hidden');
 
-    // Hide Config UI
+    const settingsTool = document.getElementById('settings-tool');
     const configBtn = document.getElementById('config-btn');
-    if (configBtn) configBtn.style.display = 'none';
+    if (settingsTool) settingsTool.classList.add('hidden');
+    if (configBtn) configBtn.classList.remove('active');
 }
 
 window.goHome = goHome;
@@ -1391,16 +1405,7 @@ function renderDockerHostDetails(hostId) {
 async function updateConfigButtonVisibility(toolKey) {
     const configBtn = document.getElementById('config-btn');
     if (!configBtn) return;
-
-    // All tools support configuration
-    const configurableTools = ['kvm', 'proxmox', 'nas', 'ceph', 'pfsense', 'docker', 'podman'];
-
-    if (!configurableTools.includes(toolKey)) {
-        configBtn.style.display = 'none';
-        return;
-    }
-
-    // Always show config button for configurable tools (allows adding new servers)
+    // Settings button is now always visible as part of the unified navigation
     configBtn.style.display = 'block';
 }
 
@@ -2146,198 +2151,227 @@ function renderFirewallSummary() {
     `;
 }
 
-// Config Modal Logic
-const modal = document.getElementById('config-modal');
-const btn = document.getElementById('config-btn');
-const close = document.getElementsByClassName('close-modal')[0];
+// Settings Tool Logic
+let settingsCurrentCategory = 'kvm';
+let settingsInitialized = false;
 
-// Dynamic click handler based on current tool
-btn.onclick = () => {
-    // Map tools to their respective modal IDs and load functions
-    const toolModalMap = {
-        'kvm': { modalId: 'config-modal', loadFn: loadServers, resetFn: resetForm },
-        'proxmox': { modalId: 'config-modal', loadFn: loadServers, resetFn: resetForm },
-        'nas': { modalId: 'config-modal', loadFn: loadServers, resetFn: resetForm },
-        'ceph': { modalId: 'config-modal', loadFn: loadServers, resetFn: resetForm },
-        'pfsense': { modalId: 'config-modal', loadFn: loadServers, resetFn: resetForm },
-        'docker': { modalId: 'config-modal', loadFn: loadServers, resetFn: resetForm },
-        'podman': { modalId: 'config-modal', loadFn: loadServers, resetFn: resetForm }
+function initSettings() {
+    if (settingsInitialized) return;
+    console.log('[DEBUG] Initializing Settings Tool');
+
+    // Auth type toggle
+    const authTypeRadios = document.querySelectorAll('input[name="settingsAuthType"]');
+    if (authTypeRadios.length > 0) {
+        authTypeRadios.forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                const keyGroup = document.getElementById('settings-key-group');
+                const passGroup = document.getElementById('settings-pass-group');
+                if (keyGroup && passGroup) {
+                    if (e.target.value === 'key') {
+                        keyGroup.style.display = 'flex';
+                        passGroup.style.display = 'none';
+                    } else {
+                        keyGroup.style.display = 'none';
+                        passGroup.style.display = 'flex';
+                    }
+                }
+            });
+        });
+    }
+
+    // Category selection (sidebar)
+    const menuItems = document.querySelectorAll('.settings-menu-item');
+    if (menuItems.length > 0) {
+        menuItems.forEach(item => {
+            item.addEventListener('click', () => {
+                menuItems.forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+                loadSettingsCategory(item.dataset.category);
+            });
+        });
+    }
+
+    // Save button
+    const saveBtn = document.getElementById('settings-save-btn');
+    if (saveBtn) saveBtn.onclick = saveSettingsServer;
+
+    // Cancel button
+    const cancelBtn = document.getElementById('settings-cancel-btn');
+    if (cancelBtn) cancelBtn.onclick = resetSettingsForm;
+
+    settingsInitialized = true;
+    loadSettingsCategory('kvm');
+}
+
+async function loadSettingsCategory(category) {
+    settingsCurrentCategory = category;
+    const title = document.getElementById('settings-category-title');
+    const titles = {
+        'kvm': 'Configuración de Virtualización',
+        'docker': 'Configuración de Contenedores',
+        'pfsense': 'Configuración de Firewall',
+        'storage': 'Configuración de Almacenamiento'
+    };
+    title.innerText = titles[category] || 'Configuración';
+
+    resetSettingsForm();
+    renderSettingsServerList();
+}
+
+async function renderSettingsServerList() {
+    const listContainer = document.getElementById('settings-server-list');
+    if (!listContainer) return;
+
+    listContainer.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 2rem; opacity: 0.5;"><i class="fa-solid fa-circle-notch fa-spin"></i> Cargando...</div>';
+
+    const api = getConfigAPIForTool(settingsCurrentCategory);
+    try {
+        const response = await fetch(api);
+        const servers = await response.json();
+
+        if (!servers || servers.length === 0) {
+            listContainer.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 3rem; background: rgba(255,255,255,0.02); border-radius: 12px; border: 1px dashed var(--glass-border); color: var(--text-secondary);">No hay servidores configurados en esta categoría.</div>';
+            return;
+        }
+
+        listContainer.innerHTML = servers.map(srv => {
+            const sshPort = srv.ssh_port || srv.port || 22;
+            return `
+            <div class="settings-server-card">
+                <div class="settings-server-meta">
+                    <div class="settings-server-name">${srv.name}</div>
+                    <div class="settings-server-addr">
+                        <i class="fa-solid fa-plug"></i> ${srv.ip_address}:${sshPort}
+                    </div>
+                </div>
+                <div class="settings-server-actions">
+                    <button class="settings-action-btn edit" onclick="editSettingsServer(${JSON.stringify(srv).replace(/"/g, '&quot;')})">
+                        <i class="fa-solid fa-pen"></i>
+                    </button>
+                    <button class="settings-action-btn delete" onclick="deleteSettingsServer(${srv.id})">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+            `;
+        }).join('');
+    } catch (e) {
+        listContainer.innerHTML = '<div style="grid-column: 1/-1; color: var(--danger); text-align: center;">Error al cargar servidores.</div>';
+    }
+}
+
+window.editSettingsServer = (srv) => {
+    document.getElementById('settings-srv-id').value = srv.id;
+    document.getElementById('settings-srv-name').value = srv.name;
+    document.getElementById('settings-srv-ip').value = srv.ip_address;
+    document.getElementById('settings-srv-port').value = srv.ssh_port || srv.port || 22;
+    document.getElementById('settings-srv-user').value = srv.username;
+
+    const isKey = srv.ssh_key_path ? true : false;
+    const authRadios = document.querySelectorAll('input[name="settingsAuthType"]');
+    authRadios.forEach(r => {
+        if (r.value === (isKey ? 'key' : 'password')) r.checked = true;
+    });
+
+    document.getElementById('settings-key-group').style.display = isKey ? 'flex' : 'none';
+    document.getElementById('settings-pass-group').style.display = isKey ? 'none' : 'flex';
+
+    if (isKey) document.getElementById('settings-srv-key').value = srv.ssh_key_path;
+    document.getElementById('settings-srv-pass').value = '';
+
+    document.getElementById('settings-save-btn').innerText = 'Actualizar Servidor';
+    document.getElementById('settings-cancel-btn').style.display = 'block';
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
+function resetSettingsForm() {
+    const form = document.getElementById('settings-server-form');
+    if (form) form.reset();
+    document.getElementById('settings-srv-id').value = '';
+    document.getElementById('settings-save-btn').innerText = 'Guardar Servidor';
+    document.getElementById('settings-cancel-btn').style.display = 'none';
+
+    document.getElementById('settings-key-group').style.display = 'flex';
+    document.getElementById('settings-pass-group').style.display = 'none';
+}
+
+async function saveSettingsServer() {
+    const id = document.getElementById('settings-srv-id').value;
+    const name = document.getElementById('settings-srv-name').value;
+    const ip = document.getElementById('settings-srv-ip').value;
+    const port = parseInt(document.getElementById('settings-srv-port').value) || 22;
+    const user = document.getElementById('settings-srv-user').value;
+    const authTypeInput = document.querySelector('input[name="settingsAuthType"]:checked');
+    const authType = authTypeInput ? authTypeInput.value : 'key';
+    const pass = document.getElementById('settings-srv-pass').value;
+    const key = document.getElementById('settings-srv-key').value;
+
+    if (!name || !ip || !user) {
+        alert('Por favor completa todos los campos obligatorios (Nombre, IP, Usuario).');
+        return;
+    }
+
+    const payload = {
+        name,
+        ip_address: ip,
+        ssh_port: port,
+        username: user,
+        password: authType === 'password' ? pass : '',
+        ssh_key_path: authType === 'key' ? key : '',
     };
 
-    const config = toolModalMap[currentTool];
-    if (config) {
-        const targetModal = document.getElementById(config.modalId);
-        if (targetModal) {
-            targetModal.style.display = 'block';
-            if (config.loadFn) config.loadFn();
-            if (config.resetFn) config.resetFn();
-        }
-    } else {
-        // Fallback to default modal
-        modal.style.display = 'block';
-        loadServers();
-        resetForm();
-    }
-}
-close.onclick = () => modal.style.display = 'none';
-window.onclick = (e) => { if (e.target == modal) modal.style.display = 'none'; }
-
-async function loadServers() {
-    const apiUrl = getConfigAPIForTool(currentTool);
-    const res = await fetch(apiUrl);
-    if (res.ok) {
-        const servers = await res.json();
-
-        // Sync local cache based on tool
-        if (currentTool === 'kvm') currentServers = servers || [];
-        else if (currentTool === 'pfsense') currentFirewallServers = servers || [];
-        else if (currentTool === 'docker') currentDockerServers = servers || [];
-
-        const list = document.getElementById('server-list-ul');
-        if (!list) return;
-        list.innerHTML = '';
-        if (servers) {
-            servers.forEach(s => {
-                let statusColor = '#ccc';
-                if (s.status === 'online') statusColor = 'var(--success)';
-                if (s.status === 'offline') statusColor = 'var(--danger)';
-
-                list.innerHTML += `
-                <li>
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${statusColor};" title="${s.status}"></span>
-                        <span>${s.name} (${s.ip_address}:${s.ssh_port || 22})</span>
-                    </div>
-                    <div class="actions">
-                        <button class="edit-btn icon-btn" onclick="startEdit(${s.id})" style="color:var(--accent-color); margin-right:10px;"><i class="fa-solid fa-pen"></i></button>
-                        <button class="delete-btn icon-btn" onclick="deleteServer(${s.id})" style="color:var(--danger);"><i class="fa-solid fa-trash"></i></button>
-                    </div>
-                </li>`;
-            });
-        }
-    }
-}
-
-async function deleteServer(id) {
-    if (confirm('Delete this server?')) {
-        const apiUrl = getConfigAPIForTool(currentTool);
-        await fetch(apiUrl + '/' + id, { method: 'DELETE' });
-        loadServers();
-        resetForm(); // if we were editing it
-    }
-}
-
-// Edit Logic
-window.startEdit = (id) => {
-    let serverCache = currentServers;
-    if (currentTool === 'pfsense') serverCache = currentFirewallServers;
-    else if (currentTool === 'docker') serverCache = currentDockerServers;
-
-    const s = serverCache.find(srv => srv.id === id);
-    if (!s) return;
-
-    document.getElementById('srv-id').value = s.id;
-    document.getElementById('srv-name').value = s.name;
-    document.getElementById('srv-ip').value = s.ip_address;
-    document.getElementById('srv-user').value = s.username;
-
-    // Auth type check. If we have key path but no password -> Key. 
-    // Actually API does not return password. But usually key path is always there or default.
-    // Let's assume Key by default unless user sets password? 
-    // Or just default to Key and user can switch.
-    document.querySelector('input[name="authType"][value="key"]').click();
-    document.getElementById('srv-key').value = s.ssh_key_path;
-
-    // UI Updates
-    document.getElementById('form-title').textContent = "Edit Server";
-    document.getElementById('add-server-btn').textContent = "Update Server";
-    document.getElementById('cancel-edit-btn').style.display = 'block';
-    document.getElementById('srv-pass').placeholder = "Password (Leave empty to keep current)";
-}
-
-function resetForm() {
-    document.getElementById('srv-id').value = '';
-    document.getElementById('srv-name').value = '';
-    document.getElementById('srv-ip').value = '';
-    document.getElementById('srv-port').value = '';
-    document.getElementById('srv-user').value = '';
-    document.getElementById('srv-pass').value = '';
-    document.getElementById('srv-key').value = '';
-
-    document.getElementById('form-title').textContent = "Add New Server";
-    document.getElementById('add-server-btn').textContent = "Add Server";
-    document.getElementById('cancel-edit-btn').style.display = 'none';
-    document.getElementById('srv-pass').placeholder = "Password";
-
-    document.querySelector('input[name="authType"][value="key"]').click();
-}
-
-document.getElementById('cancel-edit-btn').onclick = resetForm;
-
-// Auth Toggle Logic
-const authRadios = document.getElementsByName('authType');
-const passInput = document.getElementById('srv-pass');
-const keyInput = document.getElementById('srv-key');
-
-authRadios.forEach(radio => {
-    radio.onchange = (e) => {
-        if (e.target.value === 'password') {
-            passInput.style.display = 'block';
-            keyInput.style.display = 'none';
-        } else {
-            passInput.style.display = 'none';
-            keyInput.style.display = 'block';
-        }
-    }
-});
-
-document.getElementById('add-server-btn').onclick = async () => {
-    const id = document.getElementById('srv-id').value;
-    const name = document.getElementById('srv-name').value;
-    const ip = document.getElementById('srv-ip').value;
-    const port = document.getElementById('srv-port').value || 22;
-    const user = document.getElementById('srv-user').value;
-
-    // Auth fields
-    const authType = document.querySelector('input[name="authType"]:checked').value;
-    let password = "";
-    let sshKeyPath = "";
-
-    if (authType === 'password') {
-        password = passInput.value;
-    } else {
-        sshKeyPath = keyInput.value;
-    }
-
-    if (name && ip && user) {
-        const payload = {
-            name,
-            ip_address: ip,
-            ssh_port: parseInt(port),
-            username: user,
-            password: password,
-            ssh_key_path: sshKeyPath // Empty string will imply "keep current" or "default" based on backend logic
-        };
-
-        const apiUrl = getConfigAPIForTool(currentTool);
+    const apiUrl = getConfigAPIForTool(settingsCurrentCategory);
+    try {
+        let response;
         if (id) {
-            // Update
-            await fetch(apiUrl + '/' + id, {
+            response = await fetch(`${apiUrl}/${id}`, {
                 method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
         } else {
-            // Create
-            await fetch(apiUrl, {
+            response = await fetch(apiUrl, {
                 method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
         }
 
-        resetForm();
-        loadServers();
+        if (response.ok) {
+            resetSettingsForm();
+            renderSettingsServerList();
+            // Refresh main lists if needed
+            if (currentTool === 'kvm') refreshAll();
+            if (currentTool === 'pfsense') fetchFirewallHosts();
+            if (currentTool === 'docker') checkAndFetchHostsForTool('docker');
+        } else {
+            const err = await response.text();
+            alert('Error al guardar: ' + err);
+        }
+    } catch (e) {
+        alert('Error de conexión.');
     }
 }
+
+window.deleteSettingsServer = async (id) => {
+    if (!confirm('¿Estás seguro de eliminar este servidor?')) return;
+
+    const apiUrl = getConfigAPIForTool(settingsCurrentCategory);
+    try {
+        const response = await fetch(`${apiUrl}/${id}`, { method: 'DELETE' });
+        if (response.ok) {
+            renderSettingsServerList();
+            if (currentTool === 'kvm') refreshAll();
+            if (currentTool === 'pfsense') fetchFirewallHosts();
+            if (currentTool === 'docker') checkAndFetchHostsForTool('docker');
+        } else {
+            alert('Error al eliminar.');
+        }
+    } catch (e) {
+        alert('Error de conexión.');
+    }
+};
 
 // Init
 // fetchHosts();
