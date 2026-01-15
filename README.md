@@ -137,7 +137,7 @@ graph TD
     pfSense -->|SSH Commands| pfSense2
 
     Collector -->|"SSH Tunnel (NAS)"| NAS
-    NAS -->|SSH Commands (df, lsblk)| NAS1
+    NAS -->|"SSH Commands (df, lsblk)"| NAS1
     
     Collector -->|Upsert Data| PG
     PG -->|Response| API
