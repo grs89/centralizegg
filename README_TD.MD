@@ -624,7 +624,7 @@ go build -o centralizegg ./cmd_centralizegg/server
 - **`backend_internal_centralizegg/virtualization/kvm-collector.go`**: Lógica de recopilación de métricas
 
 
-## 🛠️ Tech Stack
+## 🛠️Tech Stack
 
 *   **Backend**: Go 1.23.2 (Golang) + Gorilla Mux + Libvirt + SSH
 *   **Database**: PostgreSQL 15
