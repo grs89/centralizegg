@@ -219,11 +219,18 @@
 
                     <!-- Main Content -->
                     <section class="settings-content-wrapper">
-                        <div class="settings-header">
-                            <h2 id="settings-category-title">Configuración de Virtualización</h2>
-                            <p style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 5px;">
-                                Gestiona los servidores y credenciales de acceso para este módulo.
-                            </p>
+                        <div class="settings-header"
+                            style="display: flex; justify-content: space-between; align-items: flex-start;">
+                            <div>
+                                <h2 id="settings-category-title">Configuración de Virtualización</h2>
+                                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 5px;">
+                                    Gestiona los servidores y credenciales de acceso para este módulo.
+                                </p>
+                            </div>
+                            <button id="close-settings-btn" class="secondary-btn" title="Cerrar Ajustes"
+                                style="background: rgba(255, 255, 255, 0.05); border: 1px solid var(--glass-border); color: var(--text-secondary); width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.3s;">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
                         </div>
 
                         <div class="settings-form-container">
@@ -277,10 +284,13 @@
                             </form>
                         </div>
 
-                        <div class="settings-managed-servers">
-                            <div class="settings-managed-header">
-                                <i class="fa-solid fa-list-check" style="color: var(--accent-color);"></i>
-                                <span>Servidores Administrados</span>
+                        <div class="settings-managed-servers glass-panel"
+                            style="margin-top: 40px; border-radius: 20px; padding: 25px;">
+                            <div class="settings-managed-header" style="margin-bottom: 25px;">
+                                <i class="fa-solid fa-list-check"
+                                    style="color: var(--accent-color); font-size: 1.2rem;"></i>
+                                <span style="font-weight: 700; font-size: 1.1rem; margin-left: 10px;">Servidores
+                                    Administrados</span>
                             </div>
                             <div id="settings-server-list" class="settings-server-grid">
                                 <!-- Dinámico -->

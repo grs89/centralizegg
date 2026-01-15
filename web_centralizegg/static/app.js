@@ -2811,10 +2811,10 @@ function renderSettingsSidebar() {
     if (!sidebar) return;
 
     sidebar.innerHTML = Object.entries(SETTINGS_CONFIG).map(([id, config]) => `
-        < div class="settings-menu-item ${id === settingsCurrentCategory ? 'active' : ''}" data - category="${id}" >
+        <div class="settings-menu-item ${id === settingsCurrentCategory ? 'active' : ''}" data-category="${id}">
             <i class="${config.icon}"></i>
             <span>${config.name}</span>
-        </div >
+        </div>
         `).join('');
 
     // Re-attach listeners to new items
@@ -2864,6 +2864,32 @@ function initSettings() {
     const cancelBtn = document.getElementById('settings-cancel-btn');
     if (cancelBtn) cancelBtn.onclick = resetSettingsForm;
 
+    // Close Settings button
+    const closeSettingsBtn = document.getElementById('close-settings-btn');
+    if (closeSettingsBtn) {
+        closeSettingsBtn.onclick = () => {
+            window.location.hash = ''; // Clear hash to trigger home navigation
+            // If hash is already empty, ensure we switch tool
+            if (!window.location.hash) {
+                // Navigate to a default tool or welcome screen
+                // The hash listener in app.js usually handles this
+                // For now, let's just use the existing navigateHome effect
+                const virtTool = document.getElementById('virtualization-tool');
+                const containerTool = document.getElementById('container-scanner-tool');
+                const settingsTool = document.getElementById('settings-tool');
+                const welcomeScreen = document.getElementById('welcome-screen');
+                const configBtn = document.getElementById('config-btn');
+
+                if (settingsTool) settingsTool.classList.add('hidden');
+                if (virtTool) virtTool.classList.add('hidden');
+                if (containerTool) containerTool.classList.add('hidden');
+                if (welcomeScreen) welcomeScreen.style.display = 'flex';
+                if (configBtn) configBtn.classList.remove('active');
+                currentTool = null;
+            }
+        };
+    }
+
     settingsInitialized = true;
     loadSettingsCategory('kvm');
 }
@@ -2900,7 +2926,7 @@ async function renderSettingsServerList() {
         listContainer.innerHTML = servers.map(srv => {
             const sshPort = srv.ssh_port || srv.port || 22;
             return `
-        < div class="settings-server-card" >
+                <div class="settings-server-card">
                     <div class="settings-server-meta">
                         <div class="settings-server-name">${srv.name}</div>
                         <div class="settings-server-addr">
@@ -2908,15 +2934,15 @@ async function renderSettingsServerList() {
                         </div>
                     </div>
                     <div class="settings-server-actions">
-                        <button class="settings-action-btn edit" onclick="editSettingsServer(${JSON.stringify(srv).replace(/"/g, '&quot;')})">
+                        <button class="settings-action-btn edit" onclick="editSettingsServer(${JSON.stringify(srv).replace(/"/g, '&quot;')})" title="Editar">
                             <i class="fa-solid fa-pen"></i>
                         </button>
-                        <button class="settings-action-btn delete" onclick="deleteSettingsServer(${srv.id})">
+                        <button class="settings-action-btn delete" onclick="deleteSettingsServer(${srv.id})" title="Eliminar">
                             <i class="fa-solid fa-trash"></i>
                         </button>
-                    </div >
-                </div >
-        `;
+                    </div>
+                </div>
+            `;
         }).join('');
     } catch (e) {
         listContainer.innerHTML = '<div style="grid-column: 1/-1; color: var(--danger); text-align: center;">Error al cargar servidores.</div>';
@@ -3526,7 +3552,7 @@ function renderFirewallHostDetails(hostId) {
 
     if (!statsWrapper) {
         scannerSection.innerHTML = `
-    <div id="fw-stats-wrapper" ></div>
+    <div id="fw-stats-wrapper"></div>
         <div id="fw-map-wrapper" class="glass-panel" style="padding: 20px; margin-top: 20px;">
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 15px; padding-bottom: 10px;">
                 <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9;">
