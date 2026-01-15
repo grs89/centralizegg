@@ -310,18 +310,18 @@ const tools = {
         categoryName: 'Contenedores'
     },
     'web_services': {
-        name: 'Servicios web',
+        name: 'Servidores web',
         icon: 'fa-solid fa-globe',
         elementId: 'container-scanner-tool',
         categoryBtnId: 'services-btn',
-        categoryName: 'Servicios'
+        categoryName: 'Servidores'
     },
     'db_services': {
-        name: 'Servicios de DB',
+        name: 'Servidores de DB',
         icon: 'fa-solid fa-database',
         elementId: 'container-scanner-tool',
         categoryBtnId: 'services-btn',
-        categoryName: 'Servicios'
+        categoryName: 'Servidores'
     },
     'pfsense': {
         name: 'PFsense',
