@@ -66,6 +66,9 @@ func main() {
 	nasCol := storage.NewNasCollector(db)
 	go nasCol.Start(30 * time.Second)
 
+	cephCol := storage.NewCephCollector(db)
+	go cephCol.Start(20 * time.Second)
+
 	// Router
 	r := mux.NewRouter()
 
@@ -248,6 +251,19 @@ func main() {
 			return
 		}
 		json.NewEncoder(w).Encode(disks)
+	}).Methods("GET")
+
+	// Ceph hosts API
+	r.HandleFunc("/api/ceph/hosts", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s", r.Method, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		hosts, err := db.GetCephHosts()
+		if err != nil {
+			log.Printf("Error GetCephHosts: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(hosts)
 	}).Methods("GET")
 
 	// Firewall servers config API

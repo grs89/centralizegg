@@ -1576,3 +1576,64 @@ func (d *DB) GetAllNasDisks() ([]NasDisk, error) {
 	}
 	return disks, nil
 }
+
+// Ceph Types
+type CephHost struct {
+	ID            int64   `json:"id"`
+	ServerID      int64   `json:"server_id"`
+	Hostname      string  `json:"hostname"`
+	ServerName    string  `json:"server_name"`
+	IPAddress     string  `json:"ip_address"`
+	Status        string  `json:"status"`
+	CPUModel      string  `json:"cpu_model"`
+	CPUCores      int     `json:"cpu_cores"`
+	TotalMemory   uint64  `json:"total_memory"`
+	FreeMemory    uint64  `json:"free_memory"`
+	CPUUsage      float64 `json:"cpu_usage"`
+	OSName        string  `json:"os_name"`
+	KernelVer     string  `json:"kernel_version"`
+	Uptime        string  `json:"uptime"`
+	ClusterStatus string  `json:"cluster_status"` // JSON string of "ceph status"
+	ClusterHealth string  `json:"cluster_health"` // HEALTH_OK, HEALTH_WARN, etc.
+}
+
+// Ceph Methods
+func (d *DB) UpsertCephHost(h CephHost) (int64, error) {
+	var id int64
+	err := d.Conn.QueryRow("SELECT id FROM storage.ceph_hosts WHERE server_id = $1 AND hostname = $2", h.ServerID, h.Hostname).Scan(&id)
+
+	if err == sql.ErrNoRows {
+		err = d.Conn.QueryRow(`
+			INSERT INTO storage.ceph_hosts (server_id, hostname, status, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, kernel_version, uptime, cluster_status, cluster_health)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
+			h.ServerID, h.Hostname, h.Status, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.KernelVer, h.Uptime, h.ClusterStatus, h.ClusterHealth).Scan(&id)
+	} else if err == nil {
+		_, err = d.Conn.Exec(`
+			UPDATE storage.ceph_hosts SET status=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, kernel_version=$8, uptime=$9, cluster_status=$10, cluster_health=$11
+			WHERE id=$12`,
+			h.Status, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.KernelVer, h.Uptime, h.ClusterStatus, h.ClusterHealth, id)
+	}
+
+	return id, err
+}
+
+func (d *DB) GetCephHosts() ([]CephHost, error) {
+	rows, err := d.Conn.Query(`
+		SELECT ch.id, ch.server_id, ch.hostname, cs.name, cs.ip_address, ch.status, ch.cpu_model, ch.cpu_cores, ch.total_memory, ch.free_memory, ch.cpu_usage, ch.os_name, ch.kernel_version, ch.uptime, ch.cluster_status, ch.cluster_health
+		FROM storage.ceph_hosts ch
+		JOIN storage.ceph_servers cs ON ch.server_id = cs.id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var hosts []CephHost
+	for rows.Next() {
+		var h CephHost
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.Status, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.KernelVer, &h.Uptime, &h.ClusterStatus, &h.ClusterHealth); err != nil {
+			return nil, err
+		}
+		hosts = append(hosts, h)
+	}
+	return hosts, nil
+}
