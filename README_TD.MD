@@ -25,7 +25,7 @@
 - [Base de Datos](#-base-de-datos)
 - [Funcionalidades del Frontend](#-funcionalidades-del-frontend)
 - [Desarrollo](#-desarrollo)
-- [Tech Stack](#--tech-stack)
+- [Tech Stack](#tech-stack)
 
 
 ## 🏗️ Arquitectura
