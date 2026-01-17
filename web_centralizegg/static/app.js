@@ -32,10 +32,39 @@ function getConfigAPIForTool(toolKey) {
 }
 
 // Global state
-let currentServers = [];      // For KVM
+let currentTool = 'virtualization'; // default
+let currentServers = [];
 let currentFirewallServers = [];
-let currentDockerServers = [];
-let currentTool = null;
+let currentDockerServers = []; // Global for Docker
+let lastNotificationCount = 0; // Track previous count for sound
+
+// Sound Effect: Web Audio API Oscillator (Clean "Ping")
+const playAlertSound = () => {
+    try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+
+        const ctx = new AudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        // Sound design: High pitch ping suitable for alerts
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1200, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.3);
+
+        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start();
+        osc.stop(ctx.currentTime + 0.3);
+    } catch (e) {
+        console.warn("Audio play failed", e);
+    }
+};
 let selectedHostId = null;
 
 // Cache for search
@@ -3713,6 +3742,18 @@ async function checkServerStatus() {
         const offlineServers = allServers.filter(s => s.status === 'offline');
         const badge = document.getElementById('notification-count');
         const list = document.getElementById('notification-list');
+
+        // Sound Logic
+        if (offlineServers.length > lastNotificationCount) {
+            // New alert detected
+            try {
+                // Play sound (requires user interaction first usually, but in dashboard context often works)
+                playAlertSound();
+            } catch (e) {
+                console.warn("Could not play notification sound:", e);
+            }
+        }
+        lastNotificationCount = offlineServers.length;
 
         if (badge && list) {
             if (offlineServers.length > 0) {
