@@ -76,6 +76,7 @@ type DockerHost struct {
 	FreeMemory    uint64  `json:"free_memory"`
 	CPUUsage      float64 `json:"cpu_usage"`
 	OSName        string  `json:"os_name"`
+	Status        string  `json:"status"` // server connection status
 	DockerVer     string  `json:"docker_version"`
 	ServiceStatus string  `json:"docker_service_status"`
 	SocketStatus  string  `json:"docker_socket_status"`
@@ -107,6 +108,7 @@ type PodmanHost struct {
 	FreeMemory     uint64  `json:"free_memory"`
 	CPUUsage       float64 `json:"cpu_usage"`
 	OSName         string  `json:"os_name"`
+	Status         string  `json:"status"` // server connection status
 	PodmanVer      string  `json:"podman_version"`
 	ServiceStatus  string  `json:"podman_service_status"`
 	APILatency     int     `json:"podman_api_latency"`
@@ -146,7 +148,7 @@ type KubernetesNode struct {
 	Hostname         string  `json:"hostname"`
 	ServerName       string  `json:"server_name"`
 	IPAddress        string  `json:"ip_address"`
-	Status           string  `json:"status"`
+	Status           string  `json:"status"` // server connection status
 	Roles            string  `json:"roles"`
 	Version          string  `json:"version"`
 	CPUModel         string  `json:"cpu_model"`
@@ -181,7 +183,7 @@ type ProxmoxHost struct {
 	Hostname    string  `json:"hostname"`
 	ServerName  string  `json:"server_name"`
 	IPAddress   string  `json:"ip_address"`
-	Status      string  `json:"status"` // online, offline
+	Status      string  `json:"status"` // server connection status
 	CPUModel    string  `json:"cpu_model"`
 	CPUCores    int     `json:"cpu_cores"`
 	TotalMemory uint64  `json:"total_memory"`
@@ -216,7 +218,7 @@ type NasHost struct {
 	Hostname    string  `json:"hostname"`
 	ServerName  string  `json:"server_name"`
 	IPAddress   string  `json:"ip_address"`
-	Status      string  `json:"status"` // online, offline
+	Status      string  `json:"status"` // server connection status
 	CPUModel    string  `json:"cpu_model"`
 	CPUCores    int     `json:"cpu_cores"`
 	TotalMemory uint64  `json:"total_memory"`
@@ -1201,7 +1203,7 @@ func (d *DB) UpsertContainer(c Container) error {
 
 func (d *DB) GetDockerHosts() ([]DockerHost, error) {
 	rows, err := d.Conn.Query(`
-		SELECT h.id, h.server_id, h.hostname, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, h.public_ip, h.dns_servers, h.uptime, h.update_status, h.temperature, h.disks, h.docker_version, h.docker_service_status, h.docker_socket_status, h.docker_api_latency, h.docker_storage_used, h.docker_storage_total, h.docker_inodes_usage, h.docker_logs_size, h.docker_volumes, h.docker_networks, h.gpu_info, ds.name, ds.ip_address
+		SELECT h.id, h.server_id, h.hostname, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, h.public_ip, h.dns_servers, h.uptime, h.update_status, h.temperature, h.disks, h.docker_version, h.docker_service_status, h.docker_socket_status, h.docker_api_latency, h.docker_storage_used, h.docker_storage_total, h.docker_inodes_usage, h.docker_logs_size, h.docker_volumes, h.docker_networks, h.gpu_info, ds.name, ds.ip_address, ds.status
 		FROM containers.hosts h
 		JOIN containers.docker_servers ds ON h.server_id = ds.id`)
 	if err != nil {
@@ -1212,7 +1214,7 @@ func (d *DB) GetDockerHosts() ([]DockerHost, error) {
 	var hosts []DockerHost
 	for rows.Next() {
 		var h DockerHost
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.PublicIP, &h.DNSServers, &h.Uptime, &h.UpdateStatus, &h.Temperature, &h.Disks, &h.DockerVer, &h.ServiceStatus, &h.SocketStatus, &h.APILatency, &h.StorageUsed, &h.StorageTotal, &h.InodesUsage, &h.LogsSize, &h.Volumes, &h.Networks, &h.GPUInfo, &h.ServerName, &h.IPAddress); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.PublicIP, &h.DNSServers, &h.Uptime, &h.UpdateStatus, &h.Temperature, &h.Disks, &h.DockerVer, &h.ServiceStatus, &h.SocketStatus, &h.APILatency, &h.StorageUsed, &h.StorageTotal, &h.InodesUsage, &h.LogsSize, &h.Volumes, &h.Networks, &h.GPUInfo, &h.ServerName, &h.IPAddress, &h.Status); err != nil {
 			return nil, err
 		}
 		hosts = append(hosts, h)
@@ -1274,7 +1276,7 @@ func (d *DB) UpsertKubernetesPod(p KubernetesPod) error {
 
 func (d *DB) GetKubernetesNodes() ([]KubernetesNode, error) {
 	rows, err := d.Conn.Query(`
-		SELECT n.id, n.server_id, n.hostname, n.status, n.roles, n.version, n.cpu_model, n.cpu_cores, n.total_memory, n.free_memory, n.cpu_usage, n.os_name, n.kernel_version, n.container_runtime, n.pods_count, ks.name, ks.ip_address
+		SELECT n.id, n.server_id, n.hostname, ks.status, n.roles, n.version, n.cpu_model, n.cpu_cores, n.total_memory, n.free_memory, n.cpu_usage, n.os_name, n.kernel_version, n.container_runtime, n.pods_count, ks.name, ks.ip_address
 		FROM kubernetes.nodes n
 		JOIN kubernetes.kubernetes_servers ks ON n.server_id = ks.id`)
 	if err != nil {
@@ -1351,7 +1353,7 @@ func (d *DB) UpsertPodmanContainer(c Container) error {
 
 func (d *DB) GetPodmanHosts() ([]PodmanHost, error) {
 	rows, err := d.Conn.Query(`
-		SELECT h.id, h.server_id, h.hostname, ps.name, ps.ip_address, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, h.uptime, h.podman_version, h.podman_service_status, h.podman_api_latency, h.podman_storage_used, h.podman_storage_total, h.podman_inodes_usage, h.podman_volumes, h.podman_networks, h.gpu_info
+		SELECT h.id, h.server_id, h.hostname, ps.name, ps.ip_address, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, h.uptime, h.podman_version, h.podman_service_status, h.podman_api_latency, h.podman_storage_used, h.podman_storage_total, h.podman_inodes_usage, h.podman_volumes, h.podman_networks, h.gpu_info, ps.status
 		FROM containers.podman_hosts h
 		JOIN containers.podman_servers ps ON h.server_id = ps.id`)
 	if err != nil {
@@ -1362,7 +1364,7 @@ func (d *DB) GetPodmanHosts() ([]PodmanHost, error) {
 	var hosts []PodmanHost
 	for rows.Next() {
 		var h PodmanHost
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.Uptime, &h.PodmanVer, &h.ServiceStatus, &h.APILatency, &h.StorageUsed, &h.StorageTotal, &h.InodesUsage, &h.Volumes, &h.PodmanNetworks, &h.GPUInfo); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.Uptime, &h.PodmanVer, &h.ServiceStatus, &h.APILatency, &h.StorageUsed, &h.StorageTotal, &h.InodesUsage, &h.Volumes, &h.PodmanNetworks, &h.GPUInfo, &h.Status); err != nil {
 			return nil, err
 		}
 		hosts = append(hosts, h)
@@ -1428,7 +1430,7 @@ func (d *DB) UpsertProxmoxVM(vm ProxmoxVM) error {
 
 func (d *DB) GetProxmoxHosts() ([]ProxmoxHost, error) {
 	rows, err := d.Conn.Query(`
-		SELECT ph.id, ph.server_id, ph.hostname, ps.name, ps.ip_address, ph.status, ph.cpu_model, ph.cpu_cores, ph.total_memory, ph.free_memory, ph.cpu_usage, ph.os_name, ph.kernel_version, ph.pve_version, ph.uptime, ph.vms_count, ph.containers_count
+		SELECT ph.id, ph.server_id, ph.hostname, ps.name, ps.ip_address, ps.status, ph.cpu_model, ph.cpu_cores, ph.total_memory, ph.free_memory, ph.cpu_usage, ph.os_name, ph.kernel_version, ph.pve_version, ph.uptime, ph.vms_count, ph.containers_count
 		FROM virtualization.proxmox_hosts ph
 		JOIN virtualization.proxmox_servers ps ON ph.server_id = ps.id`)
 	if err != nil {
@@ -1523,7 +1525,7 @@ func (d *DB) UpsertNasDisk(disk NasDisk) error {
 
 func (d *DB) GetNasHosts() ([]NasHost, error) {
 	rows, err := d.Conn.Query(`
-		SELECT nh.id, nh.server_id, nh.hostname, ns.name, ns.ip_address, nh.status, nh.cpu_model, nh.cpu_cores, nh.total_memory, nh.free_memory, nh.cpu_usage, nh.os_name, nh.kernel_version, nh.uptime, nh.model, nh.serial
+		SELECT nh.id, nh.server_id, nh.hostname, ns.name, ns.ip_address, ns.status, nh.cpu_model, nh.cpu_cores, nh.total_memory, nh.free_memory, nh.cpu_usage, nh.os_name, nh.kernel_version, nh.uptime, nh.model, nh.serial
 		FROM storage.nas_hosts nh
 		JOIN storage.nas_servers ns ON nh.server_id = ns.id`)
 	if err != nil {

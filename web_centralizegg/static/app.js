@@ -1362,7 +1362,15 @@ function renderDockerHostDetails(hostId) {
     };
 
     if (isAlreadyRenderingHost) {
-        // --- ONLY UPDATE DYNAMIC VALUES ---
+        // DYNAMIC VALUES ONLY (Partial Update)
+        const serverStatusEl = document.getElementById('docker-server-status');
+        if (serverStatusEl) {
+            serverStatusEl.textContent = host.status || 'offline';
+            serverStatusEl.style.color = host.status === 'online' ? '#4ade80' : '#ef4444';
+            serverStatusEl.style.background = host.status === 'online' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+            serverStatusEl.style.borderColor = host.status === 'online' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)';
+        }
+
         const statusEl = document.getElementById('docker-service-status');
         if (statusEl) {
             statusEl.textContent = host.docker_service_status || 'offline';
@@ -1441,6 +1449,12 @@ function renderDockerHostDetails(hostId) {
                 <div style="display: flex; flex-direction: column; gap: 10px;">
                     <!-- Docker Service Card -->
                     <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color);">Conexión</div>
+                            <span id="docker-server-status" style="font-weight: 800; font-size: 0.7rem; color: ${host.status === 'online' ? '#4ade80' : '#ef4444'}; text-transform: uppercase; background: ${host.status === 'online' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; padding: 2px 6px; border-radius: 4px; border: 1px solid ${host.status === 'online' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'};">
+                                ${host.status || 'offline'}
+                            </span>
+                        </div>
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                             <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color);">Servicio Docker</div>
                             <span id="docker-service-status" style="font-weight: 800; font-size: 0.7rem; color: ${host.docker_service_status === 'active' ? '#4ade80' : '#ef4444'}; text-transform: uppercase; background: ${host.docker_service_status === 'active' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; padding: 2px 6px; border-radius: 4px; border: 1px solid ${host.docker_service_status === 'active' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'};">
@@ -1729,7 +1743,7 @@ function renderHostNodes(containerId = 'host-nodes-container', config = {}) {
         else if (currentTool === 'docker') serverCache = currentDockerServers;
 
         const serverConfig = serverCache.find(s => s.id === host.server_id);
-        const isOnline = serverConfig ? serverConfig.status === 'online' : true;
+        const isOnline = host.status ? host.status === 'online' : (serverConfig ? serverConfig.status === 'online' : true);
 
         // Handle onclick - use the provided function name or default to selectHost
         const onClickHandler = onHostClick || 'selectHost';
@@ -2769,6 +2783,14 @@ function renderPodmanHostDetails(hostId) {
 
     if (isAlreadyRenderingHost) {
         // Partial Update
+        const serverStatusEl = document.getElementById('podman-server-status');
+        if (serverStatusEl) {
+            serverStatusEl.textContent = host.status || 'offline';
+            serverStatusEl.style.color = host.status === 'online' ? '#4ade80' : '#ef4444';
+            serverStatusEl.style.background = host.status === 'online' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+            serverStatusEl.style.borderColor = host.status === 'online' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)';
+        }
+
         const statusEl = document.getElementById('podman-service-status');
         if (statusEl) {
             statusEl.textContent = host.podman_service_status || 'offline';
@@ -2863,6 +2885,12 @@ function renderPodmanHostDetails(hostId) {
                     <!-- Podman Service Card -->
                     <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color);">Conexión</div>
+                            <span id="podman-server-status" style="font-weight: 800; font-size: 0.7rem; color: ${host.status === 'online' ? '#4ade80' : '#ef4444'}; text-transform: uppercase; background: ${host.status === 'online' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; padding: 2px 6px; border-radius: 4px; border: 1px solid ${host.status === 'online' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'};">
+                                ${host.status || 'offline'}
+                            </span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
                             <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color);">Servicio Podman</div>
                             <span id="podman-service-status" style="font-weight: 800; font-size: 0.7rem; color: ${host.podman_service_status === 'active' ? '#4ade80' : '#ef4444'}; text-transform: uppercase; background: ${host.podman_service_status === 'active' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; padding: 2px 6px; border-radius: 4px; border: 1px solid ${host.podman_service_status === 'active' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'};">
                                 ${host.podman_service_status || 'offline'}
