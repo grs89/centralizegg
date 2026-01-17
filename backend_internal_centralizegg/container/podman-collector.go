@@ -195,6 +195,22 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 		}
 	}
 
+	// Podman Networks Topology
+	networksJSON := "[]"
+	// Check if there are networks first to avoid error on empty list
+	netLsRaw, _ := pc.runCommand(client, "podman network ls -q")
+	if strings.TrimSpace(netLsRaw) != "" {
+		netsRaw, err := pc.runCommand(client, "podman network inspect $(podman network ls -q) --format json")
+		if err == nil && strings.TrimSpace(netsRaw) != "" {
+			networksJSON = strings.TrimSpace(netsRaw)
+			// Ensure it's a valid JSON array or object
+			if !strings.HasPrefix(networksJSON, "[") {
+				// If it's a list indicative of one-line-per-object, wrap it
+				networksJSON = "[" + strings.ReplaceAll(networksJSON, "\n", ",") + "]"
+			}
+		}
+	}
+
 	hostID, err := pc.DB.UpsertPodmanHost(data_centralizegg.PodmanHost{
 		ServerID:       s.ID,
 		Hostname:       hostname,
@@ -213,7 +229,7 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 		InodesUsage:    inodesUsage,
 		Volumes:        string(volumesJSON),
 		GPUInfo:        gpuJSON,
-		PodmanNetworks: "[]", // Needs implementation if needed
+		PodmanNetworks: networksJSON,
 	})
 	if err != nil {
 		return fmt.Errorf("upsert podman host: %w", err)
