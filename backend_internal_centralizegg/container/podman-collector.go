@@ -570,13 +570,15 @@ type podmanPS struct {
 }
 
 type podmanPort struct {
-	HostPort      int    `json:"hostPort"`
-	ContainerPort int    `json:"containerPort"`
-	Protocol      string `json:"protocol"`
-	HostIP        string `json:"hostIP"`
+	// Remove tags to allow case-insensitive matching (HostPort vs hostPort)
+	HostPort      int
+	ContainerPort int
+	Protocol      string
+	HostIP        string
 }
 
 func (pc *PodmanCollector) formatPorts(ports []podmanPort) string {
+	// log.Printf("[PodmanDebug] Formatting ports: %+v", ports)
 	var parts []string
 	for _, p := range ports {
 		h := p.HostIP

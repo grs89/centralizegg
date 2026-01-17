@@ -2549,10 +2549,11 @@ function renderPodmanHostDetails(hostId) {
         }
 
         return `
-            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
-                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
-                    <i class="fa-solid fa-microchip" style="color: var(--primary-color);"></i>
-                    <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color);">GPU Monitoring</div>
+            <!-- Monitoreo de GPU -->
+            <div id="gpu-monitoring-card" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px; margin-bottom: 5px;">
+                <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
+                    <i class="fa-solid fa-microchip" style="color: #4ade80;"></i>
+                    <span>Monitoreo de GPU</span>
                 </div>
                 ${gpuContent}
             </div>
