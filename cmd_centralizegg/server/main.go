@@ -46,28 +46,28 @@ func main() {
 
 	// Initialize Multi-Collector (KVM)
 	col := virtualization.NewMultiCollector(db)
-	go col.Start(10 * time.Second) // Check every 10 seconds
+	go col.Start(5 * time.Second)
 
 	pfCol := firewall.NewPFSenseCollector(db)
-	go pfCol.Start(3 * time.Second) // Check every 3 seconds
+	go pfCol.Start(5 * time.Second)
 
 	dockerCol := container.NewDockerCollector(db)
-	go dockerCol.Start(10 * time.Second)
+	go dockerCol.Start(5 * time.Second)
 
 	k8sCol := container.NewKubernetesCollector(db)
-	go k8sCol.Start(15 * time.Second)
+	go k8sCol.Start(5 * time.Second)
 
 	podmanCol := container.NewPodmanCollector(db)
-	go podmanCol.Start(10 * time.Second)
+	go podmanCol.Start(5 * time.Second)
 
 	proxmoxCol := virtualization.NewProxmoxCollector(db)
-	go proxmoxCol.Start(15 * time.Second)
+	go proxmoxCol.Start(5 * time.Second)
 
 	nasCol := storage.NewNasCollector(db)
-	go nasCol.Start(30 * time.Second)
+	go nasCol.Start(5 * time.Second)
 
 	cephCol := storage.NewCephCollector(db)
-	go cephCol.Start(20 * time.Second)
+	go cephCol.Start(5 * time.Second)
 
 	// Router
 	r := mux.NewRouter()

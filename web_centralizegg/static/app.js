@@ -1090,7 +1090,7 @@ function renderDockerHostDetails(hostId) {
 
     if (!statsWrapper) {
         scannerSection.innerHTML = `
-            <div id="docker-stats-wrapper" class="glass-panel" style="padding: 24px; text-align: left; margin-bottom: 20px;"></div>
+            <div id="docker-stats-wrapper" style="text-align: left; margin-bottom: 20px;"></div>
             <div id="docker-map-wrapper" class="glass-panel" style="padding: 20px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 15px; padding-bottom: 10px;">
                     <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9;">
@@ -1401,7 +1401,8 @@ function renderDockerHostDetails(hostId) {
             </div>
         </div>
 
-        <div style="display: grid; grid-template-columns: 350px 1fr; gap: 24px; align-items: start;">
+        <div class="glass-panel" style="padding: 24px;">
+            <div style="display: grid; grid-template-columns: 350px 1fr; gap: 24px; align-items: start;">
             <!-- Left Column: Information -->
             <div style="display: flex; flex-direction: column; gap: 15px;">
                 <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
@@ -1533,6 +1534,7 @@ function renderDockerHostDetails(hostId) {
                     ${renderContainerRows()}
                 </div>
             </div>
+        </div>
         </div>
     `;
 
@@ -2473,7 +2475,7 @@ function renderPodmanHostDetails(hostId) {
 
     if (!statsWrapper) {
         scannerSection.innerHTML = `
-            <div id="podman-stats-wrapper" class="glass-panel" style="padding: 24px; text-align: left; margin-bottom: 20px;"></div>
+            <div id="podman-stats-wrapper" style="text-align: left; margin-bottom: 20px;"></div>
             <div id="podman-map-wrapper" class="glass-panel" style="padding: 20px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 15px; padding-bottom: 10px;">
                     <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9;">
@@ -2618,7 +2620,6 @@ function renderPodmanHostDetails(hostId) {
                          </div>
                      </div>
  
-                     <!-- Network -->
                      <div style="display: flex; flex-direction: column; gap: 2px;">
                          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem;">
                              <span style="color: var(--text-secondary); opacity: 0.8;"><i class="fa-solid fa-arrow-down" style="font-size: 0.65rem; color: #4ade80;"></i> RX</span>
@@ -2626,12 +2627,6 @@ function renderPodmanHostDetails(hostId) {
                          </div>
                           <div style="height: 18px; width: 100%; opacity: 0.8;">
                              ${(() => {
-                    // We don't have containerNetworkHistory in updateContainerHistory for Podman yet? 
-                    // Actually updateContainerHistory uses container ID which might collide if not unique, currently logic uses hostId_name or similar.
-                    // app.js updateContainerHistory uses: const key = `${c.host_id}_${c.name}`;
-                    // So it should work if podman containers are processed there. 
-                    // We need to ensure updateContainerHistory is called for podman too.
-                    // The global loop usually calls it.
                     const history = containerNetworkHistory[`${c.host_id}_${c.name}`];
                     return history ? renderSparkline(history.rx, '#4ade80', 100, 18) : '';
                 })()}
@@ -2743,7 +2738,8 @@ function renderPodmanHostDetails(hostId) {
             </div>
         </div>
 
-        <div style="display: grid; grid-template-columns: 350px 1fr; gap: 24px; align-items: start;">
+        <div class="glass-panel" style="padding: 24px;">
+            <div style="display: grid; grid-template-columns: 350px 1fr; gap: 24px; align-items: start;">
             <!-- Left Column: Information -->
             <div style="display: flex; flex-direction: column; gap: 15px;">
                 <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
@@ -2859,6 +2855,7 @@ function renderPodmanHostDetails(hostId) {
                     ${renderContainerRows()}
                 </div>
             </div>
+        </div>
         </div>
     `;
 

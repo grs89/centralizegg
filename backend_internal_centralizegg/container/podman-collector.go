@@ -192,6 +192,28 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 			var st podmanStats
 			if err := json.Unmarshal([]byte(line), &st); err == nil {
 				statsMap[st.Name] = st
+				// Also map by ID as fallback
+				if st.ID != "" {
+					statsMap[st.ID] = st
+				}
+			}
+		}
+	}
+
+	// Fetch IP addresses using inspect (only if there are containers)
+	ipMap := make(map[string]string)
+	idsOutput, _ := pc.runCommand(client, "podman ps -aq")
+	if strings.TrimSpace(idsOutput) != "" {
+		ipOutput, err := pc.runCommand(client, "podman inspect --format '{{.Id}}|{{range .NetworkSettings.Networks}}{{.IPAddress}},{{end}}' "+strings.ReplaceAll(strings.TrimSpace(idsOutput), "\n", " "))
+		if err == nil {
+			lines := strings.Split(strings.TrimSpace(ipOutput), "\n")
+			for _, line := range lines {
+				parts := strings.Split(line, "|")
+				if len(parts) == 2 {
+					id := strings.TrimSpace(parts[0])
+					ips := strings.Trim(parts[1], ",")
+					ipMap[id] = ips
+				}
 			}
 		}
 	}
@@ -218,7 +240,22 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 			name = pps.Names[0]
 		}
 
-		st, _ := statsMap[name]
+		// Try to find stats by name or ID
+		st, ok := statsMap[name]
+		if !ok {
+			st = statsMap[pps.ID]
+		}
+
+		ipAddr := ipMap[pps.ID]
+		if ipAddr == "" && len(ipMap) > 0 {
+			// Try short ID
+			for fullID, ip := range ipMap {
+				if strings.HasPrefix(fullID, pps.ID) {
+					ipAddr = ip
+					break
+				}
+			}
+		}
 
 		c := data_centralizegg.Container{
 			Name:            name,
@@ -234,6 +271,7 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 			BlockIn:         pc.parseNetBytes(st.BlockIO, true),
 			BlockOut:        pc.parseNetBytes(st.BlockIO, false),
 			PIDs:            st.PIDs,
+			IPAddress:       ipAddr,
 			OOMKilled:       false,  // logic to detect OOM requires podman inspect
 			Vulnerabilities: "Safe", // placeholder for vulnerability scanning
 			HostID:          hostID,
