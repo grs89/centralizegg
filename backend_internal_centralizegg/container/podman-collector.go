@@ -142,6 +142,7 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 	fmt.Sscanf(strings.TrimSpace(storageRaw), "%d %d", &storageUsed, &storageTotal)
 
 	// Inodes
+	// Inodes
 	inodesUsageRaw, _ := pc.runCommand(client, fmt.Sprintf("df -i %s | tail -1 | awk '{print $5}'", rootDir))
 	inodesUsage := strings.TrimSpace(inodesUsageRaw)
 
@@ -157,23 +158,62 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 	}
 	volumesJSON, _ := json.Marshal(volList)
 
+	// Podman GPU Info (NVIDIA)
+	gpuJSON := "[]"
+	gpuRaw, err := pc.runCommand(client, "nvidia-smi --query-gpu=gpu_name,utilization.gpu,memory.used,memory.total,temperature.gpu --format=csv,noheader,nounits 2>/dev/null")
+	if err == nil && strings.TrimSpace(gpuRaw) != "" {
+		lines := strings.Split(strings.TrimSpace(gpuRaw), "\n")
+		type GPUInfo struct {
+			Name        string `json:"name"`
+			Utilization int    `json:"utilization"`
+			MemoryUsed  uint64 `json:"memory_used"`
+			MemoryTotal uint64 `json:"memory_total"`
+			Temp        int    `json:"temperature"`
+		}
+		var gpus []GPUInfo
+		for _, line := range lines {
+			parts := strings.Split(line, ",")
+			if len(parts) >= 5 {
+				var util, temp int
+				var mUsed, mTotal uint64
+				fmt.Sscanf(strings.TrimSpace(parts[1]), "%d", &util)
+				fmt.Sscanf(strings.TrimSpace(parts[2]), "%d", &mUsed)
+				fmt.Sscanf(strings.TrimSpace(parts[3]), "%d", &mTotal)
+				fmt.Sscanf(strings.TrimSpace(parts[4]), "%d", &temp)
+
+				gpus = append(gpus, GPUInfo{
+					Name:        strings.TrimSpace(parts[0]),
+					Utilization: util,
+					MemoryUsed:  mUsed,
+					MemoryTotal: mTotal,
+					Temp:        temp,
+				})
+			}
+		}
+		if b, err := json.Marshal(gpus); err == nil {
+			gpuJSON = string(b)
+		}
+	}
+
 	hostID, err := pc.DB.UpsertPodmanHost(data_centralizegg.PodmanHost{
-		ServerID:      s.ID,
-		Hostname:      hostname,
-		CPUModel:      cpuModel,
-		CPUCores:      cpuCores,
-		TotalMemory:   memTotal,
-		FreeMemory:    memFree,
-		CPUUsage:      cpuUsage,
-		OSName:        osName,
-		Uptime:        uptime,
-		PodmanVer:     podmanVer,
-		ServiceStatus: serviceStatus,
-		APILatency:    apiLatency,
-		StorageUsed:   storageUsed,
-		StorageTotal:  storageTotal,
-		InodesUsage:   inodesUsage,
-		Volumes:       string(volumesJSON),
+		ServerID:       s.ID,
+		Hostname:       hostname,
+		CPUModel:       cpuModel,
+		CPUCores:       cpuCores,
+		TotalMemory:    memTotal,
+		FreeMemory:     memFree,
+		CPUUsage:       cpuUsage,
+		OSName:         osName,
+		Uptime:         uptime,
+		PodmanVer:      podmanVer,
+		ServiceStatus:  serviceStatus,
+		APILatency:     apiLatency,
+		StorageUsed:    storageUsed,
+		StorageTotal:   storageTotal,
+		InodesUsage:    inodesUsage,
+		Volumes:        string(volumesJSON),
+		GPUInfo:        gpuJSON,
+		PodmanNetworks: "[]", // Needs implementation if needed
 	})
 	if err != nil {
 		return fmt.Errorf("upsert podman host: %w", err)

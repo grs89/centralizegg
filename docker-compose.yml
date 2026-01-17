@@ -1,5 +1,5 @@
 services:
-  db:
+  centralizegg__trn_db:
     image: postgres:15-alpine
     restart: always
     environment:
@@ -17,7 +17,7 @@ services:
     networks:
       - centralizegg-net
 
-  app:
+  centralizegg_app:
     build: .
     restart: always
     ports:
@@ -26,14 +26,14 @@ services:
       - /var/run/libvirt/libvirt-sock:/var/run/libvirt/libvirt-sock
       - ~/.ssh:/root/.ssh:ro
     environment:
-      DB_HOST: db
+      DB_HOST: centralizegg__trn_db
       DB_PORT: 5432
       DB_USER: centralizegg
       DB_PASS: centralizegg_secret
       DB_NAME: centralizegg_db
       LIBVIRT_SOCK: /var/run/libvirt/libvirt-sock
     depends_on:
-      db:
+      centralizegg__trn_db:
         condition: service_healthy
     networks:
       - centralizegg-net

@@ -90,31 +90,32 @@ type DockerHost struct {
 }
 
 type PodmanHost struct {
-	ID            int64   `json:"id"`
-	ServerID      int64   `json:"server_id"`
-	Hostname      string  `json:"hostname"`
-	ServerName    string  `json:"server_name"`
-	IPAddress     string  `json:"ip_address"`
-	PublicIP      string  `json:"public_ip"`
-	DNSServers    string  `json:"dns_servers"`
-	Uptime        string  `json:"uptime"`
-	UpdateStatus  string  `json:"update_status"`
-	Temperature   float64 `json:"temperature"`
-	Disks         string  `json:"disks"`
-	CPUModel      string  `json:"cpu_model"`
-	CPUCores      int     `json:"cpu_cores"`
-	TotalMemory   uint64  `json:"total_memory"`
-	FreeMemory    uint64  `json:"free_memory"`
-	CPUUsage      float64 `json:"cpu_usage"`
-	OSName        string  `json:"os_name"`
-	PodmanVer     string  `json:"podman_version"`
-	ServiceStatus string  `json:"podman_service_status"`
-	APILatency    int     `json:"podman_api_latency"`
-	StorageUsed   uint64  `json:"podman_storage_used"`
-	StorageTotal  uint64  `json:"podman_storage_total"`
-	InodesUsage   string  `json:"podman_inodes_usage"`
-	Volumes       string  `json:"podman_volumes"`
-	Networks      string  `json:"podman_networks"`
+	ID             int64   `json:"id"`
+	ServerID       int64   `json:"server_id"`
+	Hostname       string  `json:"hostname"`
+	ServerName     string  `json:"server_name"`
+	IPAddress      string  `json:"ip_address"`
+	PublicIP       string  `json:"public_ip"`
+	DNSServers     string  `json:"dns_servers"`
+	Uptime         string  `json:"uptime"`
+	UpdateStatus   string  `json:"update_status"`
+	Temperature    float64 `json:"temperature"`
+	Disks          string  `json:"disks"`
+	CPUModel       string  `json:"cpu_model"`
+	CPUCores       int     `json:"cpu_cores"`
+	TotalMemory    uint64  `json:"total_memory"`
+	FreeMemory     uint64  `json:"free_memory"`
+	CPUUsage       float64 `json:"cpu_usage"`
+	OSName         string  `json:"os_name"`
+	PodmanVer      string  `json:"podman_version"`
+	ServiceStatus  string  `json:"podman_service_status"`
+	APILatency     int     `json:"podman_api_latency"`
+	StorageUsed    uint64  `json:"podman_storage_used"`
+	StorageTotal   uint64  `json:"podman_storage_total"`
+	InodesUsage    string  `json:"podman_inodes_usage"`
+	Volumes        string  `json:"podman_volumes"`
+	PodmanNetworks string  `json:"podman_networks"`
+	GPUInfo        string  `json:"gpu_info"`
 }
 
 type Container struct {
@@ -418,7 +419,6 @@ func ensureSchema(db *sql.DB) {
 			ssh_key_path VARCHAR(255) DEFAULT '/root/.ssh/id_rsa',
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`,
-
 		// KVM extra columns if missing (from previous code)
 		"ALTER TABLE virtualization.hosts ADD COLUMN IF NOT EXISTS os_name VARCHAR(255)",
 		"ALTER TABLE virtualization.hosts ADD COLUMN IF NOT EXISTS free_memory BIGINT DEFAULT 0",
@@ -597,6 +597,7 @@ func ensureSchema(db *sql.DB) {
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE(host_id, name)
 		)`,
+		"ALTER TABLE containers.podman_hosts ADD COLUMN IF NOT EXISTS gpu_info TEXT DEFAULT '[]'",
 		// Proxmox Tables
 		`CREATE TABLE IF NOT EXISTS virtualization.proxmox_hosts (
 			id SERIAL PRIMARY KEY,
@@ -1317,14 +1318,14 @@ func (d *DB) UpsertPodmanHost(h PodmanHost) (int64, error) {
 
 	if err == sql.ErrNoRows {
 		err = d.Conn.QueryRow(`
-			INSERT INTO containers.podman_hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, uptime, podman_version, podman_service_status, podman_api_latency, podman_storage_used, podman_storage_total, podman_inodes_usage, podman_volumes, podman_networks)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
-			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.Uptime, h.PodmanVer, h.ServiceStatus, h.APILatency, h.StorageUsed, h.StorageTotal, h.InodesUsage, h.Volumes, h.Networks).Scan(&id)
+			INSERT INTO containers.podman_hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, uptime, podman_version, podman_service_status, podman_api_latency, podman_storage_used, podman_storage_total, podman_inodes_usage, podman_volumes, podman_networks, gpu_info)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING id`,
+			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.Uptime, h.PodmanVer, h.ServiceStatus, h.APILatency, h.StorageUsed, h.StorageTotal, h.InodesUsage, h.Volumes, h.PodmanNetworks, h.GPUInfo).Scan(&id)
 	} else if err == nil {
 		_, err = d.Conn.Exec(`
-			UPDATE containers.podman_hosts SET cpu_model=$1, cpu_cores=$2, total_memory=$3, free_memory=$4, cpu_usage=$5, os_name=$6, uptime=$7, podman_version=$8, podman_service_status=$9, podman_api_latency=$10, podman_storage_used=$11, podman_storage_total=$12, podman_inodes_usage=$13, podman_volumes=$14, podman_networks=$15
-			WHERE id=$16`,
-			h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.Uptime, h.PodmanVer, h.ServiceStatus, h.APILatency, h.StorageUsed, h.StorageTotal, h.InodesUsage, h.Volumes, h.Networks, id)
+			UPDATE containers.podman_hosts SET cpu_model=$1, cpu_cores=$2, total_memory=$3, free_memory=$4, cpu_usage=$5, os_name=$6, uptime=$7, podman_version=$8, podman_service_status=$9, podman_api_latency=$10, podman_storage_used=$11, podman_storage_total=$12, podman_inodes_usage=$13, podman_volumes=$14, podman_networks=$15, gpu_info=$16
+			WHERE id=$17`,
+			h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.Uptime, h.PodmanVer, h.ServiceStatus, h.APILatency, h.StorageUsed, h.StorageTotal, h.InodesUsage, h.Volumes, h.PodmanNetworks, h.GPUInfo, id)
 	}
 
 	return id, err
@@ -1350,7 +1351,7 @@ func (d *DB) UpsertPodmanContainer(c Container) error {
 
 func (d *DB) GetPodmanHosts() ([]PodmanHost, error) {
 	rows, err := d.Conn.Query(`
-		SELECT h.id, h.server_id, h.hostname, ps.name, ps.ip_address, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, h.uptime, h.podman_version, h.podman_service_status, h.podman_api_latency, h.podman_storage_used, h.podman_storage_total, h.podman_inodes_usage, h.podman_volumes, h.podman_networks
+		SELECT h.id, h.server_id, h.hostname, ps.name, ps.ip_address, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, h.uptime, h.podman_version, h.podman_service_status, h.podman_api_latency, h.podman_storage_used, h.podman_storage_total, h.podman_inodes_usage, h.podman_volumes, h.podman_networks, h.gpu_info
 		FROM containers.podman_hosts h
 		JOIN containers.podman_servers ps ON h.server_id = ps.id`)
 	if err != nil {
@@ -1361,7 +1362,7 @@ func (d *DB) GetPodmanHosts() ([]PodmanHost, error) {
 	var hosts []PodmanHost
 	for rows.Next() {
 		var h PodmanHost
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.Uptime, &h.PodmanVer, &h.ServiceStatus, &h.APILatency, &h.StorageUsed, &h.StorageTotal, &h.InodesUsage, &h.Volumes, &h.Networks); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.Uptime, &h.PodmanVer, &h.ServiceStatus, &h.APILatency, &h.StorageUsed, &h.StorageTotal, &h.InodesUsage, &h.Volumes, &h.PodmanNetworks, &h.GPUInfo); err != nil {
 			return nil, err
 		}
 		hosts = append(hosts, h)

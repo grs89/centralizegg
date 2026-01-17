@@ -323,7 +323,7 @@ const tools = {
     },
     'podman': {
         name: 'Podman',
-        icon: 'fa-solid fa-otter',
+        icon: 'fa-solid fa-layer-group',
         elementId: 'container-scanner-tool',
         categoryBtnId: 'containers-btn',
         categoryName: 'Contenedores'
@@ -849,7 +849,7 @@ function updateSuggestions() {
     allPodmanContainersCache.forEach(c => {
         const name = c.Names ? c.Names[0].replace('/', '') : c.Id.substring(0, 12);
         if (name.toLowerCase().includes(searchQuery) || c.Image.toLowerCase().includes(searchQuery)) {
-            suggestions.push({ type: 'container', id: null, title: name, subtitle: `Podman Image: ${c.Image}`, icon: 'fa-solid fa-otter', tool: 'podman', contextId: selectedPodmanHostId });
+            suggestions.push({ type: 'container', id: null, title: name, subtitle: `Podman Image: ${c.Image}`, icon: 'fa-solid fa-layer-group', tool: 'podman', contextId: selectedPodmanHostId });
         }
     });
 
@@ -2452,7 +2452,7 @@ async function fetchPodmanContainers() {
 function selectPodmanHost(id) {
     selectedPodmanHostId = id;
     renderHostNodes('host-nodes-container-generic', {
-        icon: tools['podman']?.icon || 'fa-solid fa-box-archive',
+        icon: tools['podman']?.icon || 'fa-solid fa-layer-group',
         showOSInfo: true,
         showStats: true,
         onHostClick: 'selectPodmanHost'
@@ -2502,6 +2502,62 @@ function renderPodmanHostDetails(hostId) {
     }
 
     const isAlreadyRenderingHost = inner.getAttribute('data-host-id') === String(hostId);
+
+    const renderGPUCard = () => {
+        let gpus = [];
+        try {
+            gpus = JSON.parse(host.gpu_info || '[]');
+        } catch (e) {
+            console.error("Error parsing GPU info:", e);
+        }
+
+        let gpuContent = '';
+        if (!gpus || gpus.length === 0) {
+            gpuContent = `
+                <div style="text-align: center; padding: 15px; background: rgba(255,255,255,0.02); border-radius: 4px; border: 1px dashed rgba(255,255,255,0.1);">
+                    <span style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.6;">No se detectaron GPUs (N/A)</span>
+                </div>
+            `;
+        } else {
+            gpuContent = `
+                <div id="podman-gpu-list" style="display: flex; flex-direction: column; gap: 12px;">
+                    ${gpus.map(gpu => `
+                        <div style="display: flex; flex-direction: column; gap: 6px;">
+                            <div style="display: flex; justify-content: space-between; align-items: start;">
+                                <span style="font-size: 0.75rem; font-weight: 700; color: var(--text-primary); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${gpu.name}">${gpu.name}</span>
+                                <span style="font-size: 0.75rem; font-weight: 700; color: ${getStatusColor(gpu.utilization)};">${gpu.utilization}%</span>
+                            </div>
+                            <!-- Utilization Bar -->
+                            <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
+                                <div style="height: 100%; width: ${gpu.utilization}%; background: ${getStatusColor(gpu.utilization)};"></div>
+                            </div>
+                            <!-- Stats Row -->
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 2px;">
+                                <div style="display: flex; flex-direction: column; gap: 1px;">
+                                    <span style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.8;">VRAM</span>
+                                    <span style="font-size: 0.75rem; font-weight: 600;">${Math.round(gpu.memory_used)} / ${Math.round(gpu.memory_total)} MB</span>
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 1px; align-items: flex-end;">
+                                    <span style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.8;">Temp</span>
+                                    <span style="font-size: 0.75rem; font-weight: 600; color: ${gpu.temperature > 80 ? '#ef4444' : '#4ade80'};">${gpu.temperature}°C</span>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        return `
+            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                    <i class="fa-solid fa-microchip" style="color: var(--primary-color);"></i>
+                    <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color);">GPU Monitoring</div>
+                </div>
+                ${gpuContent}
+            </div>
+        `;
+    };
 
     const renderAlertsList = () => {
         const alerts = [];
@@ -2583,7 +2639,7 @@ function renderPodmanHostDetails(hostId) {
                  <div style="display: grid; grid-template-columns: 2fr 1.5fr 0.8fr 1.2fr 1.8fr 1fr; gap: 15px; align-items: center; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.05); transition: all 0.2s ease;">
                      <!-- Name & Image -->
                      <div style="display: flex; align-items: center; gap: 10px; overflow: hidden;">
-                         <i class="fa-solid fa-otter" style="color: ${isRunning ? '#4ade80' : '#ef4444'}; font-size: 1.2rem; opacity: 0.9;"></i>
+                         <i class="fa-solid fa-layer-group" style="color: ${isRunning ? '#4ade80' : '#ef4444'}; font-size: 1.2rem; opacity: 0.9;"></i>
                          <div style="display: flex; flex-direction: column; overflow: hidden;">
                              <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${c.name}">${c.name}</span>
                              <span style="font-size: 0.7rem; color: var(--text-secondary); opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${c.image}</span>
@@ -2700,6 +2756,9 @@ function renderPodmanHostDetails(hostId) {
 
         const volumesListEl = document.getElementById('podman-volumes-list');
         if (volumesListEl) volumesListEl.innerHTML = renderVolumesList();
+
+        const gpuWrapperEl = document.getElementById('podman-gpu-wrapper');
+        if (gpuWrapperEl) gpuWrapperEl.innerHTML = renderGPUCard();
 
         // Map update
         const mapContainer = document.getElementById('podman-topology-map');
@@ -2822,6 +2881,11 @@ function renderPodmanHostDetails(hostId) {
                         <div id="podman-volumes-list" style="display: flex; flex-direction: column; gap: 4px; max-height: 250px; overflow-y: auto;">
                             ${renderVolumesList()}
                         </div>
+                    </div>
+
+                    <!-- GPU Card -->
+                    <div id="podman-gpu-wrapper">
+                        ${renderGPUCard()}
                     </div>
 
                     <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; margin-top: 5px; border-bottom: 1px solid rgba(255,255,255,0.1);">
