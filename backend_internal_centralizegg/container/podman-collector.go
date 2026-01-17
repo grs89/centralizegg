@@ -146,17 +146,48 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 	inodesUsageRaw, _ := pc.runCommand(client, fmt.Sprintf("df -i %s | tail -1 | awk '{print $5}'", rootDir))
 	inodesUsage := strings.TrimSpace(inodesUsageRaw)
 
-	// Volumes
-	volumesRaw, _ := pc.runCommand(client, "podman volume ls -q")
-	var volList []string
-	volLines := strings.Split(strings.TrimSpace(volumesRaw), "\n")
-	for _, line := range volLines {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			volList = append(volList, line)
+	// Volumes (with size)
+	// Try using podman system df -v --format json to get size
+	// Structure: { "Volumes": [ {"VolumeName": "foo", "Size": "10kB", ...} ] }
+	type VolumeInfo struct {
+		Name  string `json:"VolumeName"`
+		Size  string `json:"Size"`
+		Links int    `json:"Links"`
+	}
+	type SystemDF struct {
+		Volumes []VolumeInfo `json:"Volumes"`
+	}
+
+	volumesJSON := "[]"
+	dfRaw, err := pc.runCommand(client, "podman system df -v --format json")
+	if err == nil {
+		var sysDF SystemDF
+		// Sometimes output might be just the array if filtered, but usually object.
+		// Let's try flexible parsing or regex if needed, but struct is best attempt.
+		if err := json.Unmarshal([]byte(dfRaw), &sysDF); err == nil {
+			if len(sysDF.Volumes) > 0 {
+				b, _ := json.Marshal(sysDF.Volumes)
+				volumesJSON = string(b)
+			}
 		}
 	}
-	volumesJSON, _ := json.Marshal(volList)
+
+	// Fallback if empty or failed (maybe no volumes or old podman)
+	if volumesJSON == "[]" {
+		volumesRaw, _ := pc.runCommand(client, "podman volume ls -q")
+		var volList []VolumeInfo
+		volLines := strings.Split(strings.TrimSpace(volumesRaw), "\n")
+		for _, line := range volLines {
+			line = strings.TrimSpace(line)
+			if line != "" {
+				volList = append(volList, VolumeInfo{Name: line, Size: "N/A"})
+			}
+		}
+		if len(volList) > 0 {
+			b, _ := json.Marshal(volList)
+			volumesJSON = string(b)
+		}
+	}
 
 	// Podman GPU Info (NVIDIA)
 	gpuJSON := "[]"
@@ -197,17 +228,98 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 
 	// Podman Networks Topology
 	networksJSON := "[]"
-	// Check if there are networks first to avoid error on empty list
-	netLsRaw, _ := pc.runCommand(client, "podman network ls -q")
-	if strings.TrimSpace(netLsRaw) != "" {
-		netsRaw, err := pc.runCommand(client, "podman network inspect $(podman network ls -q) --format json")
-		if err == nil && strings.TrimSpace(netsRaw) != "" {
-			networksJSON = strings.TrimSpace(netsRaw)
-			// Ensure it's a valid JSON array or object
-			if !strings.HasPrefix(networksJSON, "[") {
-				// If it's a list indicative of one-line-per-object, wrap it
-				networksJSON = "[" + strings.ReplaceAll(networksJSON, "\n", ",") + "]"
+
+	// Prepare structs for network enrichment
+	type PodmanNetwork struct {
+		ID         string                 `json:"Id"`
+		Name       string                 `json:"Name"`
+		Driver     string                 `json:"Driver"`
+		Internal   bool                   `json:"Internal"`
+		Containers map[string]interface{} `json:"Containers,omitempty"` // We will populate this manually
+		// Add other fields as necessary to match generic structure but these are key for map
+	}
+
+	// Helper struct for container inspection network settings
+	type ContainerNetworkInfo struct {
+		Id              string `json:"Id"`
+		Name            string `json:"Name"`
+		NetworkSettings struct {
+			Networks map[string]struct {
+				IPAddress  string `json:"IPAddress"`
+				MacAddress string `json:"MacAddress"`
+				Gateway    string `json:"Gateway"`
+				// Other fields if needed
+			} `json:"Networks"`
+		} `json:"NetworkSettings"`
+	}
+
+	var networks []PodmanNetwork
+
+	// List network IDs first
+	netIDsRaw, _ := pc.runCommand(client, "podman network ls -q")
+	if strings.TrimSpace(netIDsRaw) != "" {
+		// Inspect all networks
+		netsInspectRaw, err := pc.runCommand(client, "podman network inspect $(podman network ls -q) --format json")
+		if err == nil && strings.TrimSpace(netsInspectRaw) != "" {
+			if err := json.Unmarshal([]byte(netsInspectRaw), &networks); err != nil {
+				log.Printf("[PodmanCollector] Warning: failed to parse network inspect JSON: %v", err)
 			}
+		}
+	}
+
+	// If we have networks, we need to populate their 'Containers' field manually
+	// because Podman CNI/Netavark usually doesn't return it in network inspect.
+	if len(networks) > 0 {
+		// Get all containers inspection to find their networks
+		// We use existing 'podman ps -aq' if available or just list all
+		cIDsRaw, _ := pc.runCommand(client, "podman ps -aq")
+		if strings.TrimSpace(cIDsRaw) != "" {
+			// Clean up IDs list for command
+			cIDs := strings.ReplaceAll(strings.TrimSpace(cIDsRaw), "\n", " ")
+			cInspectRaw, err := pc.runCommand(client, "podman inspect "+cIDs+" --format json")
+			if err == nil {
+				var containers []ContainerNetworkInfo
+				if err := json.Unmarshal([]byte(cInspectRaw), &containers); err == nil {
+					// Initialize maps if nil
+					for i := range networks {
+						if networks[i].Containers == nil {
+							networks[i].Containers = make(map[string]interface{})
+						}
+					}
+
+					// Map container -> networks
+					for _, c := range containers {
+						cName := c.Name
+						if strings.HasPrefix(cName, "/") {
+							cName = cName[1:]
+						}
+
+						for netName, netConf := range c.NetworkSettings.Networks {
+							// Find the network in our list
+							for i := range networks {
+								// Podman network names in settings usually match Name
+								if networks[i].Name == netName {
+									// Add container using ID as key like Docker
+									// Docker structure: "Containers": { "full-id": { "Name": "foo", "IPv4Address": "..." } }
+									networks[i].Containers[c.Id] = map[string]string{
+										"Name":        cName,
+										"IPv4Address": netConf.IPAddress,
+										"MacAddress":  netConf.MacAddress,
+									}
+									break
+								}
+							}
+						}
+					}
+				} else {
+					log.Printf("[PodmanCollector] Warning: Error unmarshalling container inspect for network enrichment: %v", err)
+				}
+			}
+		}
+
+		// Marshal back to JSON
+		if b, err := json.Marshal(networks); err == nil {
+			networksJSON = string(b)
 		}
 	}
 
@@ -240,6 +352,8 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 	statsOutput, err := pc.runCommand(client, "podman stats --no-stream --format json")
 	statsMap := make(map[string]podmanStats)
 	if err == nil {
+		// DEBUG: Print raw stats output to verify JSON keys
+		// log.Printf("[PodmanDebug] Raw stats output from %s: %s", hostname, statsOutput)
 		var stList []podmanStats
 		if err := json.Unmarshal([]byte(statsOutput), &stList); err == nil {
 			for _, st := range stList {
@@ -250,7 +364,11 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 					statsMap[st.ID] = st
 				}
 			}
+		} else {
+			log.Printf("[PodmanCollector] Error unmarshalling stats from %s: %v. Output: %s", hostname, err, statsOutput)
 		}
+	} else {
+		log.Printf("[PodmanCollector] Error running podman stats on %s: %v", hostname, err)
 	}
 
 	// Fetch IP addresses using inspect (only if there are containers)
@@ -277,8 +395,12 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 		return fmt.Errorf("podman ps: %w", err)
 	}
 
+	// DEBUG: Print raw ps output
+	// log.Printf("[PodmanDebug] Raw ps output from %s: %s", hostname, psOutput)
+
 	var psList []podmanPS
 	if err := json.Unmarshal([]byte(psOutput), &psList); err != nil {
+		log.Printf("[PodmanCollector] Error unmarshalling ps from %s: %v. Output: %s", hostname, err, psOutput)
 		return fmt.Errorf("podman ps unmarshal error: %w", err)
 	}
 
@@ -364,17 +486,17 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 }
 
 type podmanStats struct {
-	ID       string `json:"ID"`
-	Name     string `json:"Name"`
-	CPUPerc  string `json:"CPUPerc"`
-	CPU      string `json:"CPU"`      // fallback
-	MemUsage string `json:"MemUsage"` // correct JSON key
-	Mem      string `json:"Mem"`      // fallback
-	MemLimit string `json:"MemLimit"` // correct JSON key could be MemUsage with limit split, but often separate not standard.
-	// Podman sometimes combines usage/limit in MemUsage.
-	NetIO   string      `json:"NetIO"`
-	BlockIO string      `json:"BlockIO"`
-	PIDs    interface{} `json:"PIDs"` // PIDs can be string "--" or number loops
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Support both casing styles seen in different Podman versions
+	CPUPerc  string      `json:"cpu_percent"`
+	CPU      string      `json:"CPU"` // fallback
+	MemUsage string      `json:"mem_usage"`
+	Mem      string      `json:"MemUsage"` // fallback
+	MemLimit string      `json:"mem_limit"`
+	NetIO    string      `json:"net_io"`
+	BlockIO  string      `json:"block_io"`
+	PIDs     interface{} `json:"pids"`
 }
 
 type podmanPS struct {
@@ -387,10 +509,10 @@ type podmanPS struct {
 }
 
 type podmanPort struct {
-	HostPort      int    `json:"HostPort"`
-	ContainerPort int    `json:"ContainerPort"`
-	Protocol      string `json:"Protocol"`
-	HostIP        string `json:"HostIP"`
+	HostPort      int    `json:"hostPort"`
+	ContainerPort int    `json:"containerPort"`
+	Protocol      string `json:"protocol"`
+	HostIP        string `json:"hostIP"`
 }
 
 func (pc *PodmanCollector) formatPorts(ports []podmanPort) string {
