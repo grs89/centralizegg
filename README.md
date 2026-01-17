@@ -41,8 +41,10 @@
     - Red: Tráfico RX/TX con **Sparklines** en tiempo real.
     - **Interfaces Bridge**: Monitoreo dedicado de estados y tráfico para puentes de red (`br0`, `virbr0`, etc.).
     - Estado de VMs: Running, Blocked, Paused, Shutdown, Shutoff, Crashed, Suspended
-*   **Monitoreo de Contenedores**: Soporte avanzado para **Docker & Podman**.
+*   **Monitoreo de Contenedores**: Soporte avanzado para **Docker & Podman**. El icono de Podman se ha actualizado a una foca (`fa-otter`) en todo el UI, incluyendo el menú, Host Nodes y el listado de contenedores.
     - **Mapa de Topología**: Visualización interactiva animada de la red (Contenedores -> Redes -> Internet).
+- **Alertas Audibles**: Se reproduce un sonido de "ping" cuando aparecen nuevas notificaciones de servidores offline.
+- **Tamaños de Volúmenes Podman**: Se muestra el tamaño de cada volumen y se ordenan de mayor a menor.
     - **Monitoreo de GPU**: Carga, temperatura y VRAM para GPUs NVIDIA mediante `nvidia-smi`.
     - **Seguridad (CVE)**: Escaneo automático de vulnerabilidades en imágenes con `docker scout`.
     - **Almacenamiento**: Detalle de `/var/lib/docker`, inodos y tamaños de volúmenes individuales.

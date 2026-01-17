@@ -552,11 +552,11 @@ Nodos del cluster Proxmox.
    - Actualización automática cada 5 segundos
    - Indicador de última actualización
 
-5. **Docker / Podman**
-   - Mapa de red SVG reactivo con animaciones de flujo.
-   - Detalles de IP al pasar el mouse por los contenedores.
-   - Monitoreo persistente de GPU NVIDIA.
-   - Listado de volúmenes con ordenamiento por tamaño.
+5. **Docker / Podman**: Soporte avanzado para contenedores Docker y Podman. El icono de Podman se ha actualizado a una foca (`fa-otter`) en toda la interfaz, incluyendo el menú, Host Nodes y el listado de contenedores.
+- Mapa de red SVG reactivo con animaciones de flujo.
+- Detalles de IP al pasar el mouse por los contenedores.
+- Monitoreo persistente de GPU NVIDIA.
+- Listado de volúmenes con ordenamiento por tamaño.
 
 6. **Notificaciones & Logs**
    - Registro unificado de éxito en la recolección para todas las herramientas.
