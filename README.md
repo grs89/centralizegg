@@ -17,13 +17,18 @@
 
 **Centralizegg** es una solución de monitoreo ligera y containerizada para múltiples servidores KVM. Proporciona un dashboard premium en tiempo real para visualizar los recursos de tus hosts y el estado de las máquinas virtuales (VMs) de forma centralizada.
 
-[![Docker Build](https://github.com/USUARIO/REPO/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/USUARIO/REPO/actions/workflows/docker-publish.yml)
+[![Docker Build (GitHub)](https://github.com/USUARIO/REPO/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/USUARIO/REPO/actions/workflows/docker-publish.yml)
+[![Docker Build (GitLab)](https://gitlab.com/USUARIO/REPO/badges/main/pipeline.svg)](https://gitlab.com/USUARIO/REPO/-/pipelines)
 [![Docker Hub](https://img.shields.io/docker/v/USUARIO/centralizegg?label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/USUARIO/centralizegg)
 [![Docker Pulls](https://img.shields.io/docker/pulls/USUARIO/centralizegg?logo=docker)](https://hub.docker.com/r/USUARIO/centralizegg)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 > [!TIP]
-> Reemplaza `USUARIO/REPO` con tu usuario y repositorio de GitHub en los badges anteriores.
+> **CI/CD Disponible**: Este proyecto incluye configuración para **GitHub Actions** y **GitLab CI**.
+> - GitHub: Ver [instrucciones](.github/DOCKER_HUB_SETUP.md)
+> - GitLab: Ver [instrucciones](.gitlab/DOCKER_HUB_SETUP.md)
+> 
+> Reemplaza `USUARIO/REPO` con tu usuario y repositorio en los badges anteriores.
 
 
 ## 📋 Tabla de Contenidos

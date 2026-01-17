@@ -1,0 +1,76 @@
+stages:
+  - build
+
+variables:
+  DOCKER_IMAGE: $DOCKERHUB_USERNAME/centralizegg
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+
+# Template para construir y publicar imágenes multi-arquitectura
+.docker-build:
+  stage: build
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  before_script:
+    # Instalar buildx
+    - apk add --no-cache curl
+    - mkdir -p ~/.docker/cli-plugins
+    - curl -SL https://github.com/docker/buildx/releases/download/v0.12.0/buildx-v0.12.0.linux-amd64 -o ~/.docker/cli-plugins/docker-buildx
+    - chmod +x ~/.docker/cli-plugins/docker-buildx
+    - docker buildx create --use --name multiarch-builder --driver docker-container
+    - docker buildx inspect --bootstrap
+    # Login a Docker Hub
+    - echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+  script:
+    # Construir y publicar imagen multi-arquitectura
+    - |
+      docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        --tag ${DOCKER_IMAGE}:${CI_COMMIT_TAG} \
+        --tag ${DOCKER_IMAGE}:latest \
+        --push \
+        --cache-from type=registry,ref=${DOCKER_IMAGE}:buildcache \
+        --cache-to type=registry,ref=${DOCKER_IMAGE}:buildcache,mode=max \
+        .
+    # Generar tags adicionales (v1.2.3 -> v1.2, v1)
+    - |
+      if [[ "$CI_COMMIT_TAG" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+        MAJOR="${BASH_REMATCH[1]}"
+        MINOR="${BASH_REMATCH[2]}"
+        
+        # Tag v1.2
+        docker buildx imagetools create \
+          ${DOCKER_IMAGE}:${CI_COMMIT_TAG} \
+          --tag ${DOCKER_IMAGE}:v${MAJOR}.${MINOR}
+        
+        # Tag v1
+        docker buildx imagetools create \
+          ${DOCKER_IMAGE}:${CI_COMMIT_TAG} \
+          --tag ${DOCKER_IMAGE}:v${MAJOR}
+      fi
+  after_script:
+    - docker logout
+  only:
+    - tags
+  except:
+    - branches
+
+# Job principal: construir y publicar en tags
+build-and-push:
+  extends: .docker-build
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/'
+      when: always
+    - when: never
+
+# Job manual: permitir ejecución manual desde cualquier rama
+build-manual:
+  extends: .docker-build
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: manual
+  only:
+    - branches
+  except:
+    - tags
