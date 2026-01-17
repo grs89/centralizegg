@@ -103,20 +103,59 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 	podmanVer := strings.TrimSpace(podmanVerRaw)
 
 	// service status (might be podman.service or podman.socket)
-	serviceStatus, _ := pc.runCommand(client, "systemctl is-active podman 2>/dev/null || echo 'daemonless'")
-	serviceStatus = strings.TrimSpace(serviceStatus)
+	svcOutput, _ := pc.runCommand(client, "systemctl is-active podman || systemctl is-active podman.socket || echo 'unknown'")
+	serviceStatus := strings.TrimSpace(svcOutput)
+
+	// If not reported as active by systemd (e.g. daemonless), check if podman binary works
+	if serviceStatus != "active" {
+		if _, err := pc.runCommand(client, "podman info"); err == nil {
+			serviceStatus = "active"
+		}
+	}
+
+	if serviceStatus == "active" {
+		serviceStatus = "active"
+	} else {
+		serviceStatus = strings.ToUpper(serviceStatus) // e.g. INACTIVE, FAILED
+		if serviceStatus == "UNKNOWN" {
+			serviceStatus = "OFFLINE"
+		}
+	}
 
 	// API latency
 	start := time.Now()
 	pc.runCommand(client, "podman version")
 	apiLatency := int(time.Since(start).Milliseconds())
 
-	// Storage Metrics (similar to Docker but paths might differ, we use df on /var/lib/containers)
+	// Get Podman Root Dir
+	rootDirRaw, _ := pc.runCommand(client, "podman info --format '{{.Store.GraphRoot}}'")
+	rootDir := strings.TrimSpace(rootDirRaw)
+	if rootDir == "" {
+		rootDir = "/var/lib/containers" // fallback
+	}
+
+	// Storage Metrics
 	storageUsed := uint64(0)
 	storageTotal := uint64(0)
-
-	storageRaw, _ := pc.runCommand(client, "df -B1 /var/lib/containers 2>/dev/null || df -B1 $HOME/.local/share/containers 2>/dev/null | tail -1 | awk '{print $3,$2}'")
+	// Use df on the rootDir
+	storageRaw, _ := pc.runCommand(client, fmt.Sprintf("df -B1 %s | tail -1 | awk '{print $3,$2}'", rootDir))
 	fmt.Sscanf(strings.TrimSpace(storageRaw), "%d %d", &storageUsed, &storageTotal)
+
+	// Inodes
+	inodesUsageRaw, _ := pc.runCommand(client, fmt.Sprintf("df -i %s | tail -1 | awk '{print $5}'", rootDir))
+	inodesUsage := strings.TrimSpace(inodesUsageRaw)
+
+	// Volumes
+	volumesRaw, _ := pc.runCommand(client, "podman volume ls -q")
+	var volList []string
+	volLines := strings.Split(strings.TrimSpace(volumesRaw), "\n")
+	for _, line := range volLines {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			volList = append(volList, line)
+		}
+	}
+	volumesJSON, _ := json.Marshal(volList)
 
 	hostID, err := pc.DB.UpsertPodmanHost(data_centralizegg.PodmanHost{
 		ServerID:      s.ID,
@@ -133,6 +172,8 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 		APILatency:    apiLatency,
 		StorageUsed:   storageUsed,
 		StorageTotal:  storageTotal,
+		InodesUsage:   inodesUsage,
+		Volumes:       string(volumesJSON),
 	})
 	if err != nil {
 		return fmt.Errorf("upsert podman host: %w", err)
@@ -180,18 +221,22 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 		st, _ := statsMap[name]
 
 		c := data_centralizegg.Container{
-			Name:     name,
-			Image:    pps.Image,
-			Ports:    pps.Ports,
-			State:    pps.State,
-			Status:   pps.Status,
-			CPUUsage: pc.parsePercent(st.CPUPerc),
-			MemUsage: pc.parseBytes(st.MemUsage),
-			MemLimit: pc.parseBytes(st.MemLimit),
-			NetRX:    pc.parseNetBytes(st.NetIO, true),
-			NetTX:    pc.parseNetBytes(st.NetIO, false),
-			PIDs:     st.PIDs,
-			HostID:   hostID,
+			Name:            name,
+			Image:           pps.Image,
+			Ports:           pc.formatPorts(pps.Ports),
+			State:           pps.State,
+			Status:          pps.Status,
+			CPUUsage:        pc.parsePercent(st.CPUPerc),
+			MemUsage:        pc.parseBytes(st.MemUsage),
+			MemLimit:        pc.parseBytes(st.MemLimit),
+			NetRX:           pc.parseNetBytes(st.NetIO, true),
+			NetTX:           pc.parseNetBytes(st.NetIO, false),
+			BlockIn:         pc.parseNetBytes(st.BlockIO, true),
+			BlockOut:        pc.parseNetBytes(st.BlockIO, false),
+			PIDs:            st.PIDs,
+			OOMKilled:       false,  // logic to detect OOM requires podman inspect
+			Vulnerabilities: "Safe", // placeholder for vulnerability scanning
+			HostID:          hostID,
 		}
 
 		if err := pc.DB.UpsertPodmanContainer(c); err != nil {
@@ -205,7 +250,7 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 type podmanStats struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
-	CPUPerc  string `json:"cpu_stats"`
+	CPUPerc  string `json:"cpu_percent"`
 	MemUsage string `json:"mem_usage"`
 	MemLimit string `json:"mem_limit"` // Note: Podman sometimes groups these
 	NetIO    string `json:"net_io"`
@@ -214,12 +259,28 @@ type podmanStats struct {
 }
 
 type podmanPS struct {
-	ID     string   `json:"id"`
-	Names  []string `json:"names"`
-	Image  string   `json:"image"`
-	Ports  string   `json:"ports"`
-	State  string   `json:"state"`
-	Status string   `json:"status"`
+	ID     string       `json:"id"`
+	Names  []string     `json:"names"`
+	Image  string       `json:"image"`
+	Ports  []podmanPort `json:"ports"`
+	State  string       `json:"state"`
+	Status string       `json:"status"`
+}
+
+type podmanPort struct {
+	HostPort      int    `json:"hostPort"`
+	ContainerPort int    `json:"containerPort"`
+	Protocol      string `json:"protocol"`
+	HostIP        string `json:"hostIP"`
+}
+
+func (pc *PodmanCollector) formatPorts(ports []podmanPort) string {
+	var parts []string
+	for _, p := range ports {
+		s := fmt.Sprintf("%s:%d->%d/%s", p.HostIP, p.HostPort, p.ContainerPort, p.Protocol)
+		parts = append(parts, s)
+	}
+	return strings.Join(parts, ", ")
 }
 
 func (pc *PodmanCollector) getSSHClient(s data_centralizegg.GenericServer) (*ssh.Client, error) {

@@ -2451,6 +2451,27 @@ function renderPodmanHostDetails(hostId) {
     const host = allHostsCache.find(h => h.id === hostId);
     if (!host) return;
 
+    let statsWrapper = document.getElementById('podman-stats-wrapper');
+    let mapWrapper = document.getElementById('podman-map-wrapper');
+
+    if (!statsWrapper) {
+        scannerSection.innerHTML = `
+            <div id="podman-stats-wrapper" class="glass-panel" style="padding: 24px; text-align: left; margin-bottom: 20px;"></div>
+            <div id="podman-map-wrapper" class="glass-panel" style="padding: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 15px; padding-bottom: 10px;">
+                    <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9;">
+                        Mapa de Red Podman
+                    </div>
+                </div>
+                <div id="podman-topology-map" style="height: 500px; width: 100%; border-radius: 8px;"></div>
+            </div>
+        `;
+        statsWrapper = document.getElementById('podman-stats-wrapper');
+        mapWrapper = document.getElementById('podman-map-wrapper');
+    }
+
+    const inner = statsWrapper;
+
     let filteredContainers = allPodmanContainersCache.filter(c => c.host_id === hostId);
     filteredContainers.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
@@ -2461,65 +2482,365 @@ function renderPodmanHostDetails(hostId) {
         );
     }
 
-    scannerSection.innerHTML = `
-        <div class="glass-panel" style="padding: 24px; text-align: left; margin-bottom: 20px;">
-            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
-                <div>
-                    <h3 style="margin:0; font-size: 1.3rem;">${host.hostname}</h3>
-                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
-                        Podman ${host.podman_version} | ${host.os_name}
+    const isAlreadyRenderingHost = inner.getAttribute('data-host-id') === String(hostId);
+
+    const renderAlertsList = () => {
+        const alerts = [];
+        // OOM Alerts
+        filteredContainers.filter(c => c.oom_killed).forEach(c => {
+            alerts.push(`
+                <div style="display: flex; align-items: flex-start; gap: 10px; padding: 8px; background: rgba(239, 68, 68, 0.05); border: 1px solid rgba(239, 68, 68, 0.1); border-radius: 4px;">
+                    <i class="fa-solid fa-circle-exclamation" style="color: #ef4444; margin-top: 2px;"></i>
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span style="font-size: 0.8rem; font-weight: 700; color: #ef4444;">OOM Killed: ${c.name}</span>
+                        <span style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.8;">Límite de memoria excedido</span>
                     </div>
                 </div>
-                <div class="status-badge online">
-                    ${host.podman_service_status}
+            `);
+        });
+
+        // Vulnerability Alerts
+        filteredContainers.filter(c => c.vulnerabilities && (c.vulnerabilities.includes('Critical:') || c.vulnerabilities.includes('High:'))).forEach(c => {
+            const isCritical = c.vulnerabilities.includes('Critical:') && !c.vulnerabilities.includes('Critical:0');
+            const isHigh = c.vulnerabilities.includes('High:') && !c.vulnerabilities.includes('High:0');
+
+            if (isCritical || isHigh) {
+                alerts.push(`
+                    <div style="display: flex; align-items: flex-start; gap: 10px; padding: 8px; background: ${isCritical ? 'rgba(239, 68, 68, 0.05)' : 'rgba(234, 179, 8, 0.05)'}; border: 1px solid ${isCritical ? 'rgba(239, 68, 68, 0.1)' : 'rgba(234, 179, 8, 0.1)'}; border-radius: 4px;">
+                        <i class="fa-solid fa-shield-virus" style="color: ${isCritical ? '#ef4444' : '#eab308'}; margin-top: 2px;"></i>
+                        <div style="display: flex; flex-direction: column; gap: 2px;">
+                            <span style="font-size: 0.8rem; font-weight: 700; color: ${isCritical ? '#ef4444' : '#eab308'};">CVE: ${c.image}</span>
+                            <span style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.8;">${c.vulnerabilities}</span>
+                        </div>
+                    </div>
+                `);
+            }
+        });
+
+        if (alerts.length === 0) {
+            return `
+                <div style="display: flex; align-items: center; gap: 8px; color: var(--text-secondary); opacity: 0.6; font-size: 0.8rem;">
+                    <i class="fa-solid fa-check-circle" style="color: #4ade80;"></i>
+                    <span>Sin alertas críticas</span>
+                </div>`;
+        }
+        return alerts.join('');
+    };
+
+    const renderVolumesList = () => {
+        let volumes = [];
+        try {
+            volumes = JSON.parse(host.podman_volumes || '[]');
+        } catch (e) {
+            console.error("Error parsing volumes:", e);
+        }
+
+        if (volumes.length === 0) {
+            return '<div style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.6;">No se detectaron volúmenes</div>';
+        }
+
+        // No size info typically available for volumes list from standard podman volume ls JSON unless inspected, assuming we get names.
+        // If we only get names, we list them. If we get array of objects, handle it.
+        // Similar to docker implementation.
+        return volumes.map(v => `
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.02);">
+                <span style="color: var(--text-primary); font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px;" title="${v.Name || v}">${v.Name || v}</span>
+            </div>
+        `).join('');
+    };
+
+    const renderContainerRows = () => {
+        if (filteredContainers.length === 0) {
+            return '<div style="text-align:center; padding: 40px; opacity:0.5;">No hay contenedores que mostrar</div>';
+        }
+        return filteredContainers.map(c => {
+            const isRunning = (c.state || '').toLowerCase() === 'running';
+            const memPercent = c.memory_limit > 0 ? (c.memory_usage / c.memory_limit * 100) : 0;
+
+            return `
+                 <div style="display: grid; grid-template-columns: 2fr 1.5fr 0.8fr 1.2fr 1.8fr 1fr; gap: 15px; align-items: center; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.05); transition: all 0.2s ease;">
+                     <!-- Name & Image -->
+                     <div style="display: flex; align-items: center; gap: 10px; overflow: hidden;">
+                         <i class="fa-solid fa-box-archive" style="color: ${isRunning ? '#4ade80' : '#ef4444'}; font-size: 1.2rem; opacity: 0.9;"></i>
+                         <div style="display: flex; flex-direction: column; overflow: hidden;">
+                             <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${c.name}">${c.name}</span>
+                             <span style="font-size: 0.7rem; color: var(--text-secondary); opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${c.image}</span>
+                             ${c.ip_address ? `<span style="font-size: 0.65rem; color: var(--accent-color); font-family: monospace; opacity: 0.9;">${c.ip_address}</span>` : ''}
+                             ${c.vulnerabilities && c.vulnerabilities !== 'Safe' ? `
+                                 <div style="display: flex; align-items: center; gap: 4px; margin-top: 2px;" title="${c.vulnerabilities}">
+                                     <i class="fa-solid fa-shield-virus" style="font-size: 0.6rem; color: ${c.vulnerabilities.includes('Critical:') && !c.vulnerabilities.includes('Critical:0') ? '#ef4444' : '#eab308'};"></i>
+                                     <span style="font-size: 0.65rem; font-weight: 600; color: ${c.vulnerabilities.includes('Critical:') && !c.vulnerabilities.includes('Critical:0') ? '#ef4444' : '#eab308'}; opacity: 0.9;">CVE</span>
+                                 </div>
+                             ` : ''}
+                         </div>
+                     </div>
+ 
+                     <!-- Ports -->
+                     <div style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${c.ports || 'N/A'}">
+                         <span style="font-family: monospace;">${c.ports || '-'}</span>
+                     </div>
+ 
+                     <!-- CPU -->
+                     <div style="display: flex; flex-direction: column; gap: 3px;">
+                         <div style="font-size: 0.85rem; font-weight: 600; color: ${getStatusColor(c.cpu_usage || 0)};">${(c.cpu_usage || 0).toFixed(1)}%</div>
+                         <div style="width: 100%; height: 3px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
+                             <div style="height: 100%; width: ${Math.min(c.cpu_usage || 0, 100)}%; background: ${getStatusColor(c.cpu_usage || 0)};"></div>
+                         </div>
+                     </div>
+ 
+                     <!-- RAM Usage / Limit -->
+                     <div style="display: flex; flex-direction: column; gap: 3px;">
+                         <div style="font-size: 0.85rem; font-weight: 600; color: ${getStatusColor(memPercent)};">
+                             ${formatBytes(c.memory_usage, 1)}
+                         </div>
+                         <div style="width: 100%; height: 3px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
+                             <div style="height: 100%; width: ${Math.min(memPercent, 100)}%; background: ${getStatusColor(memPercent)};"></div>
+                         </div>
+                     </div>
+ 
+                     <!-- Network -->
+                     <div style="display: flex; flex-direction: column; gap: 2px;">
+                         <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem;">
+                             <span style="color: var(--text-secondary); opacity: 0.8;"><i class="fa-solid fa-arrow-down" style="font-size: 0.65rem; color: #4ade80;"></i> RX</span>
+                             <span style="font-weight: 600; font-family: monospace;">${formatBytes(c.net_rx, 0)}</span>
+                         </div>
+                          <div style="height: 18px; width: 100%; opacity: 0.8;">
+                             ${(() => {
+                    // We don't have containerNetworkHistory in updateContainerHistory for Podman yet? 
+                    // Actually updateContainerHistory uses container ID which might collide if not unique, currently logic uses hostId_name or similar.
+                    // app.js updateContainerHistory uses: const key = `${c.host_id}_${c.name}`;
+                    // So it should work if podman containers are processed there. 
+                    // We need to ensure updateContainerHistory is called for podman too.
+                    // The global loop usually calls it.
+                    const history = containerNetworkHistory[`${c.host_id}_${c.name}`];
+                    return history ? renderSparkline(history.rx, '#4ade80', 100, 18) : '';
+                })()}
+                         </div>
+                         <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; margin-top: 2px;">
+                             <span style="color: var(--text-secondary); opacity: 0.8;"><i class="fa-solid fa-arrow-up" style="font-size: 0.65rem; color: #fb923c;"></i> TX</span>
+                             <span style="font-weight: 600; font-family: monospace;">${formatBytes(c.net_tx, 0)}</span>
+                         </div>
+                         <div style="height: 18px; width: 100%; opacity: 0.8;">
+                             ${(() => {
+                    const history = containerNetworkHistory[`${c.host_id}_${c.name}`];
+                    return history ? renderSparkline(history.tx, '#fb923c', 100, 18) : '';
+                })()}
+                         </div>
+                     </div>
+ 
+                     <!-- Disk -->
+                     <div style="display: flex; flex-direction: column; gap: 1px; font-size: 0.8rem;">
+                         <div style="display: flex; align-items: center; gap: 5px; color: var(--text-secondary); opacity: 0.8;" title="Disk Read (Block In)">
+                             <i class="fa-solid fa-hard-drive" style="font-size: 0.7rem;"></i> ${formatBytes(c.block_in, 0)}
+                         </div>
+                         <div style="display: flex; align-items: center; gap: 5px; color: var(--text-secondary); opacity: 0.8;" title="Disk Write (Block Out)">
+                             <i class="fa-solid fa-pen-to-square" style="font-size: 0.7rem;"></i> ${formatBytes(c.block_out, 0)}
+                         </div>
+                     </div>
+                 </div>
+             `;
+        }).join('');
+    };
+
+    if (isAlreadyRenderingHost) {
+        // Partial Update
+        const statusEl = document.getElementById('podman-service-status');
+        if (statusEl) {
+            statusEl.textContent = host.podman_service_status || 'offline';
+            statusEl.style.color = host.podman_service_status === 'active' ? '#4ade80' : '#ef4444';
+            statusEl.style.background = host.podman_service_status === 'active' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+            statusEl.style.borderColor = host.podman_service_status === 'active' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)';
+        }
+
+        const uptimeEl = document.getElementById('podman-host-uptime');
+        if (uptimeEl) uptimeEl.textContent = host.uptime || 'N/A';
+
+        const cpuEl = document.getElementById('podman-host-cpu-load');
+        if (cpuEl) cpuEl.textContent = `${(host.cpu_usage || 0).toFixed(1)}%`;
+
+        const latencyEl = document.getElementById('podman-host-latency');
+        if (latencyEl) {
+            latencyEl.textContent = `${host.podman_api_latency || 0} ms`;
+            latencyEl.style.color = host.podman_api_latency < 500 ? '#4ade80' : '#eab308';
+        }
+
+        const alertsEl = document.getElementById('podman-alerts-list');
+        if (alertsEl) alertsEl.innerHTML = renderAlertsList();
+
+        const containersListEl = document.getElementById('podman-containers-list');
+        if (containersListEl) containersListEl.innerHTML = renderContainerRows();
+
+        // Storage
+        const storageUsageEl = document.getElementById('podman-host-storage-usage');
+        const storageBarEl = document.getElementById('podman-host-storage-bar');
+        const inodesEl = document.getElementById('podman-host-inodes');
+
+        if (storageUsageEl) storageUsageEl.textContent = `${formatBytes(host.podman_storage_used, 1)} / ${formatBytes(host.podman_storage_total, 1)}`;
+        if (storageBarEl) {
+            const pct = host.podman_storage_total > 0 ? (host.podman_storage_used / host.podman_storage_total * 100) : 0;
+            storageBarEl.style.width = `${pct}%`;
+            storageBarEl.style.background = getStatusColor(pct);
+        }
+        if (inodesEl) inodesEl.textContent = host.podman_inodes_usage || '0%';
+
+        const volumesListEl = document.getElementById('podman-volumes-list');
+        if (volumesListEl) volumesListEl.innerHTML = renderVolumesList();
+
+        // Map update
+        const mapContainer = document.getElementById('podman-topology-map');
+        if (mapContainer && host.podman_networks) {
+            // We can reuse DockerTopologyMap since structure is likely compatible if networks JSON is similar
+            // or we need a PodmanTopologyMap. For now assuming reuse or if we need to create one.
+            // Ideally we should rename DockerTopologyMap to ContainerTopologyMap but for now let's try to reuse if possible
+            // or check if window.currentDockerMap instance can be used. 
+            // Better to create a separate instance key for podman to avoid conflicts.
+            if (!window.currentPodmanMap) {
+                // Check if DockerTopologyMap class exists (it's likely defined globally in app.js or similar)
+                // If it is generic enough:
+                if (typeof DockerTopologyMap !== 'undefined') {
+                    window.currentPodmanMap = new DockerTopologyMap('podman-topology-map');
+                }
+            }
+            if (window.currentPodmanMap) {
+                window.currentPodmanMap.render(host.podman_networks);
+            }
+        }
+
+        return;
+    }
+
+    // --- FULL RENDER ---
+    inner.setAttribute('data-host-id', hostId);
+    inner.innerHTML = `
+        <div style="display: grid; grid-template-columns: 350px 1fr; gap: 24px; align-items: start;">
+            <!-- Left Column: Information -->
+            <div style="display: flex; flex-direction: column; gap: 15px;">
+                <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    Información
+                </div>
+                
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <!-- Podman Service Card -->
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color);">Servicio Podman</div>
+                            <span id="podman-service-status" style="font-weight: 800; font-size: 0.7rem; color: ${host.podman_service_status === 'active' ? '#4ade80' : '#ef4444'}; text-transform: uppercase; background: ${host.podman_service_status === 'active' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; padding: 2px 6px; border-radius: 4px; border: 1px solid ${host.podman_service_status === 'active' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'};">
+                                ${host.podman_service_status || 'offline'}
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- System Info Card -->
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color);">Sistema y Versión</div>
+                            <span style="color: #38bdf8; font-weight: 700; font-size: 0.75rem;">v${host.podman_version || 'N/A'}</span>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 6px;">
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                                <i class="fa-solid fa-server" style="font-size: 0.8rem; opacity: 0.7;"></i> 
+                                <span>OS: <span style="color: var(--text-primary); font-weight: 500;">${host.os_name || 'N/A'}</span></span>
+                            </div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                                <i class="fa-solid fa-clock-rotate-left" style="font-size: 0.8rem; opacity: 0.7;"></i> 
+                                <span>Uptime: <span id="podman-host-uptime" style="color: var(--text-primary); font-weight: 500;">${host.uptime || 'N/A'}</span></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Performance Card -->
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
+                        <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 8px;">Rendimiento</div>
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                                    <i class="fa-solid fa-microchip" style="font-size: 0.8rem; opacity: 0.7;"></i> 
+                                    <span>Carga CPU</span>
+                                </div>
+                                <span id="podman-host-cpu-load" style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">${(host.cpu_usage || 0).toFixed(1)}%</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                                    <i class="fa-solid fa-stopwatch" style="font-size: 0.8rem; opacity: 0.7;"></i> 
+                                    <span>Latencia API</span>
+                                </div>
+                                <span id="podman-host-latency" style="font-weight: 700; font-size: 0.85rem; color: ${host.podman_api_latency < 500 ? '#4ade80' : '#eab308'};">${host.podman_api_latency || 0} ms</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Storage Card -->
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
+                        <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 10px;">Almacenamiento Podman</div>
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            <div style="display: flex; flex-direction: column; gap: 4px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem;">
+                                    <span style="color: var(--text-secondary);">/var/lib/containers</span>
+                                    <span id="podman-host-storage-usage" style="font-weight: 600;">${formatBytes(host.podman_storage_used, 1)} / ${formatBytes(host.podman_storage_total, 1)}</span>
+                                </div>
+                                <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
+                                    <div id="podman-host-storage-bar" style="height: 100%; width: ${host.podman_storage_total > 0 ? (host.podman_storage_used / host.podman_storage_total * 100) : 0}%; background: ${getStatusColor(host.podman_storage_total > 0 ? (host.podman_storage_used / host.podman_storage_total * 100) : 0)};"></div>
+                                </div>
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 2px;">
+                                <span style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.8;">Inodos ocupados</span>
+                                <span id="podman-host-inodes" style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary);">${host.podman_inodes_usage || '0%'}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                     <!-- Volumes Card -->
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
+                        <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 10px;">Volúmenes Podman</div>
+                        <div id="podman-volumes-list" style="display: flex; flex-direction: column; gap: 4px; max-height: 250px; overflow-y: auto;">
+                            ${renderVolumesList()}
+                        </div>
+                    </div>
+
+                    <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; margin-top: 5px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                        Alertas
+                    </div>
+
+                    <!-- Alerts Card -->
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
+                        <div id="podman-alerts-list" style="display: flex; flex-direction: column; gap: 8px;">
+                            ${renderAlertsList()}
+                        </div>
+                    </div>
                 </div>
             </div>
+            <!-- Right Column: Containers -->
+            <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    Contenedores
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 2fr 1.5fr 0.8fr 1.2fr 1.8fr 1fr; gap: 15px; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary);">
+                    <div>Nombre / Imagen</div>
+                    <div>Puerto</div>
+                    <div>CPU</div>
+                    <div>Memoria</div>
+                    <div>Red (RX/TX)</div>
+                    <div style="text-align: right;">Disco</div>
+                </div>
 
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
-                <div class="mini-stat-card">
-                    <span class="label">CPU Usage</span>
-                    <span class="value">${(host.cpu_usage || 0).toFixed(1)}%</span>
-                </div>
-                <div class="mini-stat-card">
-                    <span class="label">Memory</span>
-                    <span class="value">${formatBytes(host.total_memory - host.free_memory)} / ${formatBytes(host.total_memory)}</span>
-                </div>
-                <div class="mini-stat-card">
-                    <span class="label">Storage</span>
-                    <span class="value">${formatBytes(host.podman_storage_used)} / ${formatBytes(host.podman_storage_total)}</span>
+                <div id="podman-containers-list" style="display: flex; flex-direction: column;">
+                    ${renderContainerRows()}
                 </div>
             </div>
-        </div>
-
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-            <h4 style="margin:0;"><i class="fa-solid fa-box-archive"></i> Contenedores Podman (${filteredContainers.length})</h4>
-        </div>
-
-        <div class="container-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 15px;">
-            ${filteredContainers.map(c => `
-                <div class="glass-panel container-card" style="padding: 15px; border-left: 4px solid ${c.state === 'running' ? '#4ade80' : '#6b7280'};">
-                    <div style="display: flex; justify-content: space-between; align-items: start;">
-                        <div style="max-width: 220px;">
-                            <div style="font-weight: 700; font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${c.name}">${c.name}</div>
-                            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${c.image}</div>
-                        </div>
-                        <div style="font-size: 0.7rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: rgba(255,255,255,0.05);">
-                            ${c.status}
-                        </div>
-                    </div>
-                    
-                    <div style="margin-top: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                        <div class="mini-stat">
-                            <i class="fa-solid fa-microchip"></i> ${(c.cpu_usage || 0).toFixed(1)}%
-                        </div>
-                        <div class="mini-stat">
-                            <i class="fa-solid fa-memory"></i> ${formatBytes(c.memory_usage)}
-                        </div>
-                    </div>
-                </div>
-            `).join('')}
         </div>
     `;
+
+    // Draw Map
+    const mapContainer = document.getElementById('podman-topology-map');
+    if (mapContainer && host.podman_networks) {
+        if (typeof DockerTopologyMap !== 'undefined') {
+            if (!window.currentPodmanMap) {
+                window.currentPodmanMap = new DockerTopologyMap('podman-topology-map');
+            }
+            window.currentPodmanMap.render(host.podman_networks);
+        }
+    }
 }
 
 function renderPodmanSummary() {
@@ -2528,12 +2849,48 @@ function renderPodmanSummary() {
     const scannerSection = container.querySelector('.scanner-section');
     if (!scannerSection) return;
 
+    const podmanHosts = allHostsCache.filter(h => h.podman_version);
+
+    // Auto-select if there's only one host
+    if (podmanHosts.length === 1) {
+        selectPodmanHost(podmanHosts[0].id);
+        return;
+    }
+
+    const totalContainers = allPodmanContainersCache.length;
+    const runningContainers = allPodmanContainersCache.filter(c => (c.state || '').toLowerCase() === 'running').length;
+
+    let totalCpu = 0;
+    podmanHosts.forEach(h => {
+        totalCpu += (h.cpu_usage || 0);
+    });
+    const avgCpu = podmanHosts.length > 0 ? (totalCpu / podmanHosts.length).toFixed(1) : 0;
+
     scannerSection.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <h2 style="margin:0; font-size: 1.5rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen Podman</h2>
+            <h2 style="margin:0; font-size: 1.5rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen</h2>
         </div>
 
-        <div class="glass-panel" style="padding: 80px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; width: 100%; margin-bottom: 30px;">
+            <div class="glass-panel" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px;">
+                <span class="label" style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 5px;">Podman Hosts</span>
+                <span class="value" style="font-size: 1.8rem; font-weight: 700; color: var(--accent-color);">${podmanHosts.length}</span>
+            </div>
+            <div class="glass-panel" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px;">
+                <span class="label" style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 5px;">Total Containers</span>
+                <span class="value" style="font-size: 1.8rem; font-weight: 700; color: var(--text-primary);">${totalContainers}</span>
+            </div>
+            <div class="glass-panel" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px;">
+                <span class="label" style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 5px;">Running</span>
+                <span class="value" style="font-size: 1.8rem; font-weight: 700; color: var(--success); text-shadow: 0 0 10px rgba(34, 197, 94, 0.4);">${runningContainers}</span>
+            </div>
+            <div class="glass-panel" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px;">
+                <span class="label" style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 5px;">Avg CPU Load</span>
+                <span class="value" style="font-size: 1.8rem; font-weight: 700; color: var(--text-primary);">${avgCpu}%</span>
+            </div>
+        </div>
+
+        <div class="glass-panel" style="padding: 60px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
             <div style="font-size: 1.1rem; color: var(--text-secondary); opacity: 0.6; font-weight: 500;">
                 <i class="fa-solid fa-arrow-up" style="margin-right: 8px;"></i> Selecciona un Host Podman para ver sus contenedores
             </div>
