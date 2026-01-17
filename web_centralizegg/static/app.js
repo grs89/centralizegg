@@ -323,7 +323,7 @@ const tools = {
     },
     'podman': {
         name: 'Podman',
-        icon: 'fa-solid fa-box-archive',
+        icon: 'fa-solid fa-otter',
         elementId: 'container-scanner-tool',
         categoryBtnId: 'containers-btn',
         categoryName: 'Contenedores'
@@ -849,7 +849,7 @@ function updateSuggestions() {
     allPodmanContainersCache.forEach(c => {
         const name = c.Names ? c.Names[0].replace('/', '') : c.Id.substring(0, 12);
         if (name.toLowerCase().includes(searchQuery) || c.Image.toLowerCase().includes(searchQuery)) {
-            suggestions.push({ type: 'container', id: null, title: name, subtitle: `Podman Image: ${c.Image}`, icon: 'fa-solid fa-box-archive', tool: 'podman', contextId: selectedPodmanHostId });
+            suggestions.push({ type: 'container', id: null, title: name, subtitle: `Podman Image: ${c.Image}`, icon: 'fa-solid fa-otter', tool: 'podman', contextId: selectedPodmanHostId });
         }
     });
 
@@ -2583,7 +2583,7 @@ function renderPodmanHostDetails(hostId) {
                  <div style="display: grid; grid-template-columns: 2fr 1.5fr 0.8fr 1.2fr 1.8fr 1fr; gap: 15px; align-items: center; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.05); transition: all 0.2s ease;">
                      <!-- Name & Image -->
                      <div style="display: flex; align-items: center; gap: 10px; overflow: hidden;">
-                         <i class="fa-solid fa-box-archive" style="color: ${isRunning ? '#4ade80' : '#ef4444'}; font-size: 1.2rem; opacity: 0.9;"></i>
+                         <i class="fa-solid fa-otter" style="color: ${isRunning ? '#4ade80' : '#ef4444'}; font-size: 1.2rem; opacity: 0.9;"></i>
                          <div style="display: flex; flex-direction: column; overflow: hidden;">
                              <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${c.name}">${c.name}</span>
                              <span style="font-size: 0.7rem; color: var(--text-secondary); opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${c.image}</span>

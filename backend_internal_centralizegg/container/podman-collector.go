@@ -181,18 +181,15 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 
 	// 2. Containers Info
 	// Podman stats
-	statsOutput, err := pc.runCommand(client, "podman stats --no-stream --format '{{json .}}'")
+	statsOutput, err := pc.runCommand(client, "podman stats --no-stream --format json")
 	statsMap := make(map[string]podmanStats)
 	if err == nil {
-		lines := strings.Split(strings.TrimSpace(statsOutput), "\n")
-		for _, line := range lines {
-			if line == "" {
-				continue
-			}
-			var st podmanStats
-			if err := json.Unmarshal([]byte(line), &st); err == nil {
-				statsMap[st.Name] = st
-				// Also map by ID as fallback
+		var stList []podmanStats
+		if err := json.Unmarshal([]byte(statsOutput), &stList); err == nil {
+			for _, st := range stList {
+				if st.Name != "" {
+					statsMap[st.Name] = st
+				}
 				if st.ID != "" {
 					statsMap[st.ID] = st
 				}
@@ -219,22 +216,17 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 	}
 
 	// Podman ps
-	psOutput, err := pc.runCommand(client, "podman ps -a --format '{{json .}}'")
+	psOutput, err := pc.runCommand(client, "podman ps -a --format json")
 	if err != nil {
 		return fmt.Errorf("podman ps: %w", err)
 	}
 
-	psLines := strings.Split(strings.TrimSpace(psOutput), "\n")
-	for _, line := range psLines {
-		if line == "" {
-			continue
-		}
-		var pps podmanPS
-		if err := json.Unmarshal([]byte(line), &pps); err != nil {
-			continue
-		}
+	var psList []podmanPS
+	if err := json.Unmarshal([]byte(psOutput), &psList); err != nil {
+		return fmt.Errorf("podman ps unmarshal error: %w", err)
+	}
 
-		// Podman ps names is often an array or a single string
+	for _, pps := range psList {
 		var name string
 		if len(pps.Names) > 0 {
 			name = pps.Names[0]
@@ -243,7 +235,14 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 		// Try to find stats by name or ID
 		st, ok := statsMap[name]
 		if !ok {
-			st = statsMap[pps.ID]
+			// Try matching by ID prefix (short vs full ID)
+			for sid, s := range statsMap {
+				if sid != "" && pps.ID != "" && (strings.HasPrefix(pps.ID, sid) || strings.HasPrefix(sid, pps.ID)) {
+					st = s
+					ok = true
+					break
+				}
+			}
 		}
 
 		ipAddr := ipMap[pps.ID]
@@ -257,14 +256,24 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 			}
 		}
 
+		// Use fallback fields for CPU/Mem if primary are empty
+		cpuPerc := st.CPUPerc
+		if cpuPerc == "" {
+			cpuPerc = st.CPU
+		}
+		memUsage := st.MemUsage
+		if memUsage == "" {
+			memUsage = st.Mem
+		}
+
 		c := data_centralizegg.Container{
 			Name:            name,
 			Image:           pps.Image,
 			Ports:           pc.formatPorts(pps.Ports),
 			State:           pps.State,
 			Status:          pps.Status,
-			CPUUsage:        pc.parsePercent(st.CPUPerc),
-			MemUsage:        pc.parseBytes(st.MemUsage),
+			CPUUsage:        pc.parsePercent(cpuPerc),
+			MemUsage:        pc.parseBytes(memUsage),
 			MemLimit:        pc.parseBytes(st.MemLimit),
 			NetRX:           pc.parseNetBytes(st.NetIO, true),
 			NetTX:           pc.parseNetBytes(st.NetIO, false),
@@ -289,20 +298,22 @@ type podmanStats struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	CPUPerc  string `json:"cpu_percent"`
+	CPU      string `json:"CPU"` // fallback for some versions
 	MemUsage string `json:"mem_usage"`
-	MemLimit string `json:"mem_limit"` // Note: Podman sometimes groups these
+	Mem      string `json:"MemUsage"` // fallback
+	MemLimit string `json:"mem_limit"`
 	NetIO    string `json:"net_io"`
 	BlockIO  string `json:"block_io"`
 	PIDs     int    `json:"pids"`
 }
 
 type podmanPS struct {
-	ID     string       `json:"id"`
-	Names  []string     `json:"names"`
-	Image  string       `json:"image"`
-	Ports  []podmanPort `json:"ports"`
-	State  string       `json:"state"`
-	Status string       `json:"status"`
+	ID     string       `json:"Id"`
+	Names  []string     `json:"Names"`
+	Image  string       `json:"Image"`
+	Ports  []podmanPort `json:"Ports"`
+	State  string       `json:"State"`
+	Status string       `json:"Status"`
 }
 
 type podmanPort struct {
@@ -315,8 +326,15 @@ type podmanPort struct {
 func (pc *PodmanCollector) formatPorts(ports []podmanPort) string {
 	var parts []string
 	for _, p := range ports {
-		s := fmt.Sprintf("%s:%d->%d/%s", p.HostIP, p.HostPort, p.ContainerPort, p.Protocol)
+		h := p.HostIP
+		if h == "" || h == "0.0.0.0" {
+			h = "*"
+		}
+		s := fmt.Sprintf("%s:%d->%d/%s", h, p.HostPort, p.ContainerPort, p.Protocol)
 		parts = append(parts, s)
+	}
+	if len(parts) == 0 {
+		return "-"
 	}
 	return strings.Join(parts, ", ")
 }
