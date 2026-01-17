@@ -2253,17 +2253,6 @@ function renderDockerSummary() {
     const scannerSection = container.querySelector('.scanner-section');
     if (!scannerSection) return;
 
-    const dockerHosts = allHostsCache.filter(h => h.docker_version);
-    const totalContainers = allContainersCache.length;
-    const runningContainers = allContainersCache.filter(c => (c.state || '').toLowerCase() === 'running').length;
-
-    // Calculate aggregate metrics
-    let totalCpu = 0;
-    dockerHosts.forEach(h => {
-        totalCpu += (h.cpu_usage || 0);
-    });
-    const avgCpu = dockerHosts.length > 0 ? (totalCpu / dockerHosts.length).toFixed(1) : 0;
-
     scannerSection.innerHTML = `
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
             <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen</h2>
@@ -2890,14 +2879,6 @@ function renderPodmanSummary() {
     if (!container) return;
     const scannerSection = container.querySelector('.scanner-section');
     if (!scannerSection) return;
-
-    const podmanHosts = allHostsCache.filter(h => h.podman_version);
-
-    // Auto-select if there's only one host
-    if (podmanHosts.length === 1) {
-        selectPodmanHost(podmanHosts[0].id);
-        return;
-    }
 
     scannerSection.innerHTML = `
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
