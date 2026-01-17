@@ -2617,12 +2617,36 @@ function renderPodmanHostDetails(hostId) {
             return '<div style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.6;">No se detectaron volúmenes</div>';
         }
 
-        // No size info typically available for volumes list from standard podman volume ls JSON unless inspected, assuming we get names.
-        // If we only get names, we list them. If we get array of objects, handle it.
-        // Similar to docker implementation.
-        return volumes.map(v => `
+        // Parse size string to bytes for sorting
+        const parseSize = (str) => {
+            if (!str) return 0;
+            const units = { 'B': 1, 'KB': 1024, 'MB': 1024 ** 2, 'GB': 1024 ** 3, 'TB': 1024 ** 4, 'PB': 1024 ** 5 };
+            const match = str.match(/([\d.]+)\s*([a-zA-Z]+)/);
+            if (match) {
+                const val = parseFloat(match[1]);
+                const unit = match[2].toUpperCase();
+                return val * (units[unit] || 1);
+            }
+            return 0;
+        };
+
+        // Check if volumes are objects (new implementation) or strings (old fallback)
+        const isAdvanced = volumes.length > 0 && typeof volumes[0] === 'object';
+
+        let displayVols = volumes;
+        if (isAdvanced) {
+            displayVols = volumes.sort((a, b) => parseSize(b.Size) - parseSize(a.Size));
+        } else {
+            // Convert strings to objects for uniform rendering if needed, or just map
+            displayVols = volumes.map(v => ({ Name: v, Size: 'N/A' }));
+        }
+
+        return displayVols.map(v => `
             <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.02);">
-                <span style="color: var(--text-primary); font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px;" title="${v.Name || v}">${v.Name || v}</span>
+                <span style="color: var(--text-primary); font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px;" title="${v.Name || v.VolumeName}">${v.Name || v.VolumeName}</span>
+                ${v.Size && v.Size !== 'N/A' ?
+                `<span style="color: #38bdf8; font-weight: 700; font-size: 0.85rem; text-shadow: 0 0 5px rgba(56, 189, 248, 0.3);">${v.Size}</span>`
+                : ''}
             </div>
         `).join('');
     };

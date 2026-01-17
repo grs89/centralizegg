@@ -7,6 +7,7 @@ import (
 	"log"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/grs/centralizegg/backend_internal_centralizegg/data_centralizegg"
 	"golang.org/x/crypto/ssh"
@@ -161,31 +162,91 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 	volumesJSON := "[]"
 	dfRaw, err := pc.runCommand(client, "podman system df -v --format json")
 	if err == nil {
+		// log.Printf("[PodmanDebug] Raw DF output: %s", dfRaw)
 		var sysDF SystemDF
 		// Sometimes output might be just the array if filtered, but usually object.
 		// Let's try flexible parsing or regex if needed, but struct is best attempt.
 		if err := json.Unmarshal([]byte(dfRaw), &sysDF); err == nil {
 			if len(sysDF.Volumes) > 0 {
+				log.Printf("[PodmanDebug] Found %d volumes with size info", len(sysDF.Volumes))
 				b, _ := json.Marshal(sysDF.Volumes)
 				volumesJSON = string(b)
+			} else {
+				log.Printf("[PodmanDebug] DF returned empty Volumes list. Raw: %s", dfRaw)
 			}
+		} else {
+			log.Printf("[PodmanCollector] Error unmarshalling system df: %v. Raw: %s", err, dfRaw)
 		}
+	} else {
+		log.Printf("[PodmanCollector] Error running system df: %v", err)
 	}
 
-	// Fallback if empty or failed (maybe no volumes or old podman)
+	// Fallback if empty or failed (system df failed)
 	if volumesJSON == "[]" {
 		volumesRaw, _ := pc.runCommand(client, "podman volume ls -q")
-		var volList []VolumeInfo
-		volLines := strings.Split(strings.TrimSpace(volumesRaw), "\n")
-		for _, line := range volLines {
-			line = strings.TrimSpace(line)
-			if line != "" {
-				volList = append(volList, VolumeInfo{Name: line, Size: "N/A"})
+		if strings.TrimSpace(volumesRaw) != "" {
+			// Manual enrichment: Inspect -> Mountpoint -> du -sh
+			// 1. Inspect all volumes
+			inspectCmd := fmt.Sprintf("podman volume inspect %s --format json", strings.ReplaceAll(strings.TrimSpace(volumesRaw), "\n", " "))
+			inspectRaw, err := pc.runCommand(client, inspectCmd)
+
+			type VolInspect struct {
+				Name       string `json:"Name"`
+				Mountpoint string `json:"Mountpoint"`
 			}
-		}
-		if len(volList) > 0 {
-			b, _ := json.Marshal(volList)
-			volumesJSON = string(b)
+
+			if err == nil {
+				var details []VolInspect
+				if json.Unmarshal([]byte(inspectRaw), &details) == nil {
+					var resultList []VolumeInfo
+					for _, v := range details {
+						size := "N/A"
+						if v.Mountpoint != "" {
+							// 2. Run du -sh on mountpoint
+							// Use sudo? Trying direct first. Podman rootless mounts are user-owned.
+							// awk '{print $1}' gets just the size part (e.g. "4.0K")
+							duOut, err := pc.runCommand(client, fmt.Sprintf("du -sh %s | awk '{print $1}'", v.Mountpoint))
+							if err == nil {
+								s := strings.TrimSpace(duOut)
+								// Normalize units for frontend compatibility (Frontend expects KB, MB, GB)
+								// du -h output: K, M, G, T.
+								if len(s) > 0 && unicode.IsDigit(rune(s[0])) {
+									if strings.HasSuffix(s, "K") {
+										s += "B"
+									} else if strings.HasSuffix(s, "M") {
+										s += "B"
+									} else if strings.HasSuffix(s, "G") {
+										s += "B"
+									} else if strings.HasSuffix(s, "T") {
+										s += "B"
+									}
+									size = s
+								}
+							}
+						}
+						resultList = append(resultList, VolumeInfo{Name: v.Name, Size: size})
+					}
+					if len(resultList) > 0 {
+						b, _ := json.Marshal(resultList)
+						volumesJSON = string(b)
+					}
+				}
+			}
+
+			// If even manual inspection failed, fall back to simple name list
+			if volumesJSON == "[]" {
+				var simpleList []VolumeInfo
+				volLines := strings.Split(strings.TrimSpace(volumesRaw), "\n")
+				for _, line := range volLines {
+					if strings.TrimSpace(line) != "" {
+						simpleList = append(simpleList, VolumeInfo{Name: strings.TrimSpace(line), Size: "N/A"})
+					}
+				}
+				if len(simpleList) > 0 {
+					b, _ := json.Marshal(simpleList)
+					volumesJSON = string(b)
+				}
+			}
 		}
 	}
 
