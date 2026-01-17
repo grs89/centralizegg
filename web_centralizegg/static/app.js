@@ -3491,12 +3491,14 @@ async function renderSettingsServerList() {
 
         listContainer.innerHTML = servers.map(srv => {
             const sshPort = srv.ssh_port || srv.port || 22;
+            const isOnline = srv.status === 'online' || srv.status === 'accessible';
+            const plugColor = isOnline ? '#4ade80' : '#ef4444';
             return `
                 <div class="settings-server-card">
                     <div class="settings-server-meta">
                         <div class="settings-server-name">${srv.name}</div>
                         <div class="settings-server-addr">
-                            <i class="fa-solid fa-plug"></i> ${srv.ip_address}:${sshPort}
+                            <i class="fa-solid fa-plug" style="color: ${plugColor};"></i> ${srv.ip_address}:${sshPort}
                         </div>
                     </div>
                     <div class="settings-server-actions">
