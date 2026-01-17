@@ -38,26 +38,29 @@ graph TD
         UI[Dashboard Web]
         Search[Búsqueda Global]
         Config[Configuración UI]
+        AlertEngine[Alertas Audibles]
     end
-    
+
     subgraph Backend["Backend (Go)"]
         API[API REST<br/>Gorilla Mux]
         Collector[Colector Unificado]
         Libvirt[Libvirt Client]
         SSH["SSH Client"]
         Docker["Docker Client"]
-        Podman["Podman Client"]
+        Podman["Podman Client (fa-otter)"]
         K8s["K8s Client"]
         Prox["Proxmox Client"]
         pfSense["pfSense Client"]
         NAS["NAS Client (SSH)"]
+        VolumeSvc[Servicio de Tamaño de Volúmenes]
+        AlertSvc[Servicio de Alertas]
     end
-    
+
     subgraph Database["Base de Datos"]
         PG[(PostgreSQL)]
         Schema[Esquema virtualization]
     end
-    
+
     subgraph Remote["Servidores Remotos"]
         KVM1[KVM Server]
         Prox1[Proxmox Node]
@@ -66,32 +69,41 @@ graph TD
         pfSense1[pfSense Gateway]
         NAS1[NAS Server]
     end
-    
+
     UI -- "HTTP Requests" --> API
     Search -- "HTTP Requests" --> API
     Config -- "HTTP Requests" --> API
+    AlertEngine -- "Triggers" --> UI
     API -- "Query/Insert/Update" --> PG
-    
+
     Collector -- "Query" --> PG
-    
     Collector -- "SSH/Libvirt" --> Libvirt
-    Libvirt --> KVM1
-    
+    Libvirt -- "KVM" --> KVM1
+
     Collector -- "SSH/API" --> Prox
-    Prox --> Prox1
-    
+    Prox -- "Proxmox Node" --> Prox1
+
     Collector -- "KubeAPI" --> K8s
-    K8s --> K8s1
+    K8s -- "K8s Cluster" --> K8s1
 
-    Collector -- "SSH/Socket" --> Docker
-    Docker --> Dock1
-    
-    Collector -- "SSH Tunnel" --> pfSense
-    pfSense --> pfSense1
+    Collector -- "Docker API" --> Docker
+    Docker -- "Docker Host" --> Dock1
 
-    Collector -- "SSH Tunnel" --> NAS
-    NAS -- "SSH Commands (df, lsblk)" --> NAS1
-    
+    Collector -- "Podman API" --> Podman
+    Podman -- "Docker Host" --> Dock1
+
+    Collector -- "pfSense API" --> pfSense
+    pfSense -- "pfSense Gateway" --> pfSense1
+
+    Collector -- "NAS API" --> NAS
+    NAS -- "NAS Server" --> NAS1
+
+    Collector -- "Volume Size" --> VolumeSvc
+    VolumeSvc -- "Store/Query" --> PG
+
+    Collector -- "Alert Events" --> AlertSvc
+    AlertSvc -- "Notify" --> AlertEngine
+
     Collector -- "Upsert Data" --> PG
     PG -- "Response" --> API
     API -- "JSON Response" --> UI
