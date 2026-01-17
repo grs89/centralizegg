@@ -144,7 +144,12 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 
 	// Docker Volumes
 	volumesJSON := "[]"
-	volsRaw, _ := dc.runCommand(client, "docker system df -v | awk '/VOLUME NAME/{p=1;next} /Images space usage/{p=0} /Build cache usage/{p=0} p && $1!=\"\" {print $1,$3}'")
+	volsRaw, err := dc.runCommand(client, "docker system df -v | awk '/VOLUME NAME/{p=1;next} /Images space usage/{p=0} /Build cache usage/{p=0} p && $1!=\"\" {print $1,$3}'")
+	if err != nil {
+		log.Printf("[DockerCollector] 'docker system df' command failed: %v, volumes will not have size information", err)
+	} else {
+		log.Printf("[DockerCollector] Successfully retrieved volume sizes using 'docker system df'")
+	}
 	volsLines := strings.Split(strings.TrimSpace(volsRaw), "\n")
 	type VolumeInfo struct {
 		Name string `json:"name"`

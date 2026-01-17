@@ -150,6 +150,7 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 	// Volumes (with size)
 	// Try using podman system df -v --format json to get size
 	// Structure: { "Volumes": [ {"VolumeName": "foo", "Size": "10kB", ...} ] }
+	// Note: This command may not be available in all Podman versions (exit code 125)
 	type VolumeInfo struct {
 		Name  string `json:"VolumeName"`
 		Size  string `json:"Size"`
@@ -161,7 +162,7 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 
 	volumesJSON := "[]"
 	dfRaw, err := pc.runCommand(client, "podman system df -v --format json")
-	if err == nil {
+	if err == nil && strings.TrimSpace(dfRaw) != "" {
 		// log.Printf("[PodmanDebug] Raw DF output: %s", dfRaw)
 		var sysDF SystemDF
 		// Sometimes output might be just the array if filtered, but usually object.
@@ -177,8 +178,10 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 		} else {
 			log.Printf("[PodmanCollector] Error unmarshalling system df: %v. Raw: %s", err, dfRaw)
 		}
-	} else {
-		log.Printf("[PodmanCollector] Error running system df: %v", err)
+	} else if err != nil {
+		// Silently fall back to alternative method if system df is not supported
+		// This is expected in older Podman versions or restricted environments
+		log.Printf("[PodmanCollector] 'podman system df' not available (exit 125), using fallback method for volume sizes")
 	}
 
 	// Fallback if empty or failed (system df failed)
