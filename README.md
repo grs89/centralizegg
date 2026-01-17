@@ -17,6 +17,15 @@
 
 **Centralizegg** es una solución de monitoreo ligera y containerizada para múltiples servidores KVM. Proporciona un dashboard premium en tiempo real para visualizar los recursos de tus hosts y el estado de las máquinas virtuales (VMs) de forma centralizada.
 
+[![Docker Build](https://github.com/USUARIO/REPO/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/USUARIO/REPO/actions/workflows/docker-publish.yml)
+[![Docker Hub](https://img.shields.io/docker/v/USUARIO/centralizegg?label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/USUARIO/centralizegg)
+[![Docker Pulls](https://img.shields.io/docker/pulls/USUARIO/centralizegg?logo=docker)](https://hub.docker.com/r/USUARIO/centralizegg)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+> [!TIP]
+> Reemplaza `USUARIO/REPO` con tu usuario y repositorio de GitHub en los badges anteriores.
+
+
 ## 📋 Tabla de Contenidos
 
 - [Características Principales](#-características-principales)
@@ -247,6 +256,36 @@ docker-compose logs -f app
 ```
 
 Accede al dashboard en: `http://localhost:8080`
+
+### Usar Imagen de Docker Hub (Alternativa)
+
+Si prefieres usar la imagen pre-construida desde Docker Hub en lugar de compilar localmente:
+
+```yaml
+# docker-compose.yml
+services:
+  app:
+    image: tuusuario/centralizegg:latest  # Reemplaza con tu usuario de Docker Hub
+    # ... resto de la configuración
+```
+
+O directamente con Docker:
+
+```bash
+docker pull tuusuario/centralizegg:latest
+docker run -d -p 8080:8080 \
+  -e DB_HOST=db \
+  -e DB_USER=centralizegg \
+  -e DB_PASS=centralizegg_secret \
+  -e DB_NAME=centralizegg_db \
+  -v ~/.ssh:/root/.ssh:ro \
+  tuusuario/centralizegg:latest
+```
+
+> [!NOTE]
+> La imagen de Docker Hub se construye automáticamente con GitHub Actions para arquitecturas `linux/amd64` y `linux/arm64`.
+> Ver [instrucciones de configuración](.github/DOCKER_HUB_SETUP.md) para publicar tu propia imagen.
+
 
 ## ⚙️ Configuración
 
