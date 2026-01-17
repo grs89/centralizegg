@@ -306,6 +306,19 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 			memUsage = st.Mem
 		}
 
+		// Handle PIDs as interface (can be int or string like "--")
+		var pids int
+		switch v := st.PIDs.(type) {
+		case float64:
+			pids = int(v)
+		case int:
+			pids = v
+		case string:
+			fmt.Sscanf(v, "%d", &pids)
+		default:
+			pids = 0
+		}
+
 		c := data_centralizegg.Container{
 			Name:            name,
 			Image:           pps.Image,
@@ -319,7 +332,7 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 			NetTX:           pc.parseNetBytes(st.NetIO, false),
 			BlockIn:         pc.parseNetBytes(st.BlockIO, true),
 			BlockOut:        pc.parseNetBytes(st.BlockIO, false),
-			PIDs:            st.PIDs,
+			PIDs:            pids,
 			IPAddress:       ipAddr,
 			OOMKilled:       false,  // logic to detect OOM requires podman inspect
 			Vulnerabilities: "Safe", // placeholder for vulnerability scanning
@@ -335,16 +348,17 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 }
 
 type podmanStats struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	CPUPerc  string `json:"cpu_percent"`
-	CPU      string `json:"CPU"` // fallback for some versions
-	MemUsage string `json:"mem_usage"`
-	Mem      string `json:"MemUsage"` // fallback
-	MemLimit string `json:"mem_limit"`
-	NetIO    string `json:"net_io"`
-	BlockIO  string `json:"block_io"`
-	PIDs     int    `json:"pids"`
+	ID       string `json:"ID"`
+	Name     string `json:"Name"`
+	CPUPerc  string `json:"CPUPerc"`
+	CPU      string `json:"CPU"`      // fallback
+	MemUsage string `json:"MemUsage"` // correct JSON key
+	Mem      string `json:"Mem"`      // fallback
+	MemLimit string `json:"MemLimit"` // correct JSON key could be MemUsage with limit split, but often separate not standard.
+	// Podman sometimes combines usage/limit in MemUsage.
+	NetIO   string      `json:"NetIO"`
+	BlockIO string      `json:"BlockIO"`
+	PIDs    interface{} `json:"PIDs"` // PIDs can be string "--" or number loops
 }
 
 type podmanPS struct {
@@ -357,10 +371,10 @@ type podmanPS struct {
 }
 
 type podmanPort struct {
-	HostPort      int    `json:"hostPort"`
-	ContainerPort int    `json:"containerPort"`
-	Protocol      string `json:"protocol"`
-	HostIP        string `json:"hostIP"`
+	HostPort      int    `json:"HostPort"`
+	ContainerPort int    `json:"ContainerPort"`
+	Protocol      string `json:"Protocol"`
+	HostIP        string `json:"HostIP"`
 }
 
 func (pc *PodmanCollector) formatPorts(ports []podmanPort) string {
