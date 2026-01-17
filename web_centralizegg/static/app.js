@@ -2957,7 +2957,7 @@ function renderPodmanHostDetails(hostId) {
             <!-- Right Column: Containers -->
             <div style="flex: 1; min-width: 0;">
                 <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                    Contenedores
+                    <i class="fa-solid fa-otter" style="margin-right: 8px;"></i>Contenedores
                 </div>
                 
                 <div style="display: grid; grid-template-columns: 2fr 1.5fr 0.8fr 1.2fr 1.8fr 1fr; gap: 15px; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary);">
@@ -3351,7 +3351,7 @@ const SETTINGS_CONFIG = {
     },
     'podman': {
         name: 'Podman (Contenedores)',
-        icon: 'fa-solid fa-box-archive',
+        icon: 'fa-solid fa-otter',
         title: 'Configuración de Podman',
         api: '/api/config/podman'
     }
@@ -3365,7 +3365,7 @@ const LOGS_CONFIG = {
     'pfsense': { name: 'Firewall (pfSense)', icon: 'fa-brands fa-freebsd', title: 'Logs de Firewall' },
     'docker': { name: 'Docker (Contenedores)', icon: 'fa-brands fa-docker', title: 'Logs de Docker' },
     'kubernetes': { name: 'Kubernetes (Contenedores)', icon: 'fa-solid fa-dharmachakra', title: 'Logs de Kubernetes' },
-    'podman': { name: 'Podman (Contenedores)', icon: 'fa-solid fa-box-archive', title: 'Logs de Podman' }
+    'podman': { name: 'Podman (Contenedores)', icon: 'fa-solid fa-otter', title: 'Logs de Podman' }
 };
 
 function renderLogsSidebar() {
