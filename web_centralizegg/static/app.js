@@ -1395,11 +1395,17 @@ function renderDockerHostDetails(hostId) {
     // --- FULL RENDER ---
     inner.setAttribute('data-host-id', hostId);
     inner.innerHTML = `
+        <div style="margin-bottom: 0.5rem;">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen</h2>
+            </div>
+        </div>
+
         <div style="display: grid; grid-template-columns: 350px 1fr; gap: 24px; align-items: start;">
             <!-- Left Column: Information -->
             <div style="display: flex; flex-direction: column; gap: 15px;">
                 <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                    Información
+                    Sistema y Red
                 </div>
                 
                 <div style="display: flex; flex-direction: column; gap: 10px;">
@@ -2259,8 +2265,8 @@ function renderDockerSummary() {
     const avgCpu = dockerHosts.length > 0 ? (totalCpu / dockerHosts.length).toFixed(1) : 0;
 
     scannerSection.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <h2 style="margin:0; font-size: 1.5rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen Docker</h2>
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+            <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen</h2>
         </div>
 
         <div class="glass-panel" style="padding: 80px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
@@ -2278,8 +2284,8 @@ function renderFirewallSummary() {
     if (!scannerSection) return;
 
     scannerSection.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <h2 style="margin:0; font-size: 1.5rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen</h2>
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+            <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen</h2>
         </div>
 
         <div class="glass-panel" style="padding: 80px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
@@ -2339,57 +2345,73 @@ function renderKubernetesNodeDetails(nodeId) {
     }
 
     scannerSection.innerHTML = `
-        <div class="glass-panel" style="padding: 24px; text-align: left; margin-bottom: 20px;">
-            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
-                <div>
-                    <h3 style="margin:0; font-size: 1.3rem;">${node.hostname}</h3>
-                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
-                        ${node.version} | ${node.os_name}
-                    </div>
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+            <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen</h2>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 350px 1fr; gap: 24px; align-items: start;">
+            <!-- Left Column: Information -->
+            <div style="display: flex; flex-direction: column; gap: 15px;">
+                <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    Sistema y Red
                 </div>
-                <div class="status-badge ${node.status === 'Ready' ? 'online' : 'offline'}">
-                    ${node.status}
+
+                <div class="glass-panel" style="padding: 24px; text-align: left;">
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+                        <div>
+                            <h3 style="margin:0; font-size: 1.3rem;">${node.hostname}</h3>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
+                                ${node.version} | ${node.os_name}
+                            </div>
+                        </div>
+                        <div class="status-badge ${node.status === 'Ready' ? 'online' : 'offline'}">
+                            ${node.status}
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr; gap: 12px;">
+                        <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 6px;">
+                            <span class="label" style="font-size: 0.7rem; opacity: 0.6;">Pods</span>
+                            <span class="value" style="font-weight: 700;">${node.pods_count || 0}</span>
+                        </div>
+                        <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 6px;">
+                            <span class="label" style="font-size: 0.7rem; opacity: 0.6;">CPU Usage</span>
+                            <span class="value" style="font-weight: 700;">${(node.cpu_usage || 0).toFixed(1)}%</span>
+                        </div>
+                        <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 6px;">
+                            <span class="label" style="font-size: 0.7rem; opacity: 0.6;">Memoria</span>
+                            <span class="value" style="font-weight: 700;">${formatBytes(node.total_memory - node.free_memory)} / ${formatBytes(node.total_memory)}</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
-                <div class="mini-stat-card">
-                    <span class="label">Pods</span>
-                    <span class="value">${node.pods_count || 0}</span>
+            <!-- Right Column: Pods -->
+            <div style="display: flex; flex-direction: column; gap: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h4 style="margin:0;"><i class="fa-solid fa-cubes"></i> Pods en este Nodo (${filteredPods.length})</h4>
                 </div>
-                <div class="mini-stat-card">
-                    <span class="label">CPU Usage</span>
-                    <span class="value">${(node.cpu_usage || 0).toFixed(1)}%</span>
-                </div>
-                <div class="mini-stat-card">
-                    <span class="label">Memory</span>
-                    <span class="value">${formatBytes(node.total_memory - node.free_memory)} / ${formatBytes(node.total_memory)}</span>
+
+                <div class="pod-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px;">
+                    ${filteredPods.map(p => `
+                        <div class="glass-panel pod-card" style="padding: 15px; border-left: 4px solid ${p.state === 'Running' ? '#4ade80' : '#ef4444'};">
+                            <div style="display: flex; justify-content: space-between; align-items: start;">
+                                <div style="max-width: 200px;">
+                                    <div style="font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase;">${p.namespace}</div>
+                                    <div style="font-weight: 700; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${p.name}">${p.name}</div>
+                                </div>
+                                <div style="font-size: 0.75rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: rgba(255,255,255,0.05);">
+                                    ${p.state}
+                                </div>
+                            </div>
+                            <div style="margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.8rem; color: var(--text-secondary);">
+                                <div><i class="fa-solid fa-redo" style="font-size: 0.7rem;"></i> ${p.restarts} restarts</div>
+                                <div><i class="fa-solid fa-clock" style="font-size: 0.7rem;"></i> ${p.age}</div>
+                            </div>
+                        </div>
+                    `).join('')}
                 </div>
             </div>
-        </div>
-
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-            <h4 style="margin:0;"><i class="fa-solid fa-cubes"></i> Pods en este Nodo (${filteredPods.length})</h4>
-        </div>
-
-        <div class="pod-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px;">
-            ${filteredPods.map(p => `
-                <div class="glass-panel pod-card" style="padding: 15px; border-left: 4px solid ${p.state === 'Running' ? '#4ade80' : '#ef4444'};">
-                    <div style="display: flex; justify-content: space-between; align-items: start;">
-                        <div style="max-width: 200px;">
-                            <div style="font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase;">${p.namespace}</div>
-                            <div style="font-weight: 700; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${p.name}">${p.name}</div>
-                        </div>
-                        <div style="font-size: 0.75rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: rgba(255,255,255,0.05);">
-                            ${p.state}
-                        </div>
-                    </div>
-                    <div style="margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.8rem; color: var(--text-secondary);">
-                        <div><i class="fa-solid fa-redo" style="font-size: 0.7rem;"></i> ${p.restarts} restarts</div>
-                        <div><i class="fa-solid fa-clock" style="font-size: 0.7rem;"></i> ${p.age}</div>
-                    </div>
-                </div>
-            `).join('')}
         </div>
     `;
 }
@@ -2401,8 +2423,8 @@ function renderKubernetesSummary() {
     if (!scannerSection) return;
 
     scannerSection.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <h2 style="margin:0; font-size: 1.5rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen Kubernetes</h2>
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+            <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen</h2>
         </div>
 
         <div class="glass-panel" style="padding: 80px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
@@ -2726,11 +2748,17 @@ function renderPodmanHostDetails(hostId) {
     const _n = (v) => (typeof v === 'number' && !isNaN(v)) ? v : 0;
 
     inner.innerHTML = `
+        <div style="margin-bottom: 0.5rem;">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen</h2>
+            </div>
+        </div>
+
         <div style="display: grid; grid-template-columns: 350px 1fr; gap: 24px; align-items: start;">
             <!-- Left Column: Information -->
             <div style="display: flex; flex-direction: column; gap: 15px;">
                 <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                    Información
+                    Sistema y Red
                 </div>
                 
                 <div style="display: flex; flex-direction: column; gap: 10px;">
@@ -2872,8 +2900,8 @@ function renderPodmanSummary() {
     }
 
     scannerSection.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <h2 style="margin:0; font-size: 1.5rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen Podman</h2>
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+            <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen</h2>
         </div>
 
         <div class="glass-panel" style="padding: 80px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
@@ -2933,62 +2961,78 @@ function renderProxmoxHostDetails(hostId) {
     }
 
     scannerSection.innerHTML = `
-        <div class="glass-panel" style="padding: 24px; text-align: left; margin-bottom: 20px;">
-            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
-                <div>
-                    <h3 style="margin:0; font-size: 1.3rem;">${host.hostname}</h3>
-                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
-                        PVE ${host.pve_version} | ${host.os_name}
-                    </div>
-                </div>
-                <div class="status-badge ${host.status === 'online' ? 'online' : 'offline'}">
-                    ${host.status}
-                </div>
-            </div>
-
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
-                <div class="mini-stat-card">
-                    <span class="label">CPU Usage</span>
-                    <span class="value">${(host.cpu_usage || 0).toFixed(1)}%</span>
-                </div>
-                <div class="mini-stat-card">
-                    <span class="label">Memory</span>
-                    <span class="value">${formatBytes(host.total_memory - host.free_memory)} / ${formatBytes(host.total_memory)}</span>
-                </div>
-                <div class="mini-stat-card">
-                    <span class="label">VMs / LXC</span>
-                    <span class="value">${host.vms_count} / ${host.containers_count}</span>
-                </div>
-            </div>
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+            <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen</h2>
         </div>
 
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-            <h4 style="margin:0;"><i class="fa-solid fa-server"></i> Recursos en este Nodo (${filteredVMs.length})</h4>
-        </div>
+        <div style="display: grid; grid-template-columns: 350px 1fr; gap: 24px; align-items: start;">
+            <!-- Left Column: Information -->
+            <div style="display: flex; flex-direction: column; gap: 15px;">
+                <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    Sistema y Red
+                </div>
 
-        <div class="vm-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 15px;">
-            ${filteredVMs.map(v => `
-                <div class="glass-panel vm-card" style="padding: 15px; border-left: 4px solid ${v.state === 'running' ? '#4ade80' : '#6b7280'};">
-                    <div style="display: flex; justify-content: space-between; align-items: start;">
-                        <div style="max-width: 220px;">
-                            <div style="font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase;">ID: ${v.vmid} | ${v.type.toUpperCase()}</div>
-                            <div style="font-weight: 700; font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${v.name}">${v.name}</div>
+                <div class="glass-panel" style="padding: 24px; text-align: left;">
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+                        <div>
+                            <h3 style="margin:0; font-size: 1.3rem;">${host.hostname}</h3>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
+                                PVE ${host.pve_version} | ${host.os_name}
+                            </div>
                         </div>
-                        <div style="font-size: 0.7rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: rgba(255,255,255,0.05);">
-                            ${v.state}
+                        <div class="status-badge ${host.status === 'online' ? 'online' : 'offline'}">
+                            ${host.status}
                         </div>
                     </div>
                     
-                    <div style="margin-top: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                        <div class="mini-stat">
-                            <i class="fa-solid fa-microchip"></i> ${(v.cpu_usage || 0).toFixed(1)}%
+                    <div style="display: grid; grid-template-columns: 1fr; gap: 12px;">
+                        <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 6px;">
+                            <span class="label" style="font-size: 0.7rem; opacity: 0.6;">CPU Usage</span>
+                            <span class="value" style="font-weight: 700;">${(host.cpu_usage || 0).toFixed(1)}%</span>
                         </div>
-                        <div class="mini-stat">
-                            <i class="fa-solid fa-memory"></i> ${formatBytes(v.memory_usage)}
+                        <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 6px;">
+                            <span class="label" style="font-size: 0.7rem; opacity: 0.6;">Memoria</span>
+                            <span class="value" style="font-weight: 700;">${formatBytes(host.total_memory - host.free_memory)} / ${formatBytes(host.total_memory)}</span>
+                        </div>
+                        <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 6px;">
+                            <span class="label" style="font-size: 0.7rem; opacity: 0.6;">VMs / LXC</span>
+                            <span class="value" style="font-weight: 700;">${host.vms_count} / ${host.containers_count}</span>
                         </div>
                     </div>
                 </div>
-            `).join('')}
+            </div>
+
+            <!-- Right Column: VMs -->
+            <div style="display: flex; flex-direction: column; gap: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h4 style="margin:0;"><i class="fa-solid fa-server"></i> Recursos en este Nodo (${filteredVMs.length})</h4>
+                </div>
+
+                <div class="vm-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 15px;">
+                    ${filteredVMs.map(v => `
+                        <div class="glass-panel vm-card" style="padding: 15px; border-left: 4px solid ${v.state === 'running' ? '#4ade80' : '#6b7280'};">
+                            <div style="display: flex; justify-content: space-between; align-items: start;">
+                                <div style="max-width: 220px;">
+                                    <div style="font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase;">ID: ${v.vmid} | ${v.type.toUpperCase()}</div>
+                                    <div style="font-weight: 700; font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${v.name}">${v.name}</div>
+                                </div>
+                                <div style="font-size: 0.7rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: rgba(255,255,255,0.05);">
+                                    ${v.state}
+                                </div>
+                            </div>
+                            
+                            <div style="margin-top: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                <div class="mini-stat">
+                                    <i class="fa-solid fa-microchip"></i> ${(v.cpu_usage || 0).toFixed(1)}%
+                                </div>
+                                <div class="mini-stat">
+                                    <i class="fa-solid fa-memory"></i> ${formatBytes(v.memory_usage)}
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
         </div>
     `;
 }
@@ -3000,8 +3044,8 @@ function renderProxmoxSummary() {
     if (!scannerSection) return;
 
     scannerSection.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <h2 style="margin:0; font-size: 1.5rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen Proxmox</h2>
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+            <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen</h2>
         </div>
 
         <div class="glass-panel" style="padding: 80px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
@@ -3058,73 +3102,89 @@ function renderNasHostDetails(hostId) {
     const disks = allNasDisksCache.filter(d => d.host_id === hostId);
 
     scannerSection.innerHTML = `
-        <div class="glass-panel" style="padding: 24px; text-align: left; margin-bottom: 20px;">
-            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
-                <div>
-                    <h3 style="margin:0; font-size: 1.3rem;">${host.hostname}</h3>
-                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
-                        ${host.os_name} | ${host.uptime}
-                    </div>
-                </div>
-                <div class="status-badge ${host.status === 'online' ? 'online' : 'offline'}">
-                    ${host.status}
-                </div>
-            </div>
-
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
-                <div class="mini-stat-card">
-                    <span class="label">CPU Usage</span>
-                    <span class="value">${(host.cpu_usage || 0).toFixed(1)}%</span>
-                </div>
-                <div class="mini-stat-card">
-                    <span class="label">Memory</span>
-                    <span class="value">${formatBytes(host.total_memory - host.free_memory)} / ${formatBytes(host.total_memory)}</span>
-                </div>
-                <div class="mini-stat-card">
-                    <span class="label">Kernel</span>
-                    <span class="value" style="font-size:0.7rem;">${host.kernel_version}</span>
-                </div>
-            </div>
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+            <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen</h2>
         </div>
 
-        <div style="margin-bottom: 20px;">
-            <h4 style="margin-bottom: 15px;"><i class="fa-solid fa-hard-drive"></i> Volúmenes de Almacenamiento (${volumes.length})</h4>
-            <div class="vm-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px;">
-                ${volumes.map(v => {
-        const pct = (v.used_size / v.total_size * 100) || 0;
-        return `
-                    <div class="glass-panel" style="padding: 15px;">
-                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
-                            <div style="font-weight: 700;">${v.name}</div>
-                            <div style="font-size: 0.75rem; opacity: 0.6;">${v.type}</div>
-                        </div>
-                        <div class="progress-container" style="height: 8px; margin-bottom: 8px;">
-                            <div class="progress-bar" style="width: ${pct}%; background: ${getStatusColor(pct)};"></div>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; font-size: 0.8rem;">
-                            <span>${formatBytes(v.used_size)} / ${formatBytes(v.total_size)}</span>
-                            <span style="font-weight: 600;">${pct.toFixed(1)}%</span>
-                        </div>
-                    </div>
-                `}).join('')}
-            </div>
-        </div>
+        <div style="display: grid; grid-template-columns: 350px 1fr; gap: 24px; align-items: start;">
+            <!-- Left Column: Information -->
+            <div style="display: flex; flex-direction: column; gap: 15px;">
+                <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    Sistema y Red
+                </div>
 
-        <div>
-            <h4 style="margin-bottom: 15px;"><i class="fa-solid fa-compact-disc"></i> Discos Físicos (${disks.length})</h4>
-            <div class="container-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px;">
-                ${disks.map(d => `
-                    <div class="glass-panel" style="padding: 15px; border-left: 4px solid ${d.status === 'healthy' ? '#4ade80' : '#f87171'};">
-                        <div style="display: flex; justify-content: space-between; align-items: start;">
-                            <div style="font-weight: 600;">${d.name}</div>
-                            <div style="font-size: 0.75rem; color: ${d.temp > 45 ? '#fbbf24' : 'inherit'};">
-                                <i class="fa-solid fa-temperature-half"></i> ${d.temp}°C
+                <div class="glass-panel" style="padding: 24px; text-align: left;">
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+                        <div>
+                            <h3 style="margin:0; font-size: 1.3rem;">${host.hostname}</h3>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
+                                ${host.os_name} | ${host.uptime}
                             </div>
                         </div>
-                        <div style="font-size: 0.75rem; opacity: 0.6; margin: 4px 0;">${d.model}</div>
-                        <div style="font-size: 0.8rem; margin-top: 8px;">Capacidad: ${formatBytes(d.size)}</div>
+                        <div class="status-badge ${host.status === 'online' ? 'online' : 'offline'}">
+                            ${host.status}
+                        </div>
                     </div>
-                `).join('')}
+                    
+                    <div style="display: grid; grid-template-columns: 1fr; gap: 12px;">
+                        <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 6px;">
+                            <span class="label" style="font-size: 0.7rem; opacity: 0.6;">CPU Usage</span>
+                            <span class="value" style="font-weight: 700;">${(host.cpu_usage || 0).toFixed(1)}%</span>
+                        </div>
+                        <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 6px;">
+                            <span class="label" style="font-size: 0.7rem; opacity: 0.6;">Memoria</span>
+                            <span class="value" style="font-weight: 700;">${formatBytes(host.total_memory - host.free_memory)} / ${formatBytes(host.total_memory)}</span>
+                        </div>
+                        <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 6px;">
+                            <span class="label" style="font-size: 0.7rem; opacity: 0.6;">Kernel</span>
+                            <span class="value" style="font-weight: 700; font-size: 0.75rem;">${host.kernel_version}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Monitoring data -->
+            <div style="display: flex; flex-direction: column; gap: 20px;">
+                <div style="margin-bottom: 0;">
+                    <h4 style="margin-bottom: 15px;"><i class="fa-solid fa-hard-drive"></i> Volúmenes de Almacenamiento (${volumes.length})</h4>
+                    <div class="vm-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px;">
+                        ${volumes.map(v => {
+        const pct = (v.used_size / v.total_size * 100) || 0;
+        return `
+                            <div class="glass-panel" style="padding: 15px; border: 1px solid rgba(255,255,255,0.05);">
+                                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                                    <div style="font-weight: 700;">${v.name}</div>
+                                    <div style="font-size: 0.75rem; opacity: 0.6;">${v.type}</div>
+                                </div>
+                                <div class="progress-container" style="height: 8px; margin-bottom: 8px;">
+                                    <div class="progress-bar" style="width: ${pct}%; background: ${getStatusColor(pct)};"></div>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; font-size: 0.8rem;">
+                                    <span>${formatBytes(v.used_size)} / ${formatBytes(v.total_size)}</span>
+                                    <span style="font-weight: 600;">${pct.toFixed(1)}%</span>
+                                </div>
+                            </div>
+                        `}).join('')}
+                    </div>
+                </div>
+
+                <div>
+                    <h4 style="margin-bottom: 15px;"><i class="fa-solid fa-compact-disc"></i> Discos Físicos (${disks.length})</h4>
+                    <div class="container-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px;">
+                        ${disks.map(d => `
+                            <div class="glass-panel" style="padding: 15px; border-left: 4px solid ${d.status === 'healthy' ? '#4ade80' : '#f87171'}; border-top: 1px solid rgba(255,255,255,0.05);">
+                                <div style="display: flex; justify-content: space-between; align-items: start;">
+                                    <div style="font-weight: 600;">${d.name}</div>
+                                    <div style="font-size: 0.75rem; color: ${d.temp > 45 ? '#fbbf24' : 'inherit'};">
+                                        <i class="fa-solid fa-temperature-half"></i> ${d.temp}°C
+                                    </div>
+                                </div>
+                                <div style="font-size: 0.75rem; opacity: 0.6; margin: 4px 0;">${d.model}</div>
+                                <div style="font-size: 0.8rem; margin-top: 8px;">Capacidad: ${formatBytes(d.size)}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
             </div>
         </div>
     `;
@@ -3137,8 +3197,8 @@ function renderNasSummary() {
     if (!scannerSection) return;
 
     scannerSection.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <h2 style="margin:0; font-size: 1.5rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen NAS</h2>
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+            <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen</h2>
         </div>
 
         <div class="glass-panel" style="padding: 80px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
@@ -3765,7 +3825,7 @@ function renderFirewallHostDetails(hostId) {
 
     const statsHTML = `
         <div style="margin-bottom: 0.5rem;">
-            <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 8px;">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
                 <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen</h2>
             </div>
         </div>
@@ -3777,7 +3837,7 @@ function renderFirewallHostDetails(hostId) {
                     
                     <!-- System Info Section -->
                     <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 5px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                        Información
+                        Sistema y Red
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 10px;">
                         <!-- OS Card -->
