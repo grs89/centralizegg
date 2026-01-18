@@ -3204,19 +3204,6 @@ async function renderKubernetesServerDetails(serverId) {
                                 </div>
                             </div>
 
-                            <!-- Network Map Card -->
-                            <div style="margin-top: 20px;">
-                                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 15px; padding-bottom: 10px;">
-                                        <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9;">
-                                            Mapa de Red del Cluster
-                                        </div>
-                                        <i class="fa-solid fa-flask" onclick="window.toggleK8sMapDebug()" title="Toggle Debug Mode" style="cursor: pointer; color: var(--text-secondary); font-size: 1rem; opacity: 0.5; transition: opacity 0.2s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5"></i>
-                                    </div>
-                                <div id="k8s-map-wrapper" class="glass-panel" style="padding: 20px;">
-                                    <div id="k8s-topology-map" style="height: 500px; width: 100%; border-radius: 8px;"></div>
-                                </div>
-                            </div>
-
                             <!-- Events Card -->
                             <div style="margin-top: 20px;">
                                 <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1);">
@@ -3228,6 +3215,19 @@ async function renderKubernetesServerDetails(serverId) {
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Network Map Card -->
+                    <div style="margin-top: 30px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 15px; padding-bottom: 10px;">
+                            <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9;">
+                                Mapa de Red del Cluster
+                            </div>
+                            <i class="fa-solid fa-flask" onclick="window.toggleK8sMapDebug()" title="Toggle Debug Mode" style="cursor: pointer; color: var(--text-secondary); font-size: 1rem; opacity: 0.5; transition: opacity 0.2s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5"></i>
+                        </div>
+                        <div id="k8s-map-wrapper" class="glass-panel" style="padding: 24px;">
+                            <div id="k8s-topology-map" style="height: 500px; width: 100%; border-radius: 8px;"></div>
                         </div>
                     </div>
 
@@ -6002,7 +6002,7 @@ class DockerTopologyMap {
         // Column 1: Internet (Left)
         const internetNode = this.nodes.find(n => n.type === 'internet');
         if (internetNode) {
-            internetNode.x = 80;
+            internetNode.x = Math.max(80, this.width * 0.1);
             internetNode.y = centerY;
         }
 
@@ -6012,7 +6012,7 @@ class DockerTopologyMap {
         const netStartY = centerY - ((networkNodes.length - 1) * netYSpacing) / 2;
 
         networkNodes.forEach((node, i) => {
-            node.x = 300;
+            node.x = this.width * 0.4;
             node.y = netStartY + (i * netYSpacing);
         });
 
@@ -6022,7 +6022,7 @@ class DockerTopologyMap {
         const contStartY = centerY - ((containerNodes.length - 1) * contYSpacing) / 2;
 
         containerNodes.forEach((node, i) => {
-            node.x = 550;
+            node.x = Math.min(this.width - 80, this.width * 0.85);
             node.y = contStartY + (i * contYSpacing);
 
             // Try to align containers slightly closer to their connected network on Y axis
@@ -6221,7 +6221,7 @@ class KubernetesTopologyMap {
         // Column 1: Internet (Left)
         const internetNode = this.nodes.find(n => n.type === 'internet');
         if (internetNode) {
-            internetNode.x = 80;
+            internetNode.x = Math.max(80, this.width * 0.1);
             internetNode.y = centerY;
         }
 
@@ -6231,7 +6231,7 @@ class KubernetesTopologyMap {
         const svcStartY = centerY - ((serviceNodes.length - 1) * svcYSpacing) / 2;
 
         serviceNodes.forEach((node, i) => {
-            node.x = 300;
+            node.x = this.width * 0.4;
             node.y = svcStartY + (i * svcYSpacing);
         });
 
@@ -6241,7 +6241,7 @@ class KubernetesTopologyMap {
         const podStartY = centerY - ((podNodes.length - 1) * podYSpacing) / 2;
 
         podNodes.forEach((node, i) => {
-            node.x = 550;
+            node.x = Math.min(this.width - 80, this.width * 0.85);
             node.y = podStartY + (i * podYSpacing);
 
             // Pull pods towards their connected services
