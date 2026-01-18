@@ -618,6 +618,52 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 		}
 	}
 
+	// 6. Collect Kubernetes Events
+	var eventsJSON string
+	if isLocal {
+		eventsJSON, _ = kc.runLocalCommand(kubectlCmd + " get events --all-namespaces -o json")
+	} else {
+		eventsJSON, _ = kc.runCommand(client, kubectlCmd+" get events --all-namespaces -o json", "")
+	}
+
+	if eventsJSON != "" {
+		var eventList struct {
+			Items []struct {
+				Type           string `json:"type"`
+				Reason         string `json:"reason"`
+				Message        string `json:"message"`
+				InvolvedObject struct {
+					Kind      string `json:"kind"`
+					Name      string `json:"name"`
+					Namespace string `json:"namespace"`
+				} `json:"involvedObject"`
+				Count          int    `json:"count"`
+				FirstTimestamp string `json:"firstTimestamp"`
+				LastTimestamp  string `json:"lastTimestamp"`
+			} `json:"items"`
+		}
+		if err := json.Unmarshal([]byte(eventsJSON), &eventList); err == nil {
+			for _, item := range eventList.Items {
+				firstSeen, _ := time.Parse(time.RFC3339, item.FirstTimestamp)
+				lastSeen, _ := time.Parse(time.RFC3339, item.LastTimestamp)
+
+				event := data_centralizegg.KubernetesEvent{
+					ServerID:   s.ID,
+					Type:       item.Type,
+					Reason:     item.Reason,
+					Message:    item.Message,
+					ObjectKind: item.InvolvedObject.Kind,
+					ObjectName: item.InvolvedObject.Name,
+					Namespace:  item.InvolvedObject.Namespace,
+					Count:      item.Count,
+					FirstSeen:  firstSeen,
+					LastSeen:   lastSeen,
+				}
+				kc.DB.UpsertKubernetesEvent(event)
+			}
+		}
+	}
+
 	return nil
 }
 

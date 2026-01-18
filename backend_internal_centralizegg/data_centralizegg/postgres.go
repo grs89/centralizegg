@@ -200,6 +200,20 @@ type KubernetesPV struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
+type KubernetesEvent struct {
+	ID         int64     `json:"id"`
+	ServerID   int64     `json:"server_id"`
+	Type       string    `json:"type"` // Normal, Warning, Error
+	Reason     string    `json:"reason"`
+	Message    string    `json:"message"`
+	ObjectKind string    `json:"object_kind"` // Pod, Node, Deployment, etc.
+	ObjectName string    `json:"object_name"`
+	Namespace  string    `json:"namespace"`
+	Count      int       `json:"count"`
+	FirstSeen  time.Time `json:"first_seen"`
+	LastSeen   time.Time `json:"last_seen"`
+}
+
 type ProxmoxHost struct {
 	ID          int64   `json:"id"`
 	ServerID    int64   `json:"server_id"`
@@ -657,6 +671,20 @@ func ensureSchema(db *sql.DB) {
 			storage_class VARCHAR(255),
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE(server_id, name)
+		)`,
+		`CREATE TABLE IF NOT EXISTS kubernetes.events (
+			id SERIAL PRIMARY KEY,
+			server_id INT REFERENCES kubernetes.kubernetes_servers(id) ON DELETE CASCADE,
+			type VARCHAR(50) NOT NULL,
+			reason VARCHAR(255) NOT NULL,
+			message TEXT,
+			object_kind VARCHAR(100),
+			object_name VARCHAR(255),
+			namespace VARCHAR(255),
+			count INT DEFAULT 1,
+			first_seen TIMESTAMP,
+			last_seen TIMESTAMP,
+			UNIQUE(server_id, namespace, object_kind, object_name, reason, message)
 		)`,
 		`CREATE TABLE IF NOT EXISTS kubernetes.pods (
 			id SERIAL PRIMARY KEY,
@@ -1379,6 +1407,55 @@ func (d *DB) GetAllKubernetesPVs() ([]KubernetesPV, error) {
 		pvs = append(pvs, pv)
 	}
 	return pvs, nil
+}
+
+// UpsertKubernetesEvent inserts or updates a Kubernetes event
+func (d *DB) UpsertKubernetesEvent(e KubernetesEvent) error {
+	var id int64
+	err := d.Conn.QueryRow(`
+		SELECT id FROM kubernetes.events 
+		WHERE server_id = $1 AND namespace = $2 AND object_kind = $3 AND object_name = $4 AND reason = $5 AND message = $6`,
+		e.ServerID, e.Namespace, e.ObjectKind, e.ObjectName, e.Reason, e.Message).Scan(&id)
+
+	if err == sql.ErrNoRows {
+		// Insert new event
+		_, err = d.Conn.Exec(`
+			INSERT INTO kubernetes.events (server_id, type, reason, message, object_kind, object_name, namespace, count, first_seen, last_seen)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+			e.ServerID, e.Type, e.Reason, e.Message, e.ObjectKind, e.ObjectName, e.Namespace, e.Count, e.FirstSeen, e.LastSeen)
+	} else if err == nil {
+		// Update existing event
+		_, err = d.Conn.Exec(`
+			UPDATE kubernetes.events 
+			SET type = $1, count = $2, last_seen = $3 
+			WHERE id = $4`,
+			e.Type, e.Count, e.LastSeen, id)
+	}
+	return err
+}
+
+// GetKubernetesEvents returns the last 50 events for all Kubernetes servers, sorted by last_seen DESC
+func (d *DB) GetKubernetesEvents() ([]KubernetesEvent, error) {
+	query := `
+		SELECT id, server_id, type, reason, message, object_kind, object_name, namespace, count, first_seen, last_seen 
+		FROM kubernetes.events 
+		ORDER BY last_seen DESC 
+		LIMIT 50`
+	rows, err := d.Conn.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []KubernetesEvent
+	for rows.Next() {
+		var e KubernetesEvent
+		if err := rows.Scan(&e.ID, &e.ServerID, &e.Type, &e.Reason, &e.Message, &e.ObjectKind, &e.ObjectName, &e.Namespace, &e.Count, &e.FirstSeen, &e.LastSeen); err != nil {
+			return nil, err
+		}
+		events = append(events, e)
+	}
+	return events, nil
 }
 
 func (d *DB) UpsertDockerHost(h DockerHost) (int64, error) {

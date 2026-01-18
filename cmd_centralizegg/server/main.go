@@ -174,6 +174,20 @@ func main() {
 		}
 		json.NewEncoder(w).Encode(pvs)
 	}).Methods("GET")
+
+	// Kubernetes events API
+	r.HandleFunc("/api/kubernetes/events", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s", r.Method, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		events, err := db.GetKubernetesEvents()
+		if err != nil {
+			log.Printf("Error GetKubernetesEvents: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(events)
+	}).Methods("GET")
+
 	// Podman hosts API
 	r.HandleFunc("/api/podman/hosts", func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("%s %s", r.Method, r.URL.Path)

@@ -9,6 +9,7 @@ const API_CONTAINER_CONTAINERS = '/api/containers/containers';
 const API_KUBERNETES_NODES = '/api/kubernetes/nodes';
 const API_KUBERNETES_PODS = '/api/kubernetes/pods';
 const API_KUBERNETES_PVS = '/api/kubernetes/pvs';
+const API_KUBERNETES_EVENTS = '/api/kubernetes/events';
 const API_PODMAN_HOSTS = '/api/podman/hosts';
 const API_PODMAN_CONTAINERS = '/api/podman/containers';
 const API_PROXMOX_HOSTS = '/api/proxmox/hosts';
@@ -2763,6 +2764,49 @@ async function renderKubernetesServerDetails(serverId) {
                     });
             }
 
+            // Fetch and render events
+            const eventsListEl = document.getElementById('k8s-events-list');
+            if (eventsListEl) {
+                fetch(API_KUBERNETES_EVENTS)
+                    .then(res => res.json())
+                    .then(events => {
+                        const clusterEvents = events.filter(e => e.server_id === selectedKubernetesServerId)
+                            .slice(0, 10); // Show last 10 events
+
+                        if (clusterEvents.length === 0) {
+                            eventsListEl.innerHTML = '<div style="color: var(--text-secondary); font-size: 0.75rem; text-align: center; padding: 20px;">No hay eventos recientes</div>';
+                            return;
+                        }
+
+                        eventsListEl.innerHTML = clusterEvents.map(event => {
+                            const typeColor = event.type === 'Warning' ? '#fbbf24' : event.type === 'Error' ? '#ef4444' : '#38bdf8';
+                            const typeIcon = event.type === 'Warning' ? 'triangle-exclamation' : event.type === 'Error' ? 'circle-exclamation' : 'circle-info';
+                            const lastSeen = new Date(event.last_seen);
+                            const timeAgo = getRelativeTime(lastSeen);
+
+                            return `
+                                <div style="padding: 12px 18px; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; gap: 12px; align-items: start;">
+                                    <i class="fa-solid fa-${typeIcon}" style="color: ${typeColor}; font-size: 0.9rem; margin-top: 2px;"></i>
+                                    <div style="flex: 1; min-width: 0;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                            <span style="font-weight: 600; font-size: 0.75rem; color: var(--text-primary);">${event.reason}</span>
+                                            <span style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.7;">${timeAgo}</span>
+                                        </div>
+                                        <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 4px; line-height: 1.4;">${event.message}</div>
+                                        <div style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.6;">
+                                            ${event.object_kind}/${event.object_name} ${event.namespace ? `· ${event.namespace}` : ''}
+                                            ${event.count > 1 ? `· ${event.count}x` : ''}
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('');
+                    })
+                    .catch(err => {
+                        eventsListEl.innerHTML = '<div style="color: #ef4444; font-size: 0.75rem; text-align: center; padding: 20px;">Error al cargar eventos</div>';
+                    });
+            }
+
 
             const gridEl = document.getElementById('k8s-node-grid');
             if (gridEl) {
@@ -3046,6 +3090,18 @@ async function renderKubernetesServerDetails(serverId) {
                                 <div id="k8s-node-grid" style="display: flex; flex-direction: column;">
                                     ${renderNodeCards()}
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Events Card -->
+                    <div style="margin-top: 20px;">
+                        <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                            Eventos del Cluster
+                        </div>
+                        <div class="glass-panel" style="padding: 0; overflow: hidden;">
+                            <div id="k8s-events-list" style="display: flex; flex-direction: column; max-height: 400px; overflow-y: auto;">
+                                <div style="color: var(--text-secondary); font-size: 0.75rem; text-align: center; padding: 20px;">Cargando eventos...</div>
                             </div>
                         </div>
                     </div>
