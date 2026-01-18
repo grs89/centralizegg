@@ -36,6 +36,10 @@ let currentTool = 'virtualization'; // default
 let currentServers = [];
 let currentFirewallServers = [];
 let currentDockerServers = []; // Global for Docker
+let currentPodmanServers = [];
+let currentKubernetesServers = [];
+let currentProxmoxServers = [];
+let currentNasServers = [];
 let lastNotificationCount = 0; // Track previous count for sound
 
 // Sound Effect: Web Audio API Oscillator (Clean "Ping")
@@ -3765,8 +3769,44 @@ async function checkServerStatus() {
             currentDockerServers = await dockerResponse.json() || [];
         }
 
+        // Check Podman servers
+        const podmanApi = getConfigAPIForTool('podman');
+        const podmanResponse = await fetch(podmanApi);
+        if (podmanResponse.ok) {
+            currentPodmanServers = await podmanResponse.json() || [];
+        }
+
+        // Check Kubernetes servers
+        const k8sApi = getConfigAPIForTool('kubernetes');
+        const k8sResponse = await fetch(k8sApi);
+        if (k8sResponse.ok) {
+            currentKubernetesServers = await k8sResponse.json() || [];
+        }
+
+        // Check Proxmox servers
+        const proxmoxApi = getConfigAPIForTool('proxmox');
+        const proxmoxResponse = await fetch(proxmoxApi);
+        if (proxmoxResponse.ok) {
+            currentProxmoxServers = await proxmoxResponse.json() || [];
+        }
+
+        // Check NAS servers
+        const nasApi = getConfigAPIForTool('nas');
+        const nasResponse = await fetch(nasApi);
+        if (nasResponse.ok) {
+            currentNasServers = await nasResponse.json() || [];
+        }
+
         // Combined notification logic
-        const allServers = [...currentServers, ...currentFirewallServers, ...currentDockerServers];
+        const allServers = [
+            ...currentServers,
+            ...currentFirewallServers,
+            ...currentDockerServers,
+            ...currentPodmanServers,
+            ...currentKubernetesServers,
+            ...currentProxmoxServers,
+            ...currentNasServers
+        ];
         const offlineServers = allServers.filter(s => s.status === 'offline');
         const badge = document.getElementById('notification-count');
         const list = document.getElementById('notification-list');
