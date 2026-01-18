@@ -2699,6 +2699,43 @@ async function renderKubernetesServerDetails(serverId) {
             if (clusterStatusEl) {
                 clusterStatusEl.textContent = server.status || 'offline';
                 clusterStatusEl.style.color = server.status === 'online' ? '#4ade80' : '#ef4444';
+                clusterStatusEl.style.background = server.status === 'online' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+                clusterStatusEl.style.borderColor = server.status === 'online' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)';
+            }
+
+            const apiStatusEl = document.getElementById('k8s-api-status');
+            if (apiStatusEl) {
+                apiStatusEl.textContent = server.status === 'online' ? 'ACTIVE' : 'OFFLINE';
+                apiStatusEl.style.color = server.status === 'online' ? '#4ade80' : '#ef4444';
+                apiStatusEl.style.background = server.status === 'online' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+                apiStatusEl.style.borderColor = server.status === 'online' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)';
+            }
+
+            const cpCompEl = document.getElementById('k8s-cp-components');
+            if (cpCompEl) {
+                let cpStatus = {};
+                try {
+                    cpStatus = JSON.parse(server.control_plane_status || '{}');
+                } catch (e) { }
+
+                const components = ['etcd', 'scheduler', 'controller-manager'];
+                cpCompEl.innerHTML = components.map(comp => {
+                    let status = cpStatus[comp] || cpStatus[`kube-${comp}`] || 'Unknown';
+                    if (server.status !== 'online') status = 'Offline';
+                    const isHealthy = status === 'Healthy';
+                    const statusColor = isHealthy ? '#4ade80' : (status === 'Offline' ? '#94a3b8' : '#ef4444');
+                    const statusBg = isHealthy ? 'rgba(34, 197, 94, 0.1)' : (status === 'Offline' ? 'rgba(148, 163, 184, 0.1)' : 'rgba(239, 68, 68, 0.1)');
+                    const statusBorder = isHealthy ? 'rgba(34, 197, 94, 0.2)' : (status === 'Offline' ? 'rgba(148, 163, 184, 0.2)' : 'rgba(239, 68, 68, 0.2)');
+
+                    return `
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                            <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color);">${comp}</div>
+                            <span style="font-weight: 700; font-size: 0.65rem; color: ${statusColor}; text-transform: uppercase; background: ${statusBg}; padding: 2px 5px; border-radius: 3px; border: 1px solid ${statusBorder};">
+                                ${status}
+                            </span>
+                        </div>
+                    `;
+                }).join('');
             }
 
             const k8sVersionEl = document.getElementById('k8s-cluster-version');
@@ -2714,12 +2751,15 @@ async function renderKubernetesServerDetails(serverId) {
             const storageTotalEl = document.getElementById('k8s-cluster-storage-total');
             const storageBarEl = document.getElementById('k8s-cluster-storage-bar');
 
+            const storageLabelEl = storageUsedEl?.closest('div')?.querySelector('span');
+            if (storageLabelEl) storageLabelEl.textContent = 'Capacidad Reservada (Total)';
+
             if (storageUsedEl) storageUsedEl.textContent = formatBytes(server.storage_used, 1);
             if (storageTotalEl) storageTotalEl.textContent = formatBytes(server.storage_total, 1);
             if (storageBarEl) {
                 const percent = server.storage_total > 0 ? (server.storage_used / server.storage_total * 100) : 0;
                 storageBarEl.style.width = `${percent}%`;
-                storageBarEl.style.background = getStatusColor(percent);
+                storageBarEl.style.background = '#38bdf8'; // Neutral blue for reservation
             }
 
             const pvListEl = document.getElementById('k8s-pv-list');
@@ -2867,10 +2907,11 @@ async function renderKubernetesServerDetails(serverId) {
                                     </div>
                                     <div style="display: flex; justify-content: space-between; align-items: center;">
                                         <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color);">API Server</div>
-                                        <span id="k8s-api-status" style="font-weight: 800; font-size: 0.7rem; color: #4ade80; text-transform: uppercase; background: rgba(34, 197, 94, 0.1); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(34, 197, 94, 0.2);">
-                                            ACTIVE
+                                        <span id="k8s-api-status" style="font-weight: 800; font-size: 0.7rem; color: ${server.status === 'online' ? '#4ade80' : '#ef4444'}; text-transform: uppercase; background: ${server.status === 'online' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; padding: 2px 6px; border-radius: 4px; border: 1px solid ${server.status === 'online' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'};">
+                                            ${server.status === 'online' ? 'ACTIVE' : 'OFFLINE'}
                                         </span>
                                     </div>
+                                    <div id="k8s-cp-components">
                                     ${(() => {
                 let cpStatus = {};
                 try {
@@ -2879,18 +2920,24 @@ async function renderKubernetesServerDetails(serverId) {
 
                 const components = ['etcd', 'scheduler', 'controller-manager'];
                 return components.map(comp => {
-                    const status = cpStatus[comp] || cpStatus[`kube-${comp}`] || 'Unknown';
+                    let status = cpStatus[comp] || cpStatus[`kube-${comp}`] || 'Unknown';
+                    if (server.status !== 'online') status = 'Offline';
                     const isHealthy = status === 'Healthy';
+                    const statusColor = isHealthy ? '#4ade80' : (status === 'Offline' ? '#94a3b8' : '#ef4444');
+                    const statusBg = isHealthy ? 'rgba(34, 197, 94, 0.1)' : (status === 'Offline' ? 'rgba(148, 163, 184, 0.1)' : 'rgba(239, 68, 68, 0.1)');
+                    const statusBorder = isHealthy ? 'rgba(34, 197, 94, 0.2)' : (status === 'Offline' ? 'rgba(148, 163, 184, 0.2)' : 'rgba(239, 68, 68, 0.2)');
+
                     return `
                                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
                                                     <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color);">${comp}</div>
-                                                    <span style="font-weight: 700; font-size: 0.65rem; color: ${isHealthy ? '#4ade80' : '#ef4444'}; text-transform: uppercase; background: ${isHealthy ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; padding: 2px 5px; border-radius: 3px; border: 1px solid ${isHealthy ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'};">
+                                                    <span style="font-weight: 700; font-size: 0.65rem; color: ${statusColor}; text-transform: uppercase; background: ${statusBg}; padding: 2px 5px; border-radius: 3px; border: 1px solid ${statusBorder};">
                                                         ${status}
                                                     </span>
                                                 </div>
                                             `;
                 }).join('');
             })()}
+                                    </div>
                                 </div>
 
                                 <!-- System Card -->
@@ -3077,20 +3124,6 @@ async function renderKubernetesServerDetails(serverId) {
                                 Almacenamiento
                             </div>
 
-                            <!-- Storage Card -->
-                            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
-                                <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 10px;">Almacenamiento del Cluster</div>
-                                <div style="display: flex; flex-direction: column; gap: 4px;">
-                                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem;">
-                                        <span style="color: var(--text-secondary);">Recursos Persistentes (Total)</span>
-                                        <span style="font-weight: 600;"><span id="k8s-cluster-storage-used">${formatBytes(server.storage_used, 1)}</span> / <span id="k8s-cluster-storage-total">${formatBytes(server.storage_total, 1)}</span></span>
-                                    </div>
-                                    <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
-                                        <div id="k8s-cluster-storage-bar" style="height: 100%; width: ${server.storage_total > 0 ? (server.storage_used / server.storage_total * 100) : 0}%; background: ${getStatusColor(server.storage_total > 0 ? (server.storage_used / server.storage_total * 100) : 0)};"></div>
-                                    </div>
-                                </div>
-                            </div>
-
                             <!-- Storage Resources Summary Card -->
                             <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
                                 <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 10px;">Recursos de Almacenamiento</div>
@@ -3115,6 +3148,20 @@ async function renderKubernetesServerDetails(serverId) {
                                             Storage Classes
                                         </span>
                                         <span style="font-weight: 700; color: var(--text-primary);" id="k8s-sc-count">0</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Storage Card -->
+                            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
+                                <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 10px;">Almacenamiento del Cluster</div>
+                                <div style="display: flex; flex-direction: column; gap: 4px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem;">
+                                        <span style="color: var(--text-secondary);">Capacidad Reservada (Total)</span>
+                                        <span style="font-weight: 600;"><span id="k8s-cluster-storage-used">${formatBytes(server.storage_used, 1)}</span> / <span id="k8s-cluster-storage-total">${formatBytes(server.storage_total, 1)}</span></span>
+                                    </div>
+                                    <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
+                                        <div id="k8s-cluster-storage-bar" style="height: 100%; width: ${server.storage_total > 0 ? (server.storage_used / server.storage_total * 100) : 0}%; background: #38bdf8;"></div>
                                     </div>
                                 </div>
                             </div>

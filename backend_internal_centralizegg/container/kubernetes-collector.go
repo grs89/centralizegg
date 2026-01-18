@@ -86,6 +86,8 @@ func (kc *KubernetesCollector) CollectAll() {
 		if err := kc.collectOne(s); err != nil {
 			log.Printf("[KubernetesCollector] Failed to collect from Kubernetes %s (%s): %v", s.Name, s.IPAddress, err)
 			kc.DB.SetGenericServerStatus("kubernetes", s.ID, "offline")
+			kc.DB.UpdateControlPlaneStatus("kubernetes", s.ID, "{}")
+			kc.DB.ClearKubernetesNodesStatus(s.ID)
 			continue
 		}
 		log.Printf("[KubernetesCollector] Successfully collected from %s.", s.Name)

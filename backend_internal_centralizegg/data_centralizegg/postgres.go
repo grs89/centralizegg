@@ -1421,6 +1421,13 @@ func (d *DB) GetAllKubernetesPVs() ([]KubernetesPV, error) {
 	return pvs, nil
 }
 
+// ClearKubernetesNodesStatus marks all nodes for a given server as "Unknown"
+func (d *DB) ClearKubernetesNodesStatus(serverID int64) error {
+	query := `UPDATE kubernetes.nodes SET status = 'Unknown' WHERE server_id = $1`
+	_, err := d.Conn.Exec(query, serverID)
+	return err
+}
+
 // UpsertKubernetesEvent inserts or updates a Kubernetes event
 func (d *DB) UpsertKubernetesEvent(e KubernetesEvent) error {
 	var id int64
