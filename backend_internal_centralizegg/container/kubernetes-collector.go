@@ -402,6 +402,7 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 			}
 
 			nodePodsCount := make(map[string]int)
+			var activePodKeys []string
 
 			for _, item := range podListView.Items {
 				nodeID, ok := nodeIDMap[item.Spec.NodeName]
@@ -420,7 +421,11 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 				}
 
 				key := item.Metadata.Namespace + "/" + item.Metadata.Name
-				m := podMetricsMap[key]
+				activePodKeys = append(activePodKeys, key)
+
+				m, ok := podMetricsMap[key]
+				// If not found in metrics map (maybe different namespace/name format?), try to approximate or leave 0
+				// kubectl top pods -A output usually is Namespace Name ...
 
 				age := ""
 				if item.Status.StartTime != "" {
@@ -465,6 +470,11 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 				if err := kc.DB.UpsertKubernetesPod(p); err != nil {
 					log.Printf("[KubernetesCollector] Failed to upsert pod %s: %v", p.Name, err)
 				}
+			}
+
+			// Clean up stale pods
+			if err := kc.DB.DeleteStaleKubernetesPods(s.ID, activePodKeys); err != nil {
+				log.Printf("[KubernetesCollector] Failed to delete stale pods: %v", err)
 			}
 
 			// Update nodes with pod count

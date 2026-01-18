@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	_ "github.com/lib/pq"
+	pq "github.com/lib/pq"
 )
 
 type DB struct {
@@ -2079,4 +2079,20 @@ func (d *DB) GetCephHosts() ([]CephHost, error) {
 		hosts = append(hosts, h)
 	}
 	return hosts, nil
+}
+
+func (d *DB) DeleteStaleKubernetesPods(serverID int64, activePodKeys []string) error {
+	if len(activePodKeys) == 0 {
+		return nil
+	}
+
+	query := `
+		DELETE FROM kubernetes.pods P
+		USING kubernetes.nodes N
+		WHERE P.node_id = N.id
+		AND N.server_id = $1
+		AND NOT ((P.namespace || '/' || P.name) = ANY($2))
+	`
+	_, err := d.Conn.Exec(query, serverID, pq.Array(activePodKeys))
+	return err
 }

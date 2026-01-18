@@ -2598,7 +2598,7 @@ async function renderKubernetesServerDetails(serverId) {
                         <!-- Column 6: Pods / Action -->
                         <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">
                             <div style="display: flex; align-items: center; gap: 8px;">
-                                <span style="font-size: 1rem; font-weight: 700; color: var(--text-primary);">${node.pods_count || 0}</span>
+                                <span style="font-size: 1rem; font-weight: 700; color: var(--text-primary);">${nodePods.length}</span>
                                 <i class="fa-solid fa-chevron-down" style="font-size: 0.7rem; color: var(--text-secondary); opacity: 0.7; transition: transform 0.3s; ${isExpanded ? 'transform: rotate(180deg);' : ''}" id="k8s-node-chevron-${node.id}"></i>
                             </div>
                             <div style="font-size: 0.6rem; color: var(--text-secondary); opacity: 0.5;">PODS</div>
@@ -6208,6 +6208,8 @@ class KubernetesTopologyMap {
         this.zoomLevel = 1.0;
         this.panX = 0;
         this.panY = 0;
+        this.lastNodeIds = new Set();
+        this.lastPodIds = new Set();
     }
 
     render(topologyJSON) {
@@ -6232,6 +6234,34 @@ class KubernetesTopologyMap {
         const container = document.getElementById(this.containerId);
         if (!container) return;
         this.width = container.clientWidth || 800;
+
+        // Change Detection: Calculate IDs for new frame
+        const currentNodeIds = new Set(nodesData.map(n => n.id));
+        const currentPodIds = new Set(podsData.map(p => p.id));
+
+        // 1. Check if structure changed (Nodes count/IDs diff)
+        let structureChanged = false;
+        if (currentNodeIds.size !== this.lastNodeIds.size || currentPodIds.size !== this.lastPodIds.size) {
+            structureChanged = true;
+        } else {
+            // Deep check IDs
+            for (let id of currentNodeIds) if (!this.lastNodeIds.has(id)) { structureChanged = true; break; }
+            if (!structureChanged) {
+                for (let id of currentPodIds) if (!this.lastPodIds.has(id)) { structureChanged = true; break; }
+            }
+        }
+
+        if (!structureChanged && this.nodes.length > 0) {
+            // OPTIONAL: Update colors in-place here if needed, but for now we just return to keep layout fixed.
+            // We can iterate this.nodes and update colors if status changed, 
+            // but the user specific request is "fixed layout", so skipping update is the safest first step.
+            // console.log('[K8s Map] Structure unchanged, skipping redraw.');
+            return;
+        }
+
+        // Structure changed, update cache and redraw
+        this.lastNodeIds = currentNodeIds;
+        this.lastPodIds = currentPodIds;
 
         this.nodes = [];
         this.links = [];
