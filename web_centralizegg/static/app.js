@@ -2929,6 +2929,63 @@ async function renderKubernetesServerDetails(serverId) {
                                             </div>
                                             <span id="k8s-cluster-pods-total" style="font-weight: 700; font-size: 0.85rem; color: var(--accent-color);">${totalPods}</span>
                                         </div>
+                                        ${(() => {
+                let counts = {};
+                try {
+                    counts = JSON.parse(server.resource_counts || '{}');
+                } catch (e) { }
+                return `
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                                                <i class="fa-solid fa-folder" style="font-size: 0.8rem; opacity: 0.7;"></i> 
+                                                <span>Namespaces</span>
+                                            </div>
+                                            <span style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">${counts.namespaces || 0}</span>
+                                        </div>
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                                                <i class="fa-solid fa-rocket" style="font-size: 0.8rem; opacity: 0.7;"></i> 
+                                                <span>Deployments</span>
+                                            </div>
+                                            <span style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">${counts.deployments || 0}</span>
+                                        </div>
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                                                <i class="fa-solid fa-gears" style="font-size: 0.8rem; opacity: 0.7;"></i> 
+                                                <span>DaemonSets</span>
+                                            </div>
+                                            <span style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">${counts.daemonsets || 0}</span>
+                                        </div>
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                                                <i class="fa-solid fa-rotate" style="font-size: 0.8rem; opacity: 0.7;"></i> 
+                                                <span>ReplicaSets</span>
+                                            </div>
+                                            <span style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">${counts.replicasets || 0}</span>
+                                        </div>
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                                                <i class="fa-solid fa-sliders" style="font-size: 0.8rem; opacity: 0.7;"></i> 
+                                                <span>ReplicationControllers</span>
+                                            </div>
+                                            <span style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">${counts.replicationcontrollers || 0}</span>
+                                        </div>
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                                                <i class="fa-solid fa-briefcase" style="font-size: 0.8rem; opacity: 0.7;"></i> 
+                                                <span>Jobs</span>
+                                            </div>
+                                            <span style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">${counts.jobs || 0}</span>
+                                        </div>
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                                                <i class="fa-solid fa-clock" style="font-size: 0.8rem; opacity: 0.7;"></i> 
+                                                <span>CronJobs</span>
+                                            </div>
+                                            <span style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">${counts.cronjobs || 0}</span>
+                                        </div>
+                `;
+            })()}
                                     </div>
                                 </div>
 
@@ -3091,20 +3148,21 @@ async function renderKubernetesServerDetails(serverId) {
                                     ${renderNodeCards()}
                                 </div>
                             </div>
-                        </div>
-                    </div>
 
-                    <!-- Events Card -->
-                    <div style="margin-top: 20px;">
-                        <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                            Eventos del Cluster
-                        </div>
-                        <div class="glass-panel" style="padding: 0; overflow: hidden;">
-                            <div id="k8s-events-list" style="display: flex; flex-direction: column; max-height: 400px; overflow-y: auto;">
-                                <div style="color: var(--text-secondary); font-size: 0.75rem; text-align: center; padding: 20px;">Cargando eventos...</div>
+                            <!-- Events Card -->
+                            <div style="margin-top: 20px;">
+                                <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                                    Eventos del Cluster
+                                </div>
+                                <div class="glass-panel" style="padding: 0; overflow: hidden;">
+                                    <div id="k8s-events-list" style="display: flex; flex-direction: column; max-height: 400px; overflow-y: auto;">
+                                        <div style="color: var(--text-secondary); font-size: 0.75rem; text-align: center; padding: 20px;">Cargando eventos...</div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
+
 
             </section>
         `;

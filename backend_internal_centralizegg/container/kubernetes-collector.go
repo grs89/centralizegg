@@ -664,6 +664,53 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 		}
 	}
 
+	// 7. Count Kubernetes Resources
+	resourceCounts := map[string]int{
+		"namespaces":             0,
+		"deployments":            0,
+		"daemonsets":             0,
+		"replicasets":            0,
+		"replicationcontrollers": 0,
+		"jobs":                   0,
+		"cronjobs":               0,
+	}
+
+	// Count each resource type
+	resources := []struct {
+		name    string
+		command string
+	}{
+		{"namespaces", "get namespaces -o json"},
+		{"deployments", "get deployments --all-namespaces -o json"},
+		{"daemonsets", "get daemonsets --all-namespaces -o json"},
+		{"replicasets", "get replicasets --all-namespaces -o json"},
+		{"replicationcontrollers", "get replicationcontrollers --all-namespaces -o json"},
+		{"jobs", "get jobs --all-namespaces -o json"},
+		{"cronjobs", "get cronjobs --all-namespaces -o json"},
+	}
+
+	for _, res := range resources {
+		var output string
+		if isLocal {
+			output, _ = kc.runLocalCommand(kubectlCmd + " " + res.command)
+		} else {
+			output, _ = kc.runCommand(client, kubectlCmd+" "+res.command, "")
+		}
+
+		if output != "" {
+			var result struct {
+				Items []interface{} `json:"items"`
+			}
+			if err := json.Unmarshal([]byte(output), &result); err == nil {
+				resourceCounts[res.name] = len(result.Items)
+			}
+		}
+	}
+
+	// Store resource counts
+	countsJSON, _ := json.Marshal(resourceCounts)
+	kc.DB.UpdateResourceCounts("kubernetes", s.ID, string(countsJSON))
+
 	return nil
 }
 
