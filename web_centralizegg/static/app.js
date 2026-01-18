@@ -1144,7 +1144,6 @@ function renderDockerHostDetails(hostId) {
                     <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9;">
                         Mapa de Red Docker
                     </div>
-                    <i class="fa-solid fa-flask" onclick="window.toggleDockerMapDebug()" title="Toggle Debug Mode" style="cursor: pointer; color: var(--text-secondary); font-size: 1rem; opacity: 0.5; transition: opacity 0.2s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5"></i>
                 </div>
                 <div id="docker-topology-map" style="height: 500px; width: 100%; border-radius: 8px;"></div>
             </div>
@@ -3225,7 +3224,6 @@ async function renderKubernetesServerDetails(serverId) {
                             <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9;">
                                 Mapa de Red del Cluster
                             </div>
-                            <i class="fa-solid fa-flask" onclick="window.toggleK8sMapDebug()" title="Toggle Debug Mode" style="cursor: pointer; color: var(--text-secondary); font-size: 1rem; opacity: 0.5; transition: opacity 0.2s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5"></i>
                         </div>
                         <div id="k8s-map-wrapper" class="glass-panel" style="padding: 24px;">
                             <div id="k8s-topology-map" style="height: 500px; width: 100%; border-radius: 8px;"></div>
@@ -5385,7 +5383,6 @@ function renderFirewallHostDetails(hostId) {
                 <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9;">
                     Mapa de Tráfico en Tiempo Real
                 </div>
-                <i class="fa-solid fa-flask" onclick="window.toggleMapDebug()" title="Toggle Debug Mode" style="cursor: pointer; color: var(--text-secondary); font-size: 1rem; opacity: 0.5; transition: opacity 0.2s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5"></i>
             </div>
             <div id="trafficMap" style="height: 400px; width: 100%; border-radius: 8px; z-index: 1;"></div>
         </div>
