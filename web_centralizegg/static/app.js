@@ -4849,76 +4849,58 @@ if (notifBtn && notifDropdown) {
 
 async function checkServerStatus() {
     try {
-        // Check KVM servers
-        const kvmResponse = await fetch(API_CONFIG_SERVERS);
-        if (kvmResponse.ok) {
-            currentServers = await kvmResponse.json() || [];
-        }
-
-        // Check Firewall servers
-        const firewallResponse = await fetch(API_FIREWALL_SERVERS);
-        if (firewallResponse.ok) {
-            currentFirewallServers = await firewallResponse.json() || [];
-        }
-
-        // Check Docker servers
-        const dockerApi = getConfigAPIForTool('docker');
-        const dockerResponse = await fetch(dockerApi);
-        if (dockerResponse.ok) {
-            currentDockerServers = await dockerResponse.json() || [];
-        }
-
-        // Check Podman servers
-        const podmanApi = getConfigAPIForTool('podman');
-        const podmanResponse = await fetch(podmanApi);
-        if (podmanResponse.ok) {
-            currentPodmanServers = await podmanResponse.json() || [];
-        }
-
-        // Check Kubernetes servers
-        const k8sApi = getConfigAPIForTool('kubernetes');
-        const k8sResponse = await fetch(k8sApi);
-        if (k8sResponse.ok) {
-            currentKubernetesServers = await k8sResponse.json() || [];
-        }
-
-        // Check Proxmox servers
-        const proxmoxApi = getConfigAPIForTool('proxmox');
-        const proxmoxResponse = await fetch(proxmoxApi);
-        if (proxmoxResponse.ok) {
-            currentProxmoxServers = await proxmoxResponse.json() || [];
-        }
-
-        // Check NAS servers
-        const nasApi = getConfigAPIForTool('nas');
-        const nasResponse = await fetch(nasApi);
-        if (nasResponse.ok) {
-            currentNasServers = await nasResponse.json() || [];
-        }
-
-        // Combined notification logic
-        const allServers = [
-            ...currentServers,
-            ...currentFirewallServers,
-            ...currentDockerServers,
-            ...currentPodmanServers,
-            ...currentKubernetesServers,
-            ...currentProxmoxServers,
-            ...currentNasServers
+        // Prepare list of tool requests
+        const tools = [
+            { key: 'kvm', api: API_CONFIG_SERVERS, label: 'KVM', icon: 'fa-microchip' },
+            { key: 'pfsense', api: API_FIREWALL_SERVERS, label: 'Firewall', icon: 'fa-shield-halved' },
+            { key: 'docker', api: getConfigAPIForTool('docker'), label: 'Docker', icon: 'fa-brands fa-docker' },
+            { key: 'podman', api: getConfigAPIForTool('podman'), label: 'Podman', icon: 'fa-otter' },
+            { key: 'kubernetes', api: getConfigAPIForTool('kubernetes'), label: 'K8s', icon: 'fa-dharmachakra' },
+            { key: 'proxmox', api: getConfigAPIForTool('proxmox'), label: 'Proxmox', icon: 'fa-server' },
+            { key: 'nas', api: getConfigAPIForTool('nas'), label: 'NAS', icon: 'fa-hdd' },
+            { key: 'ceph', api: getConfigAPIForTool('ceph'), label: 'Ceph', icon: 'fa-cubes' }
         ];
-        const offlineServers = allServers.filter(s => s.status === 'offline');
+
+        const results = await Promise.allSettled(tools.map(t => fetch(t.api)));
+
+        const allServers = [];
+
+        for (let i = 0; i < tools.length; i++) {
+            const tool = tools[i];
+            const res = results[i];
+
+            if (res.status === 'fulfilled' && res.value.ok) {
+                try {
+                    const servers = await res.value.json() || [];
+                    // Enrich with tool info
+                    servers.forEach(s => {
+                        s.toolLabel = tool.label;
+                        s.toolIcon = tool.icon;
+                        allServers.push(s);
+                    });
+
+                    // Update global caches (existing logic)
+                    if (tool.key === 'kvm') currentServers = servers;
+                    if (tool.key === 'pfsense') currentFirewallServers = servers;
+                    if (tool.key === 'docker') currentDockerServers = servers;
+                    if (tool.key === 'podman') currentPodmanServers = servers;
+                    if (tool.key === 'kubernetes') currentKubernetesServers = servers;
+                    if (tool.key === 'proxmox') currentProxmoxServers = servers;
+                    if (tool.key === 'nas') currentNasServers = servers;
+                    // Note: Ceph doesn't have a dedicated global cache for notifications yet, but it's now in allServers
+                } catch (jsonErr) {
+                    console.warn(`Error parsing JSON for ${tool.key}:`, jsonErr);
+                }
+            }
+        }
+
+        const offlineServers = allServers.filter(s => s.status && s.status.toLowerCase() !== 'online');
         const badge = document.getElementById('notification-count');
         const list = document.getElementById('notification-list');
 
         // Sound Logic
         if (offlineServers.length > lastNotificationCount) {
-            // New alert detected
-            try {
-                // Play sound (requires user interaction first usually, but in dashboard context often works)
-                playAlertSound();
-            } catch (e) {
-                console.warn("Could not play notification sound:", e);
-            }
+            try { playAlertSound(); } catch (e) { console.warn("Sound error:", e); }
         }
         lastNotificationCount = offlineServers.length;
 
@@ -4926,18 +4908,28 @@ async function checkServerStatus() {
             if (offlineServers.length > 0) {
                 badge.textContent = offlineServers.length;
                 badge.classList.remove('hidden');
-                list.innerHTML = offlineServers.map(s => `
-                    <li>
-                        <i class="fa-solid fa-circle-exclamation"></i>
-                        <div>
-                            <span class="offline-host-name">${s.name} no accesible</span>
-                            <span class="offline-details">${s.ip_address}:${s.ssh_port || 22}</span>
-                        </div>
-                    </li>
-                `).join('');
+                list.innerHTML = offlineServers.map(s => {
+                    const hostName = s.server_name || s.name || 'Servidor';
+                    const hostIP = s.ip_address || 'Sin IP';
+                    const toolIcon = s.toolIcon || 'fa-server';
+                    const toolLabel = s.toolLabel || 'Sistema';
+
+                    return `
+                        <li>
+                            <i class="fa-solid fa-circle-exclamation" style="color:var(--danger); font-size: 1.1rem;"></i>
+                            <div class="notif-item-content">
+                                <div class="notif-tool-header">
+                                    <span class="offline-tool-badge"><i class="${toolIcon}" style="font-size: 0.7rem;"></i> ${toolLabel}</span>
+                                    <span class="offline-host-name">${hostName}</span>
+                                </div>
+                                <span class="offline-details">${hostIP}:${s.ssh_port || 22} no accesible</span>
+                            </div>
+                        </li>
+                    `;
+                }).join('');
             } else {
                 badge.classList.add('hidden');
-                list.innerHTML = '<li style="color:var(--text-secondary); text-align:center; display:block;">Todos los sistemas activos</li>';
+                list.innerHTML = '<li style="color:var(--text-secondary); text-align:center; display:block; padding: 20px;">Todos los sistemas activos</li>';
             }
         }
     } catch (e) {
