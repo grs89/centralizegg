@@ -43,6 +43,7 @@ let currentKubernetesServers = [];
 let currentProxmoxServers = [];
 let currentNasServers = [];
 let lastNotificationCount = 0; // Track previous count for sound
+let lastReminderSoundTime = 0; // Track last time persistent alert sound was played
 
 // Sound Effect: Web Audio API Oscillator (Clean "Ping")
 const playAlertSound = () => {
@@ -4849,10 +4850,9 @@ if (notifBtn && notifDropdown) {
 
 async function checkServerStatus() {
     try {
-        // Prepare list of tool requests
         const tools = [
             { key: 'kvm', api: API_CONFIG_SERVERS, label: 'KVM', icon: 'fa-microchip' },
-            { key: 'pfsense', api: API_FIREWALL_SERVERS, label: 'Firewall', icon: 'fa-shield-halved' },
+            { key: 'pfsense', api: API_FIREWALL_SERVERS, label: 'Firewall', icon: 'fa-brands fa-freebsd' },
             { key: 'docker', api: getConfigAPIForTool('docker'), label: 'Docker', icon: 'fa-brands fa-docker' },
             { key: 'podman', api: getConfigAPIForTool('podman'), label: 'Podman', icon: 'fa-otter' },
             { key: 'kubernetes', api: getConfigAPIForTool('kubernetes'), label: 'K8s', icon: 'fa-dharmachakra' },
@@ -4862,8 +4862,9 @@ async function checkServerStatus() {
         ];
 
         const results = await Promise.allSettled(tools.map(t => fetch(t.api)));
-
         const allServers = [];
+
+        console.log('%c[DEBUG] checkServerStatus - Starting processing...', 'color: #38bdf8; font-weight: bold');
 
         for (let i = 0; i < tools.length; i++) {
             const tool = tools[i];
@@ -4872,14 +4873,23 @@ async function checkServerStatus() {
             if (res.status === 'fulfilled' && res.value.ok) {
                 try {
                     const servers = await res.value.json() || [];
-                    // Enrich with tool info
+                    console.log(`%c[DEBUG] ${tool.label} Data:`, 'color: #a1a1aa', servers);
+
                     servers.forEach(s => {
-                        s.toolLabel = tool.label;
-                        s.toolIcon = tool.icon;
-                        allServers.push(s);
+                        // Normalize fields for the notification list
+                        const normalizedServer = {
+                            id: s.id || s.ID || 0,
+                            name: s.server_name || s.name || s.Name || s.Hostname || s.hostname || 'Servidor Desconocido',
+                            ip: s.ip_address || s.IPAddress || s.ip || s.IP || 'Sin IP',
+                            port: s.ssh_port || s.SSHPort || s.port || 22,
+                            status: (s.status || s.Status || 'unknown').toLowerCase(),
+                            toolLabel: tool.label,
+                            toolIcon: tool.icon
+                        };
+                        allServers.push(normalizedServer);
                     });
 
-                    // Update global caches (existing logic)
+                    // Update global caches (maintaining existing logic for tool UI)
                     if (tool.key === 'kvm') currentServers = servers;
                     if (tool.key === 'pfsense') currentFirewallServers = servers;
                     if (tool.key === 'docker') currentDockerServers = servers;
@@ -4887,20 +4897,32 @@ async function checkServerStatus() {
                     if (tool.key === 'kubernetes') currentKubernetesServers = servers;
                     if (tool.key === 'proxmox') currentProxmoxServers = servers;
                     if (tool.key === 'nas') currentNasServers = servers;
-                    // Note: Ceph doesn't have a dedicated global cache for notifications yet, but it's now in allServers
                 } catch (jsonErr) {
-                    console.warn(`Error parsing JSON for ${tool.key}:`, jsonErr);
+                    console.warn(`[DEBUG] Error parsing JSON for ${tool.label}:`, jsonErr);
                 }
+            } else {
+                console.warn(`[DEBUG] API fetch failed for ${tool.label}:`, res.reason || 'Status not OK');
             }
         }
 
-        const offlineServers = allServers.filter(s => s.status && s.status.toLowerCase() !== 'online');
+        const offlineServers = allServers.filter(s => s.status !== 'online');
+        console.log(`%c[DEBUG] Total Servers: ${allServers.length}, Offline: ${offlineServers.length}`, 'color: #38bdf8', offlineServers);
+
         const badge = document.getElementById('notification-count');
         const list = document.getElementById('notification-list');
 
         // Sound Logic
         if (offlineServers.length > lastNotificationCount) {
             try { playAlertSound(); } catch (e) { console.warn("Sound error:", e); }
+            lastReminderSoundTime = Date.now();
+        } else if (offlineServers.length > 0) {
+            const now = Date.now();
+            if (now - lastReminderSoundTime > 60000) {
+                try { playAlertSound(); } catch (e) { console.warn("Reminder sound error:", e); }
+                lastReminderSoundTime = now;
+            }
+        } else {
+            lastReminderSoundTime = 0;
         }
         lastNotificationCount = offlineServers.length;
 
@@ -4908,32 +4930,25 @@ async function checkServerStatus() {
             if (offlineServers.length > 0) {
                 badge.textContent = offlineServers.length;
                 badge.classList.remove('hidden');
-                list.innerHTML = offlineServers.map(s => {
-                    const hostName = s.server_name || s.name || 'Servidor';
-                    const hostIP = s.ip_address || 'Sin IP';
-                    const toolIcon = s.toolIcon || 'fa-server';
-                    const toolLabel = s.toolLabel || 'Sistema';
-
-                    return `
-                        <li>
-                            <i class="fa-solid fa-circle-exclamation" style="color:var(--danger); font-size: 1.1rem;"></i>
-                            <div class="notif-item-content">
-                                <div class="notif-tool-header">
-                                    <span class="offline-tool-badge"><i class="${toolIcon}" style="font-size: 0.7rem;"></i> ${toolLabel}</span>
-                                    <span class="offline-host-name">${hostName}</span>
-                                </div>
-                                <span class="offline-details">${hostIP}:${s.ssh_port || 22} no accesible</span>
+                list.innerHTML = offlineServers.map(s => `
+                    <li>
+                        <i class="fa-solid fa-circle-exclamation" style="color:var(--danger); font-size: 1.1rem;"></i>
+                        <div class="notif-item-content">
+                            <div class="notif-tool-header">
+                                <span class="offline-tool-badge"><i class="${s.toolIcon}" style="font-size: 0.7rem;"></i> ${s.toolLabel}</span>
+                                <span class="offline-host-name">${s.name}</span>
                             </div>
-                        </li>
-                    `;
-                }).join('');
+                            <span class="offline-details">${s.ip}:${s.port} no accesible</span>
+                        </div>
+                    </li>
+                `).join('');
             } else {
                 badge.classList.add('hidden');
                 list.innerHTML = '<li style="color:var(--text-secondary); text-align:center; display:block; padding: 20px;">Todos los sistemas activos</li>';
             }
         }
     } catch (e) {
-        console.error('Status check error:', e);
+        console.error('[DEBUG] Status check error:', e);
     }
 }
 
