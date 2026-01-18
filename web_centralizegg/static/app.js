@@ -6195,41 +6195,30 @@ window.DockerTopologyMap = DockerTopologyMap;
 class KubernetesTopologyMap {
     constructor(containerId) {
         this.containerId = containerId;
-        this.svg = null;
-        this.width = 0;
+        this.width = 800;
         this.height = 500;
         this.nodes = [];
         this.links = [];
+        this.zoomLevel = 1.0;
+        this.panX = 0;
+        this.panY = 0;
     }
 
     render(topologyJSON) {
+        // ... (Existing render logic, largely unused now but kept for compatibility if needed) ...
         const container = document.getElementById(this.containerId);
         if (!container) return;
-
         this.width = container.clientWidth || 800;
-
         let topology = null;
         try {
             topology = topologyJSON ? JSON.parse(topologyJSON) : { nodes: [], links: [] };
-        } catch (e) {
-            console.error('[KubernetesTopologyMap] Error parsing topology:', e);
-            return;
-        }
-
+        } catch (e) { console.error('[KubernetesTopologyMap] Error parsing topology:', e); return; }
         this.nodes = topology.nodes || [];
         this.links = topology.links || [];
-
         if (this.nodes.length === 0) {
-            container.innerHTML = `
-                <div style="height: 200px; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); opacity: 0.5;">
-                    <div style="text-align: center;">
-                        <i class="fa-solid fa-circle-nodes" style="font-size: 2rem; margin-bottom: 10px;"></i>
-                        <div>No se detectaron servicios activos</div>
-                    </div>
-                </div>`;
+            container.innerHTML = `<div style="padding:20px; text-align:center;">No active services detected</div>`;
             return;
         }
-
         this.draw();
     }
 
@@ -6246,7 +6235,8 @@ class KubernetesTopologyMap {
             id: 'internet',
             name: 'Cluster API',
             type: 'internet',
-            status: 'active'
+            status: 'active',
+            color: '#f472b6' // Pink for Cluster Root
         });
 
         // 2. Nodes (as Services/Hosts layer)
@@ -6259,6 +6249,7 @@ class KubernetesTopologyMap {
                 name: node.hostname,
                 type: 'service', // Reusing 'service' style for K8s Nodes
                 status: (node.status && node.status.toLowerCase() === 'ready') ? 'active' : 'stopped',
+                color: (node.status && node.status.toLowerCase() === 'ready') ? '#818cf8' : '#ef4444', // Indigo for Ready nodes
                 original: node
             });
 
@@ -6270,16 +6261,24 @@ class KubernetesTopologyMap {
         });
 
         // 3. Pods
+        // 3. Pods
         podsData.forEach(pod => {
             // Only show pods belonging to these nodes
             if (!nodeIds.has(pod.node_id)) return;
 
             const podId = 'pod-' + pod.id;
+            let podColor = '#94a3b8'; // Default grey
+            if (pod.state === 'Running') podColor = '#4ade80'; // Green
+            else if (pod.state === 'Pending') podColor = '#fbbf24'; // Yellow
+            else if (pod.state === 'Succeeded') podColor = '#60a5fa'; // Blue
+            else if (pod.state === 'Failed') podColor = '#ef4444'; // Red
+
             this.nodes.push({
                 id: podId,
                 name: pod.name,
                 type: 'pod',
                 status: (pod.state === 'Running') ? 'active' : 'stopped',
+                color: podColor,
                 original: pod
             });
 
@@ -6316,25 +6315,44 @@ class KubernetesTopologyMap {
 
         try {
             // In horizontal layout, height is determined by the densest column
-            const maxNodesInCol = Math.max(
-                this.nodes.filter(n => n.type === 'internet').length,
-                this.nodes.filter(n => n.type === 'service').length,
-                this.nodes.filter(n => n.type === 'pod').length
-            );
-            this.height = Math.max(400, maxNodesInCol * 60);
+            const podCount = this.nodes.filter(n => n.type === 'pod').length;
+            const serviceCount = this.nodes.filter(n => n.type === 'service').length;
 
+            // Calculate required height for each column with fixed spacing
+            const podHeightRequired = podCount * 50;
+            const serviceHeightRequired = serviceCount * 120;
+
+            // Use the maximum required height plus some padding
+            this.height = Math.max(500, Math.max(podHeightRequired, serviceHeightRequired) + 100);
+
+            // Container for Map + Controls
+            container.style.position = 'relative';
             container.innerHTML = `
-                <svg width="100%" height="${this.height}" style="background: transparent; display: block;">
+                <svg id="k8s-map-svg" width="100%" height="${this.height}" style="background: transparent; display: block; overflow: visible;">
                     <defs>
                         <filter id="k8s-glow" x="-50%" y="-50%" width="200%" height="200%">
                             <feGaussianBlur stdDeviation="4" result="blur" />
                             <feComposite in="SourceGraphic" in2="blur" operator="over" />
                         </filter>
                     </defs>
-                    <g id="k8s-links-group"></g>
-                    <g id="k8s-nodes-group"></g>
+                    <g id="k8s-zoom-layer" transform="scale(${this.zoomLevel}) translate(${this.panX}, ${this.panY})">
+                        <g id="k8s-links-group"></g>
+                        <g id="k8s-nodes-group"></g>
+                    </g>
                 </svg>
+
+                <!-- Zoom Controls -->
+                <div style="position: absolute; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 5px; background: rgba(0,0,0,0.6); padding: 5px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
+                    <button id="k8s-zoom-in" style="width: 30px; height: 30px; border: none; background: rgba(255,255,255,0.1); color: white; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><i class="fa-solid fa-plus"></i></button>
+                    <button id="k8s-zoom-reset" style="width: 30px; height: 30px; border: none; background: rgba(255,255,255,0.1); color: white; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><i class="fa-solid fa-compress"></i></button>
+                    <button id="k8s-zoom-out" style="width: 30px; height: 30px; border: none; background: rgba(255,255,255,0.1); color: white; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><i class="fa-solid fa-minus"></i></button>
+                </div>
             `;
+
+            // Attach Zoom Events
+            container.querySelector('#k8s-zoom-in').onclick = () => this.zoom(0.2);
+            container.querySelector('#k8s-zoom-out').onclick = () => this.zoom(-0.2);
+            container.querySelector('#k8s-zoom-reset').onclick = () => this.resetZoom();
 
             const linksGroup = container.querySelector('#k8s-links-group');
             const nodesGroup = container.querySelector('#k8s-nodes-group');
@@ -6355,7 +6373,7 @@ class KubernetesTopologyMap {
 
             // Column 2: Services (Middle)
             const serviceNodes = this.nodes.filter(n => n.type === 'service');
-            const svcYSpacing = Math.min(this.height / (serviceNodes.length + 1), 150);
+            const svcYSpacing = Math.min(this.height / (serviceNodes.length + 1), 120);
             const svcStartY = centerY - ((serviceNodes.length - 1) * svcYSpacing) / 2;
 
             serviceNodes.forEach((node, i) => {
@@ -6364,25 +6382,27 @@ class KubernetesTopologyMap {
             });
 
             // Column 3: Pods (Right)
-            const podNodes = this.nodes.filter(n => n.type === 'pod');
+            // Sort pods by their parent service's Y position to minimize line overlapping
+            let podNodes = this.nodes.filter(n => n.type === 'pod');
+
+            // Map pods to their parent service index/y
+            const getParentY = (podNode) => {
+                const link = this.links.find(l => l.target === podNode.id);
+                if (link) {
+                    const parent = this.nodes.find(n => n.id === link.source);
+                    return parent ? parent.y : 999999;
+                }
+                return 999999;
+            };
+
+            podNodes.sort((a, b) => getParentY(a) - getParentY(b));
+
             const podYSpacing = Math.min(this.height / (podNodes.length + 1), 50);
             const podStartY = centerY - ((podNodes.length - 1) * podYSpacing) / 2;
 
             podNodes.forEach((node, i) => {
                 node.x = Math.min(this.width - 80, this.width * 0.85);
                 node.y = podStartY + (i * podYSpacing);
-
-                // Pull pods towards their connected services
-                const connectedLinks = this.links.filter(l => l.target === node.id);
-                if (connectedLinks.length > 0) {
-                    let sumY = 0;
-                    connectedLinks.forEach(l => {
-                        const src = this.nodes.find(n => n.id === l.source);
-                        if (src) sumY += src.y;
-                    });
-                    const targetY = sumY / connectedLinks.length;
-                    node.y = (node.y * 0.4) + (targetY * 0.6);
-                }
             });
 
             // Check if nodes are populated (Sanity Check)
@@ -6396,29 +6416,34 @@ class KubernetesTopologyMap {
                 const source = this.nodes.find(n => n.id === link.source);
                 const target = this.nodes.find(n => n.id === link.target);
                 if (source && target) {
-                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                    line.setAttribute('x1', source.x);
-                    line.setAttribute('y1', source.y);
-                    line.setAttribute('x2', target.x);
-                    line.setAttribute('y2', target.y);
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
 
-                    if (link.type === 'external') {
-                        line.setAttribute('stroke', 'rgba(255,77,77,0.4)');
-                        line.setAttribute('stroke-width', '2');
-                        line.setAttribute('stroke-dasharray', '8,8');
-                        const anim = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
-                        anim.setAttribute('attributeName', 'stroke-dashoffset');
-                        anim.setAttribute('from', '32');
-                        anim.setAttribute('to', '0');
-                        anim.setAttribute('dur', '1.5s');
-                        anim.setAttribute('repeatCount', 'indefinite');
-                        line.appendChild(anim);
-                    } else {
-                        line.setAttribute('stroke', 'rgba(255,255,255,0.15)');
-                        line.setAttribute('stroke-width', '1.5');
-                        line.setAttribute('stroke-dasharray', '4,4');
-                    }
-                    linksGroup.appendChild(line);
+                    // Bezier Curve Logic: M startX startY C cp1X cp1Y, cp2X cp2Y, endX endY
+                    // Control points pull horizontally
+                    const cpOffset = Math.abs(target.x - source.x) * 0.5;
+                    const d = `M ${source.x} ${source.y} C ${source.x + cpOffset} ${source.y}, ${target.x - cpOffset} ${target.y}, ${target.x} ${target.y}`;
+
+                    path.setAttribute('d', d);
+                    path.setAttribute('fill', 'none');
+
+                    // Use target color for the line (e.g. Pod Status Color) or fallback
+                    const strokeColor = target.color || 'rgba(255,255,255,0.2)';
+
+                    path.setAttribute('stroke', strokeColor);
+                    path.setAttribute('stroke-width', '1.5');
+                    path.setAttribute('stroke-dasharray', '6,6');
+                    path.style.opacity = '0.6';
+
+                    // Add flow animation
+                    const anim = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+                    anim.setAttribute('attributeName', 'stroke-dashoffset');
+                    anim.setAttribute('from', '0');
+                    anim.setAttribute('to', '12'); // Pod -> Node direction
+                    anim.setAttribute('dur', '1.0s');
+                    anim.setAttribute('repeatCount', 'indefinite');
+                    path.appendChild(anim);
+
+                    linksGroup.appendChild(path);
                 } else {
                     console.warn('[KubernetesTopologyMap] Missing source/target for link:', link);
                 }
@@ -6495,6 +6520,33 @@ class KubernetesTopologyMap {
                     <div style="font-weight: 700;">Error de Renderizado</div>
                     <div style="font-size: 0.8rem; opacity: 0.9; margin-top: 5px; text-align: center;">${e.message}</div>
                 </div>`;
+        }
+    }
+
+    zoom(delta) {
+        this.zoomLevel = Math.max(0.2, this.zoomLevel + delta);
+        this.updateTransform();
+    }
+
+    resetZoom() {
+        this.zoomLevel = 1.0;
+        this.panX = 0;
+        this.panY = 0;
+        this.updateTransform();
+    }
+
+    updateTransform() {
+        const layer = document.getElementById('k8s-zoom-layer');
+        if (layer) {
+            // Simple center zoom could be improved with better math, but basic scale is enough for now
+            // We keep panX/Y at 0 for now as we don't have drag pan implemented yet (user didn't explicitly ask for drag, just zoom buttons)
+            // But we add 'transform-origin: center' style via JS if needed, or just standard SVG scaling
+            // SVG transform origin defaults to 0,0. Let's try to center if possible.
+            // For now, standard scale relative to 0,0.
+            layer.setAttribute('transform', `scale(${this.zoomLevel}) translate(${this.panX}, ${this.panY})`);
+
+            // Adjust SVG height if zoomed out to avoid huge whitespace? Or keep it fixed?
+            // Keeping fixed height container, user zooms/pans the content.
         }
     }
 }
