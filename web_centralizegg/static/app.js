@@ -2428,6 +2428,12 @@ async function renderKubernetesServerDetails(serverId) {
         const usedMem = totalMem - freeMem;
         const memPercent = totalMem > 0 ? ((usedMem / totalMem) * 100).toFixed(0) : 0;
 
+        // Calculate Running/Stopped Pods
+        const clusterNodeIds = clusterNodes.map(n => n.id);
+        const clusterPods = allPodsCache.filter(p => clusterNodeIds.includes(p.node_id));
+        const runningPodsCount = clusterPods.filter(p => (p.state || '').toLowerCase() === 'running').length;
+        const stoppedPodsCount = totalPods - runningPodsCount;
+
         const renderK8sPVList = (pvs) => {
             if (!pvs || pvs.length === 0) return '<div style="color: var(--text-secondary); font-size: 0.75rem; text-align: center; padding: 10px;">No hay volúmenes persistentes</div>';
             return pvs.map(pv => `
@@ -2984,6 +2990,20 @@ async function renderKubernetesServerDetails(serverId) {
                                             </div>
                                             <span id="k8s-cluster-pods-total" style="font-weight: 700; font-size: 0.85rem; color: var(--accent-color);">${totalPods}</span>
                                         </div>
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                                                <i class="fa-solid fa-play" style="font-size: 0.8rem; opacity: 0.7; color: #4ade80;"></i> 
+                                                <span>Pods Running</span>
+                                            </div>
+                                            <span style="font-weight: 600; font-size: 0.85rem; color: #4ade80;">${runningPodsCount}</span>
+                                        </div>
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                                                <i class="fa-solid fa-stop" style="font-size: 0.8rem; opacity: 0.7; color: #ef4444;"></i> 
+                                                <span>Pods Stopped</span>
+                                            </div>
+                                            <span style="font-weight: 600; font-size: 0.85rem; color: #ef4444;">${stoppedPodsCount}</span>
+                                        </div>
                                         ${(() => {
                 let counts = {};
                 try {
@@ -3044,8 +3064,64 @@ async function renderKubernetesServerDetails(serverId) {
                                     </div>
                                 </div>
 
-                                <!-- Alerts Card -->
-                                ${(() => {
+
+                            </div>
+
+                            <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; margin-top: 5px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                                Almacenamiento
+                            </div>
+
+                            <!-- Storage Resources Summary Card -->
+                            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
+                                <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 10px;">Recursos de Almacenamiento</div>
+                                <div id="k8s-storage-summary" style="display: flex; flex-direction: column; gap: 8px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem;">
+                                        <span style="color: var(--text-secondary); display: flex; align-items: center; gap: 6px;">
+                                            <i class="fa-solid fa-database" style="font-size: 0.7rem; opacity: 0.7;"></i>
+                                            Persistent Volumes
+                                        </span>
+                                        <span style="font-weight: 700; color: var(--text-primary);" id="k8s-pv-count">0</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem;">
+                                        <span style="color: var(--text-secondary); display: flex; align-items: center; gap: 6px;">
+                                            <i class="fa-solid fa-hard-drive" style="font-size: 0.7rem; opacity: 0.7;"></i>
+                                            Persistent Volume Claims
+                                        </span>
+                                        <span style="font-weight: 700; color: var(--text-primary);" id="k8s-pvc-count">0</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem;">
+                                        <span style="color: var(--text-secondary); display: flex; align-items: center; gap: 6px;">
+                                            <i class="fa-solid fa-layer-group" style="font-size: 0.7rem; opacity: 0.7;"></i>
+                                            Storage Classes
+                                        </span>
+                                        <span style="font-weight: 700; color: var(--text-primary);" id="k8s-sc-count">0</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Storage Card -->
+                            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
+                                <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 10px;">Almacenamiento del Cluster</div>
+                                <div style="display: flex; flex-direction: column; gap: 4px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem;">
+                                        <span style="color: var(--text-secondary);">Capacidad Reservada (Total)</span>
+                                        <span style="font-weight: 600;"><span id="k8s-cluster-storage-used">${formatBytes(server.storage_used, 1)}</span> / <span id="k8s-cluster-storage-total">${formatBytes(server.storage_total, 1)}</span></span>
+                                    </div>
+                                    <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
+                                        <div id="k8s-cluster-storage-bar" style="height: 100%; width: ${server.storage_total > 0 ? (server.storage_used / server.storage_total * 100) : 0}%; background: #38bdf8;"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- PVs Card -->
+                            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
+                                <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 10px;">Volúmenes Persistentes</div>
+                                <div id="k8s-pv-list" style="display: flex; flex-direction: column; gap: 4px; max-height: 600px; overflow-y: auto;">
+                                    <div style="color: var(--text-secondary); font-size: 0.75rem; text-align: center; padding: 10px;">Cargando volúmenes...</div>
+                                </div>
+                            </div>
+                            <!-- Alerts Card -->
+                            ${(() => {
                 const alerts = [];
 
                 // Check for NotReady nodes
@@ -3106,81 +3182,27 @@ async function renderKubernetesServerDetails(serverId) {
                 const totalWarnings = alerts.filter(a => a.severity === 'warning').length;
 
                 return `
-                                        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
-                                            <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 8px;">Alertas</div>
-                                            ${alerts.length === 0 ? `
-                                                <div style="display: flex; align-items: center; gap: 8px; color: #4ade80; font-size: 0.75rem;">
-                                                    <i class="fa-solid fa-circle-check" style="font-size: 0.9rem;"></i>
-                                                    <span>Sin alertas críticas</span>
-                                                </div>
-                                            ` : `
-                                                <div style="display: flex; flex-direction: column; gap: 6px;">
-                                                    ${alerts.map(alert => `
-                                                        <div style="display: flex; align-items: center; gap: 8px; font-size: 0.7rem; padding: 6px; background: ${alert.severity === 'critical' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(251, 191, 36, 0.1)'}; border-radius: 4px; border: 1px solid ${alert.severity === 'critical' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(251, 191, 36, 0.2)'};">
-                                                            <i class="fa-solid fa-${alert.severity === 'critical' ? 'circle-exclamation' : 'triangle-exclamation'}" style="color: ${alert.severity === 'critical' ? '#ef4444' : '#fbbf24'};"></i>
-                                                            <span style="flex: 1; color: var(--text-primary);">${alert.message}</span>
-                                                        </div>
-                                                    `).join('')}
-                                                </div>
-                                            `}
-                                        </div>
-                                    `;
+                                    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px; margin-top: 15px;">
+                                        <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 8px;">Alertas</div>
+                                        ${alerts.length === 0 ? `
+                                            <div style="display: flex; align-items: center; gap: 8px; color: #4ade80; font-size: 0.75rem;">
+                                                <i class="fa-solid fa-circle-check" style="font-size: 0.9rem;"></i>
+                                                <span>Sin alertas críticas</span>
+                                            </div>
+                                        ` : `
+                                            <div style="display: flex; flex-direction: column; gap: 6px;">
+                                                ${alerts.map(alert => `
+                                                    <div style="display: flex; align-items: center; gap: 8px; font-size: 0.7rem; padding: 6px; background: ${alert.severity === 'critical' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(251, 191, 36, 0.1)'}; border-radius: 4px; border: 1px solid ${alert.severity === 'critical' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(251, 191, 36, 0.2)'};">
+                                                        <i class="fa-solid fa-${alert.severity === 'critical' ? 'circle-exclamation' : 'triangle-exclamation'}" style="color: ${alert.severity === 'critical' ? '#ef4444' : '#fbbf24'};"></i>
+                                                        <span style="flex: 1; color: var(--text-primary);">${alert.message}</span>
+                                                    </div>
+                                                `).join('')}
+                                            </div>
+                                        `}
+                                    </div>
+                                `;
             })()}
-                            </div>
 
-                            <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; margin-top: 5px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                                Almacenamiento
-                            </div>
-
-                            <!-- Storage Resources Summary Card -->
-                            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
-                                <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 10px;">Recursos de Almacenamiento</div>
-                                <div id="k8s-storage-summary" style="display: flex; flex-direction: column; gap: 8px;">
-                                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem;">
-                                        <span style="color: var(--text-secondary); display: flex; align-items: center; gap: 6px;">
-                                            <i class="fa-solid fa-database" style="font-size: 0.7rem; opacity: 0.7;"></i>
-                                            Persistent Volumes
-                                        </span>
-                                        <span style="font-weight: 700; color: var(--text-primary);" id="k8s-pv-count">0</span>
-                                    </div>
-                                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem;">
-                                        <span style="color: var(--text-secondary); display: flex; align-items: center; gap: 6px;">
-                                            <i class="fa-solid fa-hard-drive" style="font-size: 0.7rem; opacity: 0.7;"></i>
-                                            Persistent Volume Claims
-                                        </span>
-                                        <span style="font-weight: 700; color: var(--text-primary);" id="k8s-pvc-count">0</span>
-                                    </div>
-                                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem;">
-                                        <span style="color: var(--text-secondary); display: flex; align-items: center; gap: 6px;">
-                                            <i class="fa-solid fa-layer-group" style="font-size: 0.7rem; opacity: 0.7;"></i>
-                                            Storage Classes
-                                        </span>
-                                        <span style="font-weight: 700; color: var(--text-primary);" id="k8s-sc-count">0</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Storage Card -->
-                            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
-                                <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 10px;">Almacenamiento del Cluster</div>
-                                <div style="display: flex; flex-direction: column; gap: 4px;">
-                                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem;">
-                                        <span style="color: var(--text-secondary);">Capacidad Reservada (Total)</span>
-                                        <span style="font-weight: 600;"><span id="k8s-cluster-storage-used">${formatBytes(server.storage_used, 1)}</span> / <span id="k8s-cluster-storage-total">${formatBytes(server.storage_total, 1)}</span></span>
-                                    </div>
-                                    <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
-                                        <div id="k8s-cluster-storage-bar" style="height: 100%; width: ${server.storage_total > 0 ? (server.storage_used / server.storage_total * 100) : 0}%; background: #38bdf8;"></div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- PVs Card -->
-                            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
-                                <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 10px;">Volúmenes Persistentes</div>
-                                <div id="k8s-pv-list" style="display: flex; flex-direction: column; gap: 4px; max-height: 600px; overflow-y: auto;">
-                                    <div style="color: var(--text-secondary); font-size: 0.75rem; text-align: center; padding: 10px;">Cargando volúmenes...</div>
-                                </div>
-                            </div>
                         </div>
 
                         <!-- Right Column: Node Details -->
@@ -3229,16 +3251,22 @@ async function renderKubernetesServerDetails(serverId) {
                             <div id="k8s-topology-map" style="height: 500px; width: 100%; border-radius: 8px;"></div>
                         </div>
                     </div>
-
-
-            </section>
+                </div>
+            </div>
         `;
 
-        const mapContainer = document.getElementById('k8s-topology-map');
-        if (mapContainer) {
-            window.currentK8sMap = new KubernetesTopologyMap('k8s-topology-map');
-            window.currentK8sMap.render(server.network_topology);
-        }
+        // Render Map
+        setTimeout(() => {
+            const mapContainer = document.getElementById('k8s-topology-map');
+            if (mapContainer) {
+                if (typeof KubernetesTopologyMap !== 'undefined') {
+                    if (!window.currentK8sMap) {
+                        window.currentK8sMap = new KubernetesTopologyMap('k8s-topology-map');
+                    }
+                    window.currentK8sMap.render(clusterNodes, allPodsCache);
+                }
+            }
+        }, 100);
 
         // Initial Fetch for PVs (Sorted immediately, Top 10)
         fetch(API_KUBERNETES_PVS)
@@ -3305,7 +3333,7 @@ async function renderKubernetesNodeDetails(nodeId) {
         }
         const renderPodGrid = (pods) => {
             return pods.map(p => `
-                <div class="glass-panel pod-card" style="padding: 15px; border-left: 4px solid ${p.state === 'Running' ? '#4ade80' : '#ef4444'};">
+            < div class="glass-panel pod-card" style = "padding: 15px; border-left: 4px solid ${p.state === 'Running' ? '#4ade80' : '#ef4444'};" >
                     <div style="display: flex; justify-content: space-between; align-items: start;">
                         <div style="max-width: 200px;">
                             <div style="font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase;">${p.namespace}</div>
@@ -3319,7 +3347,7 @@ async function renderKubernetesNodeDetails(nodeId) {
                         <div><i class="fa-solid fa-redo" style="font-size: 0.7rem;"></i> ${p.restarts} restarts</div>
                         <div><i class="fa-solid fa-clock" style="font-size: 0.7rem;"></i> ${p.age}</div>
                     </div>
-                </div>
+                </div >
             `).join('');
         };
 
@@ -3331,7 +3359,7 @@ async function renderKubernetesNodeDetails(nodeId) {
             if (podsStatEl) podsStatEl.textContent = node.pods_count || 0;
 
             const cpuStatEl = document.getElementById('k8s-node-stat-cpu');
-            if (cpuStatEl) cpuStatEl.textContent = `${(node.cpu_usage || 0).toFixed(1)}%`;
+            if (cpuStatEl) cpuStatEl.textContent = `${(node.cpu_usage || 0).toFixed(1)}% `;
 
             const ramStatEl = document.getElementById('k8s-node-stat-ram');
             if (ramStatEl) ramStatEl.textContent = `${formatBytes(node.total_memory - node.free_memory)} / ${formatBytes(node.total_memory)}`;
