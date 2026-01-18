@@ -181,6 +181,10 @@ type KubernetesPod struct {
 	Restarts  int       `json:"restarts"`
 	Age       string    `json:"age"`
 	UpdatedAt time.Time `json:"updated_at"`
+	Image     string    `json:"image"`
+	Ports     string    `json:"ports"`
+	NetRX     uint64    `json:"net_rx"`
+	NetTX     uint64    `json:"net_tx"`
 }
 
 type KubernetesPV struct {
@@ -332,6 +336,12 @@ func NewPostgresDB(connStr string) (*DB, error) {
 	_, _ = db.Exec("ALTER TABLE kubernetes.nodes ADD COLUMN IF NOT EXISTS net_tx BIGINT DEFAULT 0")
 	_, _ = db.Exec("ALTER TABLE kubernetes.nodes ADD COLUMN IF NOT EXISTS net_rx_rate BIGINT DEFAULT 0")
 	_, _ = db.Exec("ALTER TABLE kubernetes.nodes ADD COLUMN IF NOT EXISTS net_tx_rate BIGINT DEFAULT 0")
+
+	// Pod Metrics
+	_, _ = db.Exec("ALTER TABLE kubernetes.pods ADD COLUMN IF NOT EXISTS image TEXT DEFAULT ''")
+	_, _ = db.Exec("ALTER TABLE kubernetes.pods ADD COLUMN IF NOT EXISTS ports TEXT DEFAULT ''")
+	_, _ = db.Exec("ALTER TABLE kubernetes.pods ADD COLUMN IF NOT EXISTS net_rx BIGINT DEFAULT 0")
+	_, _ = db.Exec("ALTER TABLE kubernetes.pods ADD COLUMN IF NOT EXISTS net_tx BIGINT DEFAULT 0")
 	for _, t := range genericTables {
 		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS kubeconfig_path TEXT DEFAULT ''", t))
 		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS kubeconfig_content TEXT DEFAULT ''", t))
@@ -1447,14 +1457,13 @@ func (d *DB) UpsertKubernetesPod(p KubernetesPod) error {
 
 	if err == sql.ErrNoRows {
 		_, err = d.Conn.Exec(`
-			INSERT INTO kubernetes.pods (node_id, name, namespace, state, status, cpu_usage, memory_usage, ip_address, restarts, age, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
-			p.NodeID, p.Name, p.Namespace, p.State, p.Status, p.CPUUsage, p.MemUsage, p.IPAddress, p.Restarts, p.Age)
+			INSERT INTO kubernetes.pods (node_id, name, namespace, state, status, cpu_usage, memory_usage, ip_address, restarts, age, updated_at, image, ports, net_rx, net_tx)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11, $12, $13, $14)`,
+			p.NodeID, p.Name, p.Namespace, p.State, p.Status, p.CPUUsage, p.MemUsage, p.IPAddress, p.Restarts, p.Age, p.Image, p.Ports, p.NetRX, p.NetTX)
 	} else if err == nil {
 		_, err = d.Conn.Exec(`
-			UPDATE kubernetes.pods SET state=$1, status=$2, cpu_usage=$3, memory_usage=$4, ip_address=$5, restarts=$6, age=$7, updated_at=NOW()
-			WHERE id=$8`,
-			p.State, p.Status, p.CPUUsage, p.MemUsage, p.IPAddress, p.Restarts, p.Age, id)
+			UPDATE kubernetes.pods SET state=$1, status=$2, cpu_usage=$3, memory_usage=$4, ip_address=$5, restarts=$6, age=$7, updated_at=NOW(), image=$8, ports=$9, net_rx=$10, net_tx=$11 WHERE id=$12`,
+			p.State, p.Status, p.CPUUsage, p.MemUsage, p.IPAddress, p.Restarts, p.Age, p.Image, p.Ports, p.NetRX, p.NetTX, id)
 	}
 	return err
 }
@@ -1478,10 +1487,11 @@ func (d *DB) GetKubernetesNodes() ([]KubernetesNode, error) {
 		nodes = append(nodes, n)
 	}
 	return nodes, nil
+	return nodes, nil
 }
 
 func (d *DB) GetAllKubernetesPods() ([]KubernetesPod, error) {
-	rows, err := d.Conn.Query("SELECT id, node_id, name, namespace, state, status, cpu_usage, memory_usage, ip_address, restarts, age, updated_at FROM kubernetes.pods")
+	rows, err := d.Conn.Query(`SELECT id, node_id, name, namespace, state, status, cpu_usage, memory_usage, ip_address, restarts, age, updated_at, image, ports, net_rx, net_tx FROM kubernetes.pods`)
 	if err != nil {
 		return nil, err
 	}
@@ -1490,7 +1500,7 @@ func (d *DB) GetAllKubernetesPods() ([]KubernetesPod, error) {
 	var pods []KubernetesPod
 	for rows.Next() {
 		var p KubernetesPod
-		if err := rows.Scan(&p.ID, &p.NodeID, &p.Name, &p.Namespace, &p.State, &p.Status, &p.CPUUsage, &p.MemUsage, &p.IPAddress, &p.Restarts, &p.Age, &p.UpdatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.NodeID, &p.Name, &p.Namespace, &p.State, &p.Status, &p.CPUUsage, &p.MemUsage, &p.IPAddress, &p.Restarts, &p.Age, &p.UpdatedAt, &p.Image, &p.Ports, &p.NetRX, &p.NetTX); err != nil {
 			return nil, err
 		}
 		pods = append(pods, p)

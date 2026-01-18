@@ -27,6 +27,16 @@ type NodeSummary struct {
 			UsedBytes     uint64 `json:"usedBytes"`
 		} `json:"fs"`
 	} `json:"node"`
+	Pods []struct {
+		PodRef struct {
+			Name      string `json:"name"`
+			Namespace string `json:"namespace"`
+		} `json:"podRef"`
+		Network struct {
+			RxBytes uint64 `json:"rxBytes"`
+			TxBytes uint64 `json:"txBytes"`
+		} `json:"network"`
+	} `json:"pods"`
 }
 
 type NetStats struct {
@@ -210,6 +220,7 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 	}
 
 	nodeIDMap := make(map[string]int64)
+	allPodNetStats := make(map[string]NetStats)
 
 	for _, item := range nodeListView.Items {
 		name := item.Metadata.Name
@@ -257,6 +268,15 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 				diskUsed = summary.Node.Fs.UsedBytes
 				netRX = summary.Node.Network.RxBytes
 				netTX = summary.Node.Network.TxBytes
+
+				// Collect Pod Network Stats
+				for _, p := range summary.Pods {
+					k := p.PodRef.Namespace + "/" + p.PodRef.Name
+					allPodNetStats[k] = NetStats{
+						RxBytes: p.Network.RxBytes,
+						TxBytes: p.Network.TxBytes,
+					}
+				}
 			}
 		}
 
@@ -330,7 +350,13 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 					Namespace string `json:"namespace"`
 				} `json:"metadata"`
 				Spec struct {
-					NodeName string `json:"nodeName"`
+					NodeName   string `json:"nodeName"`
+					Containers []struct {
+						Image string `json:"image"`
+						Ports []struct {
+							ContainerPort int `json:"containerPort"`
+						} `json:"ports"`
+					} `json:"containers"`
 				} `json:"spec"`
 				Status struct {
 					Phase             string `json:"phase"`
@@ -398,6 +424,22 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 					}
 				}
 
+				// Extract Image and Ports
+				image := ""
+				ports := []string{}
+				if len(item.Spec.Containers) > 0 {
+					image = item.Spec.Containers[0].Image
+					for _, c := range item.Spec.Containers {
+						for _, p := range c.Ports {
+							ports = append(ports, fmt.Sprintf("%d", p.ContainerPort))
+						}
+					}
+				}
+				portsStr := strings.Join(ports, ", ")
+
+				// lookup network stats
+				ns := allPodNetStats[key]
+
 				p := data_centralizegg.KubernetesPod{
 					NodeID:    nodeID,
 					Name:      item.Metadata.Name,
@@ -409,6 +451,10 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 					Age:       age,
 					CPUUsage:  m.CPU,
 					MemUsage:  m.Mem,
+					Image:     image,
+					Ports:     portsStr,
+					NetRX:     ns.RxBytes,
+					NetTX:     ns.TxBytes,
 				}
 
 				if err := kc.DB.UpsertKubernetesPod(p); err != nil {

@@ -2464,6 +2464,8 @@ async function renderKubernetesServerDetails(serverId) {
                 const nMemUsed = node.total_memory - node.free_memory;
                 const nMemPercent = node.total_memory > 0 ? ((nMemUsed / node.total_memory) * 100).toFixed(0) : 0;
                 const nodePods = allPodsCache.filter(p => p.node_id === node.id);
+                // Sort by CPU usage descending
+                nodePods.sort((a, b) => (b.cpu_usage || 0) - (a.cpu_usage || 0));
                 const isExpanded = expandedK8sNodes[node.id] || false;
 
                 const memTotalGB = (node.total_memory / (1024 * 1024 * 1024)).toFixed(1);
@@ -2587,22 +2589,77 @@ async function renderKubernetesServerDetails(serverId) {
                         </div>
                     </div>
 
-                    <div id="k8s-node-pods-${node.id}" style="display: ${isExpanded ? 'block' : 'none'}; margin-top: 0; padding-top: 15px; padding-bottom: 5px; border-top: 1px solid rgba(255,255,255,0.05); margin-top: 12px;">
+                    <div id="k8s-node-pods-${node.id}" style="display: ${isExpanded ? 'block' : 'none'}; margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.05);">
                         <div style="font-size: 0.75rem; font-weight: 600; color: var(--accent-color); margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
                             <i class="fa-solid fa-cubes"></i> Pods en este Nodo
                         </div>
-                        <div style="display: flex; flex-direction: column; gap: 4px; max-height: 250px; overflow-y: auto;" class="custom-scrollbar">
-                            ${nodePods.length === 0 ? '<div style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.6;">No hay pods en este nodo</div>' : nodePods.map(p => `
-                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: rgba(255,255,255,0.02); border-radius: 4px; border: 1px solid rgba(255,255,255,0.02);">
-                                    <div style="display: flex; flex-direction: column; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 250px;">
-                                        <span style="font-size: 0.75rem; color: var(--text-primary); font-weight: 500;">${p.name}</span>
-                                        <span style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.6;">${p.namespace}</span>
-                                    </div>
-                                    <span style="font-size: 0.6rem; padding: 2px 6px; border-radius: 3px; background: ${p.status === 'Running' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; color: ${p.status === 'Running' ? '#4ade80' : '#ef4444'}; border: 1px solid ${p.status === 'Running' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'};">
-                                        ${p.status}
-                                    </span>
-                                </div>
-                            `).join('')}
+                        <div style="max-height: 300px; overflow-y: auto;" class="custom-scrollbar">
+                             ${nodePods.length === 0 ? '<div style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.6; padding: 10px;">No hay pods en este nodo</div>' : `
+                                <table style="width: 100%; border-collapse: collapse; font-size: 0.75rem;">
+                                    <thead>
+                                        <tr style="color: var(--text-secondary); border-bottom: 1px solid rgba(255,255,255,0.05); text-align: left;">
+                                            <th style="padding: 8px; font-weight: 500;">Nombre / Imagen</th>
+                                            <th style="padding: 8px; font-weight: 500;">Puerto</th>
+                                            <th style="padding: 8px; font-weight: 500;">CPU</th>
+                                            <th style="padding: 8px; font-weight: 500;">Memoria</th>
+                                            <th style="padding: 8px; font-weight: 500;">Red (RX/TX)</th>
+                                            <th style="padding: 8px; font-weight: 500; text-align: right;">Estado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${nodePods.map(p => `
+                                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.02); height: 40px;">
+                                                <td style="padding: 8px; vertical-align: middle;">
+                                                    <div style="font-weight: 500; color: var(--text-primary); margin-bottom: 2px;">${p.name}</div>
+                                                    <div style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.7; font-family: monospace;">${p.image ? ((p.image.length > 30) ? '...' + p.image.slice(-30) : p.image) : '-'}</div>
+                                                </td>
+                                                <td style="padding: 8px; vertical-align: middle; color: var(--text-secondary); white-space: nowrap; max-width: 100px; overflow: hidden; text-overflow: ellipsis;">
+                                                    <span title="${p.ports || ''}">${p.ports || '-'}</span>
+                                                </td>
+                                                <td style="padding: 8px; vertical-align: middle; color: var(--text-primary); font-family: monospace;">
+                                                    ${p.cpu_usage ? (p.cpu_usage * 1000).toFixed(0) + 'm' : '0m'}
+                                                </td>
+                                                <td style="padding: 8px; vertical-align: middle; color: var(--accent-color); font-family: monospace;">
+                                                    ${formatBytes(p.memory_usage)}
+                                                </td>
+                                                <td style="padding: 8px; vertical-align: middle; color: var(--text-secondary); font-size: 0.7rem;">
+                                                     <div style="display: flex; gap: 4px; align-items: center;"><i class="fa-solid fa-arrow-down" style="font-size: 0.6rem;"></i> ${formatBytes(p.net_rx)}</div>
+                                                     <div style="display: flex; gap: 4px; align-items: center;"><i class="fa-solid fa-arrow-up" style="font-size: 0.6rem;"></i> ${formatBytes(p.net_tx)}</div>
+                                                </td>
+                                                <td style="padding: 8px; vertical-align: middle; text-align: right;">
+                                                    ${(() => {
+                        let color = '#94a3b8'; // Default gray
+                        let bg = 'rgba(148, 163, 184, 0.1)';
+                        let border = 'rgba(148, 163, 184, 0.2)';
+                        // Use 'state' (Phase) for status display to match "Running", "Pending" etc.
+                        const status = p.state || 'Unknown';
+
+                        if (status === 'Running') {
+                            color = '#4ade80'; // Green
+                            bg = 'rgba(74, 222, 128, 0.1)';
+                            border = 'rgba(74, 222, 128, 0.2)';
+                        } else if (status === 'Pending') {
+                            color = '#fbbf24'; // Amber
+                            bg = 'rgba(251, 191, 36, 0.1)';
+                            border = 'rgba(251, 191, 36, 0.2)';
+                        } else if (status === 'Failed' || status.includes('CrashLoop') || status.includes('Error')) {
+                            color = '#ef4444'; // Red
+                            bg = 'rgba(239, 68, 68, 0.1)';
+                            border = 'rgba(239, 68, 68, 0.2)';
+                        } else if (status === 'Succeeded' || status === 'Completed') {
+                            color = '#60a5fa'; // Blue
+                            bg = 'rgba(96, 165, 250, 0.1)';
+                            border = 'rgba(96, 165, 250, 0.2)';
+                        }
+
+                        return `<span style="font-size: 0.65rem; padding: 2px 8px; border-radius: 10px; background: ${bg}; color: ${color}; border: 1px solid ${border}; text-transform: uppercase;">${status}</span>`;
+                    })()}
+                                                </td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                             `}
                         </div>
                     </div>
                 </div>
@@ -2667,7 +2724,13 @@ async function renderKubernetesServerDetails(serverId) {
                     .then(pvs => {
                         const clusterPVs = pvs.filter(pv => pv.server_id === selectedKubernetesServerId);
                         clusterPVs.sort((a, b) => b.capacity - a.capacity);
-                        pvListEl.innerHTML = renderK8sPVList(clusterPVs.slice(0, 5));
+                        const newHTML = renderK8sPVList(clusterPVs.slice(0, 10));
+                        if (pvListEl.innerHTML !== newHTML) {
+                            // Preserve scroll position
+                            const scrollPos = pvListEl.scrollTop;
+                            pvListEl.innerHTML = newHTML;
+                            pvListEl.scrollTop = scrollPos;
+                        }
                     });
             }
 
@@ -2805,9 +2868,18 @@ async function renderKubernetesServerDetails(serverId) {
                         </div>
                     </div>
 
-                </div>
             </section>
         `;
+
+        // Initial Fetch for PVs (Sorted immediately, Top 10)
+        fetch(API_KUBERNETES_PVS)
+            .then(res => res.json())
+            .then(pvs => {
+                const clusterPVs = pvs.filter(pv => pv.server_id === serverId);
+                clusterPVs.sort((a, b) => b.capacity - a.capacity);
+                const pvListEl = document.getElementById('k8s-pv-list');
+                if (pvListEl) pvListEl.innerHTML = renderK8sPVList(clusterPVs.slice(0, 10));
+            });
 
     } catch (e) {
         console.error('Error rendering Kubernetes server details:', e);
