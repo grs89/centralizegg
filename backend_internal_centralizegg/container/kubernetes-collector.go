@@ -8,6 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"os"
+	"os/exec"
+
 	"github.com/grs/centralizegg/backend_internal_centralizegg/data_centralizegg"
 	"golang.org/x/crypto/ssh"
 )
@@ -59,14 +62,58 @@ func (kc *KubernetesCollector) CollectAll() {
 }
 
 func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) error {
-	client, err := kc.getSSHClient(s)
-	if err != nil {
-		return fmt.Errorf("ssh connection failed: %w", err)
+	var client *ssh.Client
+	var err error
+	isLocal := s.IPAddress == "" || s.Username == ""
+
+	if !isLocal {
+		client, err = kc.getSSHClient(s)
+		if err != nil {
+			return fmt.Errorf("ssh connection failed: %w", err)
+		}
+		defer client.Close()
 	}
-	defer client.Close()
+
+	kubeconfigPath := ""
+	if s.KubeconfigContent != "" {
+		if isLocal {
+			// Write to local /tmp
+			tmpFile, err := os.CreateTemp("", "kubeconfig-*.yaml")
+			if err == nil {
+				tmpFile.Write([]byte(s.KubeconfigContent))
+				tmpFile.Close()
+				kubeconfigPath = tmpFile.Name()
+				defer os.Remove(kubeconfigPath)
+			}
+		} else {
+			// Use a temporary file on the remote host
+			remotePath := fmt.Sprintf("/tmp/centralize-kubeconfig-%d", s.ID)
+			cmd := fmt.Sprintf("cat << 'EOF' > %s\n%s\nEOF", remotePath, s.KubeconfigContent)
+			if _, err := kc.runCommand(client, cmd, ""); err != nil {
+				log.Printf("[KubernetesCollector] Warning: Failed to write remote kubeconfig: %v", err)
+			} else {
+				kubeconfigPath = remotePath
+				// Ensure cleanup
+				defer kc.runCommand(client, fmt.Sprintf("rm -f %s", remotePath), "")
+			}
+		}
+	}
 
 	// 1. Get Nodes
-	nodesJSON, err := kc.runCommand(client, "kubectl get nodes -o json")
+	kubectlCmd := "kubectl"
+	if kubeconfigPath != "" {
+		kubectlCmd = fmt.Sprintf("KUBECONFIG=%s kubectl", kubeconfigPath)
+		if isLocal {
+			kubectlCmd = fmt.Sprintf("kubectl --kubeconfig=%s", kubeconfigPath)
+		}
+	}
+
+	var nodesJSON string
+	if isLocal {
+		nodesJSON, err = kc.runLocalCommand(kubectlCmd + " get nodes -o json")
+	} else {
+		nodesJSON, err = kc.runCommand(client, kubectlCmd+" get nodes -o json", "")
+	}
 	if err != nil {
 		return fmt.Errorf("kubectl get nodes: %w", err)
 	}
@@ -108,7 +155,12 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 	}
 
 	// Get Node Metrics if metrics-server is available
-	nodeMetricsRaw, _ := kc.runCommand(client, "kubectl top nodes --no-headers")
+	var nodeMetricsRaw string
+	if isLocal {
+		nodeMetricsRaw, _ = kc.runLocalCommand(kubectlCmd + " top nodes --no-headers")
+	} else {
+		nodeMetricsRaw, _ = kc.runCommand(client, kubectlCmd+" top nodes --no-headers", "")
+	}
 	metricsMap := make(map[string]struct {
 		CPUUsage float64
 		MemUsage uint64
@@ -180,7 +232,12 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 	}
 
 	// 2. Get Pods
-	podsJSON, err := kc.runCommand(client, "kubectl get pods -A -o json")
+	var podsJSON string
+	if isLocal {
+		podsJSON, err = kc.runLocalCommand(kubectlCmd + " get pods -A -o json")
+	} else {
+		podsJSON, err = kc.runCommand(client, kubectlCmd+" get pods -A -o json", "")
+	}
 	if err == nil {
 		var podListView struct {
 			Items []struct {
@@ -205,7 +262,12 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 
 		if err := json.Unmarshal([]byte(podsJSON), &podListView); err == nil {
 			// Get Pod Metrics
-			podMetricsRaw, _ := kc.runCommand(client, "kubectl top pods -A --no-headers")
+			var podMetricsRaw string
+			if isLocal {
+				podMetricsRaw, _ = kc.runLocalCommand(kubectlCmd + " top pods -A --no-headers")
+			} else {
+				podMetricsRaw, _ = kc.runCommand(client, kubectlCmd+" top pods -A --no-headers", "")
+			}
 			podMetricsMap := make(map[string]struct {
 				CPU float64
 				Mem uint64
@@ -316,12 +378,22 @@ func (kc *KubernetesCollector) getSSHClient(s data_centralizegg.GenericServer) (
 	return ssh.Dial("tcp", addr, config)
 }
 
-func (kc *KubernetesCollector) runCommand(client *ssh.Client, cmd string) (string, error) {
+func (kc *KubernetesCollector) runLocalCommand(cmd string) (string, error) {
+	// Simple wrapper for local execution
+	out, err := exec.Command("sh", "-c", cmd).CombinedOutput()
+	return string(out), err
+}
+
+func (kc *KubernetesCollector) runCommand(client *ssh.Client, cmd string, kubeconfig string) (string, error) {
 	session, err := client.NewSession()
 	if err != nil {
 		return "", err
 	}
 	defer session.Close()
+
+	if kubeconfig != "" && strings.Contains(cmd, "kubectl") && !strings.Contains(cmd, "KUBECONFIG=") {
+		cmd = fmt.Sprintf("KUBECONFIG=%s %s", kubeconfig, cmd)
+	}
 
 	output, err := session.CombinedOutput(cmd)
 	return string(output), err

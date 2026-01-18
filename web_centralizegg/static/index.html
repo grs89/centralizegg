@@ -279,7 +279,23 @@
                                 </div>
                                 <div class="settings-input-group" id="settings-pass-group" style="display: none;">
                                     <label>Contraseña</label>
-                                    <input type="password" id="settings-srv-pass" placeholder="Ingresa la contraseña">
+                                    <input type="password" id="settings-srv-pass" placeholder="••••••••">
+                                </div>
+                                <div class="settings-input-group" id="settings-kubeconfig-group" style="display: none;">
+                                    <label>Archivo Kubeconfig</label>
+                                    <div class="ssh-key-upload-container">
+                                        <button type="button" class="ssh-key-upload-btn"
+                                            onclick="document.getElementById('settings-srv-kubeconfig-file').click()">
+                                            <i class="fa-solid fa-cloud-upload-alt"></i> Subir Kubeconfig
+                                        </button>
+                                        <div id="settings-kubeconfig-status">
+                                            <i class="fa-solid fa-file-code"></i>
+                                            <span>No se ha subido ningún archivo</span>
+                                        </div>
+                                    </div>
+                                    <input type="file" id="settings-srv-kubeconfig-file" style="display: none;">
+                                    <input type="hidden" id="settings-srv-kubeconfig-content">
+                                    <input type="hidden" id="settings-srv-kubeconfig-path">
                                 </div>
 
                                 <div class="form-actions" style="display:flex; gap:12px; margin-top: 25px;">

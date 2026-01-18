@@ -3525,6 +3525,53 @@ function initSettings() {
         };
     }
 
+    // Kubeconfig File Upload Listener
+    const kubeconfigFileInput = document.getElementById('settings-srv-kubeconfig-file');
+    if (kubeconfigFileInput) {
+        kubeconfigFileInput.onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                document.getElementById('settings-srv-kubeconfig-content').value = event.target.result;
+                document.getElementById('settings-srv-kubeconfig-path').value = file.name;
+                const statusEl = document.getElementById('settings-kubeconfig-status');
+                if (statusEl) {
+                    statusEl.innerHTML = `<i class="fa-solid fa-circle-check"></i> <span>Kubeconfig cargado: ${file.name}</span>`;
+                    statusEl.classList.add('success');
+                }
+
+                // If Name is empty, use the filename as default
+                const nameInput = document.getElementById('settings-srv-name');
+                if (nameInput && !nameInput.value) {
+                    nameInput.value = file.name.split('.')[0];
+                }
+
+                // Update labels to show optionality
+                updateK8sLabels(true);
+            };
+            reader.readAsText(file);
+        };
+    }
+
+    function updateK8sLabels(hasKube) {
+        if (settingsCurrentCategory !== 'kubernetes') return;
+        const labels = {
+            'settings-srv-name': 'Nombre',
+            'settings-srv-ip': 'Dirección IP / Hostname',
+            'settings-srv-user': 'Usuario SSH'
+        };
+        for (const [id, original] of Object.entries(labels)) {
+            const input = document.getElementById(id);
+            if (!input) continue;
+            const labelEl = document.querySelector(`label[for="${id}"]`) || input.previousElementSibling;
+            if (labelEl && labelEl.tagName === 'LABEL') {
+                labelEl.innerText = hasKube ? `${original} (Opcional)` : original;
+            }
+        }
+    }
+
     // Category selection (sidebar items now handled in renderSettingsSidebar)
 
     // Save button
@@ -3654,6 +3701,27 @@ window.editSettingsServer = (srv) => {
         document.getElementById('settings-srv-key-content').value = srv.ssh_key_content || '';
         document.getElementById('settings-srv-key-path').value = srv.ssh_key_path || '';
     }
+
+    // Kubeconfig status
+    const kubeGroup = document.getElementById('settings-kubeconfig-group');
+    if (kubeGroup) {
+        kubeGroup.style.display = (settingsCurrentCategory === 'kubernetes') ? 'flex' : 'none';
+        const kubeStatus = document.getElementById('settings-kubeconfig-status');
+        const hasKube = srv.kubeconfig_content || srv.kubeconfig_path;
+        if (hasKube) {
+            const label = srv.kubeconfig_content ? 'Kubeconfig en DB' : `Ruta config: ${srv.kubeconfig_path}`;
+            kubeStatus.innerHTML = `<i class="fa-solid fa-shield-check"></i> <span>${label}</span>`;
+            kubeStatus.classList.add('success');
+        } else {
+            kubeStatus.innerHTML = `<i class="fa-solid fa-file-code"></i> <span>No se ha subido ningún archivo</span>`;
+            kubeStatus.classList.remove('success');
+        }
+        document.getElementById('settings-srv-kubeconfig-content').value = srv.kubeconfig_content || '';
+        document.getElementById('settings-srv-kubeconfig-path').value = srv.kubeconfig_path || '';
+
+        updateK8sLabels(hasKube);
+    }
+
     document.getElementById('settings-srv-pass').value = '';
 
     document.getElementById('settings-save-btn').innerText = 'Actualizar Servidor';
@@ -3672,6 +3740,11 @@ function resetSettingsForm() {
     document.getElementById('settings-key-group').style.display = 'flex';
     document.getElementById('settings-pass-group').style.display = 'none';
 
+    // Kubernetes specific kubeconfig group
+    const kubeGroup = document.getElementById('settings-kubeconfig-group');
+    if (kubeGroup) {
+        kubeGroup.style.display = (settingsCurrentCategory === 'kubernetes') ? 'flex' : 'none';
+    }
     document.getElementById('settings-srv-key-content').value = '';
     document.getElementById('settings-srv-key-path').value = '';
     const keyStatus = document.getElementById('settings-key-status');
@@ -3680,6 +3753,15 @@ function resetSettingsForm() {
         keyStatus.classList.remove('success');
         keyStatus.style.color = '';
     }
+
+    document.getElementById('settings-srv-kubeconfig-content').value = '';
+    document.getElementById('settings-srv-kubeconfig-path').value = '';
+    const kubeStatus = document.getElementById('settings-kubeconfig-status');
+    if (kubeStatus) {
+        kubeStatus.innerHTML = `<i class="fa-solid fa-file-code"></i> <span>No se ha subido ningún archivo</span>`;
+        kubeStatus.classList.remove('success');
+    }
+    updateK8sLabels(false);
 }
 
 async function saveSettingsServer() {
@@ -3693,13 +3775,25 @@ async function saveSettingsServer() {
     const pass = document.getElementById('settings-srv-pass').value;
     const keyPath = document.getElementById('settings-srv-key-path').value;
     const keyContent = document.getElementById('settings-srv-key-content').value;
+    const kubePath = document.getElementById('settings-srv-kubeconfig-path').value;
+    const kubeContent = document.getElementById('settings-srv-kubeconfig-content').value;
 
-    if (!name || !ip || !user) {
-        alert('Por favor completa todos los campos obligatorios (Nombre, IP, Usuario).');
+    const isK8s = settingsCurrentCategory === 'kubernetes';
+    const hasKube = kubeContent !== '';
+
+    if (!name && !(isK8s && hasKube)) {
+        alert('Por favor completa el Nombre del servidor.');
         return;
     }
 
-    const payload = {
+    if (!isK8s || !hasKube) {
+        if (!ip || !user) {
+            alert('Por favor completa los campos obligatorios (IP, Usuario).');
+            return;
+        }
+    }
+
+    const data = {
         name,
         ip_address: ip,
         ssh_port: port,
@@ -3707,6 +3801,8 @@ async function saveSettingsServer() {
         password: authType === 'password' ? pass : '',
         ssh_key_path: authType === 'key' ? keyPath : '',
         ssh_key_content: authType === 'key' ? keyContent : '',
+        kubeconfig_path: settingsCurrentCategory === 'kubernetes' ? kubePath : '',
+        kubeconfig_content: settingsCurrentCategory === 'kubernetes' ? kubeContent : '',
     };
 
     const apiUrl = getConfigAPIForTool(settingsCurrentCategory);
@@ -3716,13 +3812,13 @@ async function saveSettingsServer() {
             response = await fetch(`${apiUrl}/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(data)
             });
         } else {
             response = await fetch(apiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(data)
             });
         }
 
@@ -3742,7 +3838,8 @@ async function saveSettingsServer() {
             alert('Error al guardar: ' + err);
         }
     } catch (e) {
-        alert('Error de conexión.');
+        console.error('Error saving server:', e);
+        alert('Error de conexión: ' + e.message);
     }
 }
 

@@ -455,6 +455,18 @@ func ensureSchema(db *sql.DB) {
 		"ALTER TABLE containers.docker_servers ADD COLUMN IF NOT EXISTS ssh_key_content TEXT DEFAULT ''",
 		"ALTER TABLE containers.podman_servers ADD COLUMN IF NOT EXISTS ssh_key_content TEXT DEFAULT ''",
 		"ALTER TABLE kubernetes.kubernetes_servers ADD COLUMN IF NOT EXISTS ssh_key_content TEXT DEFAULT ''",
+		"ALTER TABLE kubernetes.kubernetes_servers ADD COLUMN IF NOT EXISTS kubeconfig_path TEXT DEFAULT ''",
+		"ALTER TABLE kubernetes.kubernetes_servers ADD COLUMN IF NOT EXISTS kubeconfig_content TEXT DEFAULT ''",
+		"ALTER TABLE virtualization.proxmox_servers ADD COLUMN IF NOT EXISTS kubeconfig_path TEXT DEFAULT ''",
+		"ALTER TABLE virtualization.proxmox_servers ADD COLUMN IF NOT EXISTS kubeconfig_content TEXT DEFAULT ''",
+		"ALTER TABLE storage.nas_servers ADD COLUMN IF NOT EXISTS kubeconfig_path TEXT DEFAULT ''",
+		"ALTER TABLE storage.nas_servers ADD COLUMN IF NOT EXISTS kubeconfig_content TEXT DEFAULT ''",
+		"ALTER TABLE storage.ceph_servers ADD COLUMN IF NOT EXISTS kubeconfig_path TEXT DEFAULT ''",
+		"ALTER TABLE storage.ceph_servers ADD COLUMN IF NOT EXISTS kubeconfig_content TEXT DEFAULT ''",
+		"ALTER TABLE containers.docker_servers ADD COLUMN IF NOT EXISTS kubeconfig_path TEXT DEFAULT ''",
+		"ALTER TABLE containers.docker_servers ADD COLUMN IF NOT EXISTS kubeconfig_content TEXT DEFAULT ''",
+		"ALTER TABLE containers.podman_servers ADD COLUMN IF NOT EXISTS kubeconfig_path TEXT DEFAULT ''",
+		"ALTER TABLE containers.podman_servers ADD COLUMN IF NOT EXISTS kubeconfig_content TEXT DEFAULT ''",
 
 		// Docker Tables
 		`CREATE TABLE IF NOT EXISTS containers.hosts (
@@ -1071,15 +1083,17 @@ func (d *DB) GetFirewallHosts() ([]FirewallHost, error) { // Fetch Hosts
 
 // GenericServer is used for Proxmox, NAS, Ceph, Docker, Podman servers (same structure as KVMServer)
 type GenericServer struct {
-	ID            int64  `json:"id"`
-	Name          string `json:"name"`
-	IPAddress     string `json:"ip_address"`
-	SSHPort       int    `json:"ssh_port"`
-	Username      string `json:"username"`
-	Password      string `json:"password"`
-	SSHKeyPath    string `json:"ssh_key_path"`
-	SSHKeyContent string `json:"ssh_key_content"`
-	Status        string `json:"status"`
+	ID                int64  `json:"id"`
+	Name              string `json:"name"`
+	IPAddress         string `json:"ip_address"`
+	SSHPort           int    `json:"ssh_port"`
+	Username          string `json:"username"`
+	Password          string `json:"password"`
+	SSHKeyPath        string `json:"ssh_key_path"`
+	SSHKeyContent     string `json:"ssh_key_content"`
+	KubeconfigPath    string `json:"kubeconfig_path"`
+	KubeconfigContent string `json:"kubeconfig_content"`
+	Status            string `json:"status"`
 }
 
 // Table names for each server type
@@ -1098,7 +1112,7 @@ func (d *DB) GetGenericServers(toolType string) ([]GenericServer, error) {
 		return nil, fmt.Errorf("unknown tool type: %s", toolType)
 	}
 
-	query := fmt.Sprintf("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, status FROM %s", table)
+	query := fmt.Sprintf("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, kubeconfig_path, kubeconfig_content, status FROM %s", table)
 	rows, err := d.Conn.Query(query)
 	if err != nil {
 		return nil, err
@@ -1109,7 +1123,7 @@ func (d *DB) GetGenericServers(toolType string) ([]GenericServer, error) {
 	for rows.Next() {
 		var s GenericServer
 		var pwd sql.NullString
-		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.SSHKeyContent, &s.Status); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.SSHKeyContent, &s.KubeconfigPath, &s.KubeconfigContent, &s.Status); err != nil {
 			return nil, err
 		}
 		s.Password = pwd.String
@@ -1132,8 +1146,8 @@ func (d *DB) AddGenericServer(toolType string, s GenericServer) (int64, error) {
 	}
 
 	var id int64
-	query := fmt.Sprintf("INSERT INTO %s (name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id", table)
-	err := d.Conn.QueryRow(query, s.Name, s.IPAddress, s.SSHPort, s.Username, s.Password, s.SSHKeyPath, s.SSHKeyContent).Scan(&id)
+	query := fmt.Sprintf("INSERT INTO %s (name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, kubeconfig_path, kubeconfig_content) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id", table)
+	err := d.Conn.QueryRow(query, s.Name, s.IPAddress, s.SSHPort, s.Username, s.Password, s.SSHKeyPath, s.SSHKeyContent, s.KubeconfigPath, s.KubeconfigContent).Scan(&id)
 	return id, err
 }
 
@@ -1148,12 +1162,12 @@ func (d *DB) UpdateGenericServer(toolType string, s GenericServer) error {
 	}
 
 	if s.Password == "" {
-		query := fmt.Sprintf(`UPDATE %s SET name=$1, ip_address=$2, ssh_port=$3, username=$4, ssh_key_path=$5, ssh_key_content=$6 WHERE id=$7`, table)
-		_, err := d.Conn.Exec(query, s.Name, s.IPAddress, s.SSHPort, s.Username, s.SSHKeyPath, s.SSHKeyContent, s.ID)
+		query := fmt.Sprintf(`UPDATE %s SET name=$1, ip_address=$2, ssh_port=$3, username=$4, ssh_key_path=$5, ssh_key_content=$6, kubeconfig_path=$7, kubeconfig_content=$8 WHERE id=$9`, table)
+		_, err := d.Conn.Exec(query, s.Name, s.IPAddress, s.SSHPort, s.Username, s.SSHKeyPath, s.SSHKeyContent, s.KubeconfigPath, s.KubeconfigContent, s.ID)
 		return err
 	}
-	query := fmt.Sprintf(`UPDATE %s SET name=$1, ip_address=$2, ssh_port=$3, username=$4, password=$5, ssh_key_path=$6, ssh_key_content=$7 WHERE id=$8`, table)
-	_, err := d.Conn.Exec(query, s.Name, s.IPAddress, s.SSHPort, s.Username, s.Password, s.SSHKeyPath, s.SSHKeyContent, s.ID)
+	query := fmt.Sprintf(`UPDATE %s SET name=$1, ip_address=$2, ssh_port=$3, username=$4, password=$5, ssh_key_path=$6, ssh_key_content=$7, kubeconfig_path=$8, kubeconfig_content=$9 WHERE id=$10`, table)
+	_, err := d.Conn.Exec(query, s.Name, s.IPAddress, s.SSHPort, s.Username, s.Password, s.SSHKeyPath, s.SSHKeyContent, s.KubeconfigPath, s.KubeconfigContent, s.ID)
 	return err
 }
 
