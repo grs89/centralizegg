@@ -602,7 +602,12 @@ func (pc *PodmanCollector) getSSHClient(s data_centralizegg.GenericServer) (*ssh
 	if s.Password != "" {
 		authMethods = append(authMethods, ssh.Password(s.Password))
 	}
-	if s.SSHKeyPath != "" {
+	if s.SSHKeyContent != "" {
+		signer, err := ssh.ParsePrivateKey([]byte(s.SSHKeyContent))
+		if err == nil {
+			authMethods = append(authMethods, ssh.PublicKeys(signer))
+		}
+	} else if s.SSHKeyPath != "" {
 		key, err := ioutil.ReadFile(s.SSHKeyPath)
 		if err == nil {
 			signer, err := ssh.ParsePrivateKey(key)

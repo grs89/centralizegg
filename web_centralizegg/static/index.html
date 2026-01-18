@@ -261,8 +261,21 @@
                                 </div>
 
                                 <div class="settings-input-group" id="settings-key-group">
-                                    <label>Ruta de la Llave SSH</label>
-                                    <input type="text" id="settings-srv-key" placeholder="/root/.ssh/id_rsa">
+                                    <label>Llave SSH (Privada)</label>
+                                    <div class="ssh-key-upload-container">
+                                        <button type="button" class="ssh-key-upload-btn"
+                                            onclick="document.getElementById('settings-srv-key-file').click()">
+                                            <i class="fa-solid fa-upload"></i> Subir Llave
+                                        </button>
+                                        <div id="settings-key-status">
+                                            <i class="fa-solid fa-file-shield"></i>
+                                            <span>No se ha subido ninguna llave</span>
+                                        </div>
+                                    </div>
+                                    <input type="file" id="settings-srv-key-file" style="display: none;"
+                                        accept=".key,.pem,.pub,text/plain">
+                                    <input type="hidden" id="settings-srv-key-content">
+                                    <input type="hidden" id="settings-srv-key-path">
                                 </div>
                                 <div class="settings-input-group" id="settings-pass-group" style="display: none;">
                                     <label>Contraseña</label>

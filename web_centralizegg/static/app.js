@@ -3506,6 +3506,25 @@ function initSettings() {
         });
     }
 
+    // SSH Key File Upload Listener
+    const keyFileInput = document.getElementById('settings-srv-key-file');
+    if (keyFileInput) {
+        keyFileInput.onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const statusEl = document.getElementById('settings-key-status');
+                if (statusEl) {
+                    statusEl.innerHTML = `<i class="fa-solid fa-circle-check"></i> <span>Llave cargada: ${file.name}</span>`;
+                    statusEl.classList.add('success');
+                }
+            };
+            reader.readAsText(file);
+        };
+    }
+
     // Category selection (sidebar items now handled in renderSettingsSidebar)
 
     // Save button
@@ -3619,7 +3638,22 @@ window.editSettingsServer = (srv) => {
     document.getElementById('settings-key-group').style.display = isKey ? 'flex' : 'none';
     document.getElementById('settings-pass-group').style.display = isKey ? 'none' : 'flex';
 
-    if (isKey) document.getElementById('settings-srv-key').value = srv.ssh_key_path;
+    if (isKey) {
+        const keyStatus = document.getElementById('settings-key-status');
+        const hasKey = srv.ssh_key_content || srv.ssh_key_path;
+        if (hasKey) {
+            const label = srv.ssh_key_content ? 'Llave almacenada en DB' : `Ruta config: ${srv.ssh_key_path}`;
+            keyStatus.innerHTML = `<i class="fa-solid fa-shield-check"></i> <span>${label}</span>`;
+            keyStatus.classList.add('success');
+            keyStatus.style.color = ''; // Remove inline color if any
+        } else {
+            keyStatus.innerHTML = `<i class="fa-solid fa-file-shield"></i> <span>No se ha subido ninguna llave</span>`;
+            keyStatus.classList.remove('success');
+            keyStatus.style.color = '';
+        }
+        document.getElementById('settings-srv-key-content').value = srv.ssh_key_content || '';
+        document.getElementById('settings-srv-key-path').value = srv.ssh_key_path || '';
+    }
     document.getElementById('settings-srv-pass').value = '';
 
     document.getElementById('settings-save-btn').innerText = 'Actualizar Servidor';
@@ -3637,6 +3671,15 @@ function resetSettingsForm() {
 
     document.getElementById('settings-key-group').style.display = 'flex';
     document.getElementById('settings-pass-group').style.display = 'none';
+
+    document.getElementById('settings-srv-key-content').value = '';
+    document.getElementById('settings-srv-key-path').value = '';
+    const keyStatus = document.getElementById('settings-key-status');
+    if (keyStatus) {
+        keyStatus.innerHTML = `<i class="fa-solid fa-file-shield"></i> <span>No se ha subido ninguna llave</span>`;
+        keyStatus.classList.remove('success');
+        keyStatus.style.color = '';
+    }
 }
 
 async function saveSettingsServer() {
@@ -3648,7 +3691,8 @@ async function saveSettingsServer() {
     const authTypeInput = document.querySelector('input[name="settingsAuthType"]:checked');
     const authType = authTypeInput ? authTypeInput.value : 'key';
     const pass = document.getElementById('settings-srv-pass').value;
-    const key = document.getElementById('settings-srv-key').value;
+    const keyPath = document.getElementById('settings-srv-key-path').value;
+    const keyContent = document.getElementById('settings-srv-key-content').value;
 
     if (!name || !ip || !user) {
         alert('Por favor completa todos los campos obligatorios (Nombre, IP, Usuario).');
@@ -3661,7 +3705,8 @@ async function saveSettingsServer() {
         ssh_port: port,
         username: user,
         password: authType === 'password' ? pass : '',
-        ssh_key_path: authType === 'key' ? key : '',
+        ssh_key_path: authType === 'key' ? keyPath : '',
+        ssh_key_content: authType === 'key' ? keyContent : '',
     };
 
     const apiUrl = getConfigAPIForTool(settingsCurrentCategory);

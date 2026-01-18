@@ -1778,3 +1778,65 @@ header {
         transform: translateY(0);
     }
 }
+
+/* SSH Key Upload Styles */
+.ssh-key-upload-container {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px dashed var(--glass-border);
+    border-radius: 12px;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: all 0.3s ease;
+}
+
+.ssh-key-upload-container:hover {
+    border-color: rgba(56, 189, 248, 0.3);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.ssh-key-upload-btn {
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.1), rgba(56, 189, 248, 0.05));
+    border: 1px solid var(--accent-color);
+    color: var(--accent-color);
+    padding: 10px 20px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: all 0.3s ease;
+}
+
+.ssh-key-upload-btn:hover {
+    background: var(--accent-color);
+    color: #0f172a;
+    box-shadow: 0 0 20px var(--accent-glow);
+    transform: translateY(-2px);
+}
+
+.ssh-key-upload-btn:active {
+    transform: translateY(0);
+}
+
+#settings-key-status {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: center;
+    min-height: 20px;
+}
+
+#settings-key-status.success {
+    color: var(--success);
+}
+
+#settings-key-status i {
+    font-size: 0.9rem;
+}

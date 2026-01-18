@@ -80,7 +80,12 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 	}
 
 	// Always try key if present (default or custom)
-	if s.SSHKeyPath != "" {
+	if s.SSHKeyContent != "" {
+		signer, err := ssh.ParsePrivateKey([]byte(s.SSHKeyContent))
+		if err == nil {
+			authMethods = append(authMethods, ssh.PublicKeys(signer))
+		}
+	} else if s.SSHKeyPath != "" {
 		key, err := ioutil.ReadFile(s.SSHKeyPath)
 		if err == nil {
 			signer, err := ssh.ParsePrivateKey(key)

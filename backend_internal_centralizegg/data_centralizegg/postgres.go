@@ -256,14 +256,15 @@ type NasDisk struct {
 }
 
 type KVMServer struct {
-	ID         int64  `json:"id"`
-	Name       string `json:"name"`
-	IPAddress  string `json:"ip_address"`
-	SSHPort    int    `json:"ssh_port"`
-	Username   string `json:"username"`
-	Password   string `json:"password"`
-	SSHKeyPath string `json:"ssh_key_path"`
-	Status     string `json:"status"` // online, offline, unknown
+	ID            int64  `json:"id"`
+	Name          string `json:"name"`
+	IPAddress     string `json:"ip_address"`
+	SSHPort       int    `json:"ssh_port"`
+	Username      string `json:"username"`
+	Password      string `json:"password"`
+	SSHKeyPath    string `json:"ssh_key_path"`
+	SSHKeyContent string `json:"ssh_key_content"`
+	Status        string `json:"status"` // online, offline, unknown
 }
 
 func NewPostgresDB(connStr string) (*DB, error) {
@@ -445,6 +446,15 @@ func ensureSchema(db *sql.DB) {
 		"ALTER TABLE containers.hosts ADD COLUMN IF NOT EXISTS docker_socket_status VARCHAR(50) DEFAULT 'unknown'",
 		"ALTER TABLE containers.hosts ADD COLUMN IF NOT EXISTS docker_api_latency INT DEFAULT 0",
 		"ALTER TABLE containers.containers ADD COLUMN IF NOT EXISTS oom_killed BOOLEAN DEFAULT FALSE",
+		// SSH Key Content migrations
+		"ALTER TABLE virtualization.kvm_servers ADD COLUMN IF NOT EXISTS ssh_key_content TEXT DEFAULT ''",
+		"ALTER TABLE firewall.pfsense_servers ADD COLUMN IF NOT EXISTS ssh_key_content TEXT DEFAULT ''",
+		"ALTER TABLE virtualization.proxmox_servers ADD COLUMN IF NOT EXISTS ssh_key_content TEXT DEFAULT ''",
+		"ALTER TABLE storage.nas_servers ADD COLUMN IF NOT EXISTS ssh_key_content TEXT DEFAULT ''",
+		"ALTER TABLE storage.ceph_servers ADD COLUMN IF NOT EXISTS ssh_key_content TEXT DEFAULT ''",
+		"ALTER TABLE containers.docker_servers ADD COLUMN IF NOT EXISTS ssh_key_content TEXT DEFAULT ''",
+		"ALTER TABLE containers.podman_servers ADD COLUMN IF NOT EXISTS ssh_key_content TEXT DEFAULT ''",
+		"ALTER TABLE kubernetes.kubernetes_servers ADD COLUMN IF NOT EXISTS ssh_key_content TEXT DEFAULT ''",
 
 		// Docker Tables
 		`CREATE TABLE IF NOT EXISTS containers.hosts (
@@ -746,14 +756,14 @@ func (d *DB) AddServer(s KVMServer) (int64, error) {
 		s.SSHPort = 22
 	}
 	err := d.Conn.QueryRow(`
-		INSERT INTO virtualization.kvm_servers (name, ip_address, ssh_port, username, password, ssh_key_path)
-		VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-		s.Name, s.IPAddress, s.SSHPort, s.Username, s.Password, s.SSHKeyPath).Scan(&id)
+		INSERT INTO virtualization.kvm_servers (name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content)
+		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+		s.Name, s.IPAddress, s.SSHPort, s.Username, s.Password, s.SSHKeyPath, s.SSHKeyContent).Scan(&id)
 	return id, err
 }
 
 func (d *DB) GetServers() ([]KVMServer, error) {
-	rows, err := d.Conn.Query("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, status FROM virtualization.kvm_servers")
+	rows, err := d.Conn.Query("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, status FROM virtualization.kvm_servers")
 	if err != nil {
 		return nil, err
 	}
@@ -763,8 +773,8 @@ func (d *DB) GetServers() ([]KVMServer, error) {
 	for rows.Next() {
 		var s KVMServer
 		var pwd sql.NullString
-		// Validating scan args count: 8 cols
-		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.Status); err != nil {
+		// Validating scan args count: 9 cols
+		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.SSHKeyContent, &s.Status); err != nil {
 			return nil, err
 		}
 		s.Password = pwd.String
@@ -794,16 +804,16 @@ func (d *DB) UpdateServer(s KVMServer) error {
 	if s.Password == "" {
 		// Update without password
 		_, err := d.Conn.Exec(`UPDATE virtualization.kvm_servers 
-			SET name=$1, ip_address=$2, ssh_port=$3, username=$4, ssh_key_path=$5 
-			WHERE id=$6`,
-			s.Name, s.IPAddress, s.SSHPort, s.Username, s.SSHKeyPath, s.ID)
+			SET name=$1, ip_address=$2, ssh_port=$3, username=$4, ssh_key_path=$5, ssh_key_content=$6 
+			WHERE id=$7`,
+			s.Name, s.IPAddress, s.SSHPort, s.Username, s.SSHKeyPath, s.SSHKeyContent, s.ID)
 		return err
 	} else {
 		// Update with password
 		_, err := d.Conn.Exec(`UPDATE virtualization.kvm_servers 
-			SET name=$1, ip_address=$2, ssh_port=$3, username=$4, password=$5, ssh_key_path=$6 
-			WHERE id=$7`,
-			s.Name, s.IPAddress, s.SSHPort, s.Username, s.Password, s.SSHKeyPath, s.ID)
+			SET name=$1, ip_address=$2, ssh_port=$3, username=$4, password=$5, ssh_key_path=$6, ssh_key_content=$7 
+			WHERE id=$8`,
+			s.Name, s.IPAddress, s.SSHPort, s.Username, s.Password, s.SSHKeyPath, s.SSHKeyContent, s.ID)
 		return err
 	}
 }
@@ -838,14 +848,15 @@ func (d *DB) GetHosts() ([]Host, error) {
 
 // PFSense types and functions
 type PFSenseServer struct {
-	ID         int64  `json:"id"`
-	Name       string `json:"name"`
-	IPAddress  string `json:"ip_address"`
-	SSHPort    int    `json:"ssh_port"`
-	Username   string `json:"username"`
-	Password   string `json:"password"`
-	SSHKeyPath string `json:"ssh_key_path"`
-	Status     string `json:"status"`
+	ID            int64  `json:"id"`
+	Name          string `json:"name"`
+	IPAddress     string `json:"ip_address"`
+	SSHPort       int    `json:"ssh_port"`
+	Username      string `json:"username"`
+	Password      string `json:"password"`
+	SSHKeyPath    string `json:"ssh_key_path"`
+	SSHKeyContent string `json:"ssh_key_content"`
+	Status        string `json:"status"`
 }
 
 type FirewallHost struct {
@@ -938,7 +949,7 @@ func (d *DB) UpsertFirewallInterface(iface FirewallInterface) error {
 }
 
 func (d *DB) GetPFSenseServers() ([]PFSenseServer, error) {
-	rows, err := d.Conn.Query("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, status FROM firewall.pfsense_servers")
+	rows, err := d.Conn.Query("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, status FROM firewall.pfsense_servers")
 	if err != nil {
 		return nil, err
 	}
@@ -948,8 +959,8 @@ func (d *DB) GetPFSenseServers() ([]PFSenseServer, error) {
 	for rows.Next() {
 		var s PFSenseServer
 		var pwd sql.NullString
-		// Scan 8 columns
-		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.Status); err != nil {
+		// Scan 9 columns
+		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.SSHKeyContent, &s.Status); err != nil {
 			return nil, err
 		}
 		s.Password = pwd.String
@@ -964,14 +975,14 @@ func (d *DB) AddPFSenseServer(s PFSenseServer) (int64, error) {
 	if s.SSHKeyPath == "" {
 		s.SSHKeyPath = "/root/.ssh/id_rsa"
 	}
-	err := d.Conn.QueryRow(`INSERT INTO firewall.pfsense_servers (name, ip_address, ssh_port, username, password, ssh_key_path, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-		s.Name, s.IPAddress, s.SSHPort, s.Username, s.Password, s.SSHKeyPath, "unknown").Scan(&id)
+	err := d.Conn.QueryRow(`INSERT INTO firewall.pfsense_servers (name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+		s.Name, s.IPAddress, s.SSHPort, s.Username, s.Password, s.SSHKeyPath, s.SSHKeyContent, "unknown").Scan(&id)
 	return id, err
 }
 
 func (d *DB) UpdatePFSenseServer(s PFSenseServer) error {
-	_, err := d.Conn.Exec(`UPDATE firewall.pfsense_servers SET name=$1, ip_address=$2, ssh_port=$3, username=$4, password=$5, ssh_key_path=$6 WHERE id=$7`,
-		s.Name, s.IPAddress, s.SSHPort, s.Username, s.Password, s.SSHKeyPath, s.ID)
+	_, err := d.Conn.Exec(`UPDATE firewall.pfsense_servers SET name=$1, ip_address=$2, ssh_port=$3, username=$4, password=$5, ssh_key_path=$6, ssh_key_content=$7 WHERE id=$8`,
+		s.Name, s.IPAddress, s.SSHPort, s.Username, s.Password, s.SSHKeyPath, s.SSHKeyContent, s.ID)
 	return err
 }
 
@@ -1060,14 +1071,15 @@ func (d *DB) GetFirewallHosts() ([]FirewallHost, error) { // Fetch Hosts
 
 // GenericServer is used for Proxmox, NAS, Ceph, Docker, Podman servers (same structure as KVMServer)
 type GenericServer struct {
-	ID         int64  `json:"id"`
-	Name       string `json:"name"`
-	IPAddress  string `json:"ip_address"`
-	SSHPort    int    `json:"ssh_port"`
-	Username   string `json:"username"`
-	Password   string `json:"password"`
-	SSHKeyPath string `json:"ssh_key_path"`
-	Status     string `json:"status"`
+	ID            int64  `json:"id"`
+	Name          string `json:"name"`
+	IPAddress     string `json:"ip_address"`
+	SSHPort       int    `json:"ssh_port"`
+	Username      string `json:"username"`
+	Password      string `json:"password"`
+	SSHKeyPath    string `json:"ssh_key_path"`
+	SSHKeyContent string `json:"ssh_key_content"`
+	Status        string `json:"status"`
 }
 
 // Table names for each server type
@@ -1086,7 +1098,7 @@ func (d *DB) GetGenericServers(toolType string) ([]GenericServer, error) {
 		return nil, fmt.Errorf("unknown tool type: %s", toolType)
 	}
 
-	query := fmt.Sprintf("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, status FROM %s", table)
+	query := fmt.Sprintf("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, status FROM %s", table)
 	rows, err := d.Conn.Query(query)
 	if err != nil {
 		return nil, err
@@ -1097,7 +1109,7 @@ func (d *DB) GetGenericServers(toolType string) ([]GenericServer, error) {
 	for rows.Next() {
 		var s GenericServer
 		var pwd sql.NullString
-		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.Status); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.SSHKeyContent, &s.Status); err != nil {
 			return nil, err
 		}
 		s.Password = pwd.String
@@ -1120,8 +1132,8 @@ func (d *DB) AddGenericServer(toolType string, s GenericServer) (int64, error) {
 	}
 
 	var id int64
-	query := fmt.Sprintf(`INSERT INTO %s (name, ip_address, ssh_port, username, password, ssh_key_path) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`, table)
-	err := d.Conn.QueryRow(query, s.Name, s.IPAddress, s.SSHPort, s.Username, s.Password, s.SSHKeyPath).Scan(&id)
+	query := fmt.Sprintf("INSERT INTO %s (name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id", table)
+	err := d.Conn.QueryRow(query, s.Name, s.IPAddress, s.SSHPort, s.Username, s.Password, s.SSHKeyPath, s.SSHKeyContent).Scan(&id)
 	return id, err
 }
 
@@ -1136,12 +1148,12 @@ func (d *DB) UpdateGenericServer(toolType string, s GenericServer) error {
 	}
 
 	if s.Password == "" {
-		query := fmt.Sprintf(`UPDATE %s SET name=$1, ip_address=$2, ssh_port=$3, username=$4, ssh_key_path=$5 WHERE id=$6`, table)
-		_, err := d.Conn.Exec(query, s.Name, s.IPAddress, s.SSHPort, s.Username, s.SSHKeyPath, s.ID)
+		query := fmt.Sprintf(`UPDATE %s SET name=$1, ip_address=$2, ssh_port=$3, username=$4, ssh_key_path=$5, ssh_key_content=$6 WHERE id=$7`, table)
+		_, err := d.Conn.Exec(query, s.Name, s.IPAddress, s.SSHPort, s.Username, s.SSHKeyPath, s.SSHKeyContent, s.ID)
 		return err
 	}
-	query := fmt.Sprintf(`UPDATE %s SET name=$1, ip_address=$2, ssh_port=$3, username=$4, password=$5, ssh_key_path=$6 WHERE id=$7`, table)
-	_, err := d.Conn.Exec(query, s.Name, s.IPAddress, s.SSHPort, s.Username, s.Password, s.SSHKeyPath, s.ID)
+	query := fmt.Sprintf(`UPDATE %s SET name=$1, ip_address=$2, ssh_port=$3, username=$4, password=$5, ssh_key_path=$6, ssh_key_content=$7 WHERE id=$8`, table)
+	_, err := d.Conn.Exec(query, s.Name, s.IPAddress, s.SSHPort, s.Username, s.Password, s.SSHKeyPath, s.SSHKeyContent, s.ID)
 	return err
 }
 
