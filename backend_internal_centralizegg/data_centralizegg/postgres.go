@@ -366,7 +366,7 @@ func ensureSchema(db *sql.DB) {
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE(host_id, name)
 		)`,
-		// Generic Server Tables
+		// Generic Server Tables (Base)
 		`CREATE TABLE IF NOT EXISTS virtualization.proxmox_servers (
 			id SERIAL PRIMARY KEY,
 			name VARCHAR(255) NOT NULL,
@@ -422,6 +422,18 @@ func ensureSchema(db *sql.DB) {
 			ssh_key_path VARCHAR(255) DEFAULT '/root/.ssh/id_rsa',
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`,
+		`CREATE TABLE IF NOT EXISTS kubernetes.kubernetes_servers (
+			id SERIAL PRIMARY KEY,
+			name VARCHAR(255) NOT NULL,
+			ip_address VARCHAR(255) NOT NULL,
+			ssh_port INT DEFAULT 22,
+			username VARCHAR(255) NOT NULL,
+			status VARCHAR(50) DEFAULT 'unknown',
+			password VARCHAR(255),
+			ssh_key_path VARCHAR(255) DEFAULT '/root/.ssh/id_rsa',
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`,
+
 		// KVM extra columns if missing (from previous code)
 		"ALTER TABLE virtualization.hosts ADD COLUMN IF NOT EXISTS os_name VARCHAR(255)",
 		"ALTER TABLE virtualization.hosts ADD COLUMN IF NOT EXISTS free_memory BIGINT DEFAULT 0",
@@ -429,7 +441,6 @@ func ensureSchema(db *sql.DB) {
 		"ALTER TABLE virtualization.vms ADD COLUMN IF NOT EXISTS cpu_usage DOUBLE PRECISION DEFAULT 0",
 		"ALTER TABLE virtualization.vms ADD COLUMN IF NOT EXISTS disk_allocation BIGINT DEFAULT 0",
 		"ALTER TABLE virtualization.vms ADD COLUMN IF NOT EXISTS disk_capacity BIGINT DEFAULT 0",
-		"ALTER TABLE virtualization.vms ADD COLUMN IF NOT EXISTS guest_ips TEXT DEFAULT ''",
 		"ALTER TABLE virtualization.vms ADD COLUMN IF NOT EXISTS guest_ips TEXT DEFAULT ''",
 		"ALTER TABLE virtualization.vms ADD COLUMN IF NOT EXISTS guest_fs_usage TEXT DEFAULT ''",
 		"ALTER TABLE virtualization.vms ADD COLUMN IF NOT EXISTS disks TEXT DEFAULT '[]'",
@@ -527,18 +538,6 @@ func ensureSchema(db *sql.DB) {
 			UNIQUE(host_id, name)
 		)`,
 		"ALTER TABLE containers.containers ADD COLUMN IF NOT EXISTS vulnerabilities TEXT DEFAULT ''",
-		// Kubernetes Tables
-		`CREATE TABLE IF NOT EXISTS kubernetes.kubernetes_servers (
-			id SERIAL PRIMARY KEY,
-			name VARCHAR(255) NOT NULL,
-			ip_address VARCHAR(255) NOT NULL,
-			ssh_port INT DEFAULT 22,
-			username VARCHAR(255) NOT NULL,
-			status VARCHAR(50) DEFAULT 'unknown',
-			password VARCHAR(255),
-			ssh_key_path VARCHAR(255) DEFAULT '/root/.ssh/id_rsa',
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)`,
 		`CREATE TABLE IF NOT EXISTS kubernetes.nodes (
 			id SERIAL PRIMARY KEY,
 			server_id INT REFERENCES kubernetes.kubernetes_servers(id) ON DELETE CASCADE,

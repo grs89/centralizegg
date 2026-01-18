@@ -90,6 +90,7 @@ let lastRenderedVMsHash = "";
 
 let selectedFirewallHostId = null;
 let selectedDockerHostId = null;
+let selectedKubernetesServerId = null;
 let selectedKubernetesNodeId = null;
 let selectedPodmanHostId = null;
 let selectedProxmoxHostId = null;
@@ -561,6 +562,8 @@ function goHome() {
     currentTool = null;
     selectedHostId = null; // Reset selection
     selectedFirewallHostId = null; // Reset firewall selection
+    selectedKubernetesServerId = null;
+    selectedKubernetesNodeId = null;
 
     // Reset visibility
 
@@ -946,7 +949,7 @@ function getHostsAPIForTool(toolKey) {
         'proxmox': API_PROXMOX_HOSTS,
         'pfsense': API_FIREWALL_HOSTS,
         'docker': API_CONTAINER_HOSTS,
-        'kubernetes': API_KUBERNETES_NODES,
+        'kubernetes': '/api/config/kubernetes', // Show configured clusters on the left
         'podman': API_PODMAN_HOSTS,
         'nas': API_NAS_HOSTS
     };
@@ -996,18 +999,18 @@ async function checkAndFetchHostsForTool(toolKey) {
                         }
                         fetchContainers();
                     } else if (toolKey === 'kubernetes') {
-                        allHostsCache = hosts || [];
                         renderHostNodes('host-nodes-container-generic', {
                             icon: tools[toolKey].icon,
-                            showOSInfo: true,
-                            showStats: true,
-                            onHostClick: 'selectKubernetesNode'
+                            showOSInfo: false,
+                            showStats: false,
+                            onHostClick: 'selectKubernetesServer'
                         });
-                        if (selectedKubernetesNodeId) {
-                            renderKubernetesNodeDetails(selectedKubernetesNodeId);
+                        if (selectedKubernetesServerId) {
+                            renderKubernetesServerDetails(selectedKubernetesServerId);
                         } else {
                             renderKubernetesSummary();
                         }
+                        // Optionally fetch pods/nodes for cache
                         fetchPods();
                     } else if (toolKey === 'podman') {
                         allHostsCache = hosts || [];
@@ -1739,7 +1742,10 @@ function renderHostNodes(containerId = 'host-nodes-container', config = {}) {
         const memPercent = memTotal > 0 ? (((memTotal - memFree) / memTotal) * 100).toFixed(0) : 0;
 
         const cpuPercent = host.cpu_usage ? host.cpu_usage.toFixed(0) : 0;
-        const isActive = (selectedHostId === host.id || selectedFirewallHostId === host.id) ? 'active' : '';
+        const isActive = (selectedHostId === host.id ||
+            selectedFirewallHostId === host.id ||
+            selectedKubernetesServerId === host.id ||
+            selectedKubernetesNodeId === host.id) ? 'active' : '';
 
         // Find if server is online from specialized cache
         let serverCache = currentServers;
@@ -2351,38 +2357,135 @@ async function fetchPods() {
     }
 }
 
-function selectKubernetesNode(id) {
-    selectedKubernetesNodeId = id;
+function selectKubernetesServer(id) {
+    selectedKubernetesServerId = id;
+    selectedKubernetesNodeId = null; // Reset node selection when switching clusters
     renderHostNodes('host-nodes-container-generic', {
         icon: tools['kubernetes']?.icon || 'fa-solid fa-dharmachakra',
-        showOSInfo: true,
-        showStats: true,
-        onHostClick: 'selectKubernetesNode'
+        showOSInfo: false,
+        showStats: false,
+        onHostClick: 'selectKubernetesServer'
     });
-    renderKubernetesNodeDetails(id);
+    renderKubernetesServerDetails(id);
 }
-window.selectKubernetesNode = selectKubernetesNode;
+window.selectKubernetesServer = selectKubernetesServer;
 
-function renderKubernetesNodeDetails(nodeId) {
+async function renderKubernetesServerDetails(serverId) {
     const container = document.getElementById('container-scanner-tool');
     if (!container) return;
     const scannerSection = container.querySelector('.scanner-section');
     if (!scannerSection) return;
 
-    const node = allHostsCache.find(n => n.id === nodeId);
-    if (!node) return;
+    const server = allHostsCache.find(s => s.id === serverId);
+    if (!server) return;
 
-    let filteredPods = allPodsCache.filter(p => p.node_id === nodeId);
-    filteredPods.sort((a, b) => (a.namespace || "").localeCompare(b.namespace || "") || (a.name || "").localeCompare(b.name || ""));
+    // Fetch nodes for this specific server
+    try {
+        const resp = await fetch(API_KUBERNETES_NODES);
+        const allNodes = await resp.json();
+        const clusterNodes = allNodes.filter(n => n.server_id === serverId);
 
-    if (searchQuery) {
-        filteredPods = filteredPods.filter(p =>
-            p.name.toLowerCase().includes(searchQuery) ||
-            p.namespace.toLowerCase().includes(searchQuery)
-        );
+        if (clusterNodes.length === 0) {
+            scannerSection.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+                    <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;"><i class="fa-solid fa-dharmachakra"></i> ${server.name}</h2>
+                </div>
+                <div class="glass-panel" style="padding: 50px; text-align: center;">
+                    <i class="fa-solid fa-circle-info" style="font-size: 2rem; opacity: 0.5; margin-bottom: 15px;"></i>
+                    <p>No se han recolectado nodos para este cluster todavía.</p>
+                    <p style="font-size: 0.8rem; opacity: 0.7;">Asegúrate de que el colector esté funcionando y la conexión sea correcta.</p>
+                </div>
+            `;
+            return;
+        }
+
+        scannerSection.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+                <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;"><i class="fa-solid fa-dharmachakra"></i> Cluster: ${server.name}</h2>
+                <div class="status-badge ${server.status === 'online' ? 'online' : 'offline'}" style="margin-left: 10px;">
+                    ${server.status || 'unknown'}
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 20px;">
+                ${clusterNodes.map(node => {
+            const cpuPercent = (node.cpu_usage || 0).toFixed(1);
+            const memUsed = node.total_memory - node.free_memory;
+            const memPercent = node.total_memory > 0 ? ((memUsed / node.total_memory) * 100).toFixed(0) : 0;
+
+            return `
+                    <div class="glass-panel" style="padding: 20px; cursor: pointer; transition: transform 0.2s;" onclick="selectKubernetesNode(${node.id})">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px;">
+                            <div>
+                                <h3 style="margin:0; font-size: 1.2rem;">${node.hostname}</h3>
+                                <div style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.8;">${node.version} | ${node.os_name}</div>
+                            </div>
+                            <div class="status-badge ${node.status === 'Ready' ? 'online' : 'offline'}">
+                                ${node.status}
+                            </div>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+                            <div style="background: rgba(255,255,255,0.03); padding: 8px; border-radius: 4px; text-align: center;">
+                                <div style="font-size: 0.65rem; opacity: 0.5; text-transform: uppercase;">CPU</div>
+                                <div style="font-weight: 700; color: ${getStatusColor(cpuPercent)};">${cpuPercent}%</div>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.03); padding: 8px; border-radius: 4px; text-align: center;">
+                                <div style="font-size: 0.65rem; opacity: 0.5; text-transform: uppercase;">Memoria</div>
+                                <div style="font-weight: 700; color: ${getStatusColor(memPercent)};">${memPercent}%</div>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.03); padding: 8px; border-radius: 4px; text-align: center;">
+                                <div style="font-size: 0.65rem; opacity: 0.5; text-transform: uppercase;">Pods</div>
+                                <div style="font-weight: 700;">${node.pods_count || 0}</div>
+                            </div>
+                        </div>
+
+                        <div style="text-align: right; font-size: 0.75rem; color: var(--accent-color); font-weight: 600;">
+                            Ver Pods <i class="fa-solid fa-arrow-right"></i>
+                        </div>
+                    </div>
+                    `;
+        }).join('')}
+            </div>
+        `;
+
+    } catch (e) {
+        console.error('Error rendering Kubernetes server details:', e);
+        scannerSection.innerHTML = '<div class="glass-panel" style="padding: 20px; color: var(--danger);">Error al cargar los nodos del cluster.</div>';
     }
+}
 
-    scannerSection.innerHTML = `
+function selectKubernetesNode(id) {
+    selectedKubernetesNodeId = id;
+    // We don't change the left list (still shows servers)
+    renderKubernetesNodeDetails(id);
+}
+window.selectKubernetesNode = selectKubernetesNode;
+
+async function renderKubernetesNodeDetails(nodeId) {
+    const container = document.getElementById('container-scanner-tool');
+    if (!container) return;
+    const scannerSection = container.querySelector('.scanner-section');
+    if (!scannerSection) return;
+
+    // Fetch the node info (since allHostsCache now contains servers)
+    try {
+        const resp = await fetch(API_KUBERNETES_NODES);
+        const allNodes = await resp.json();
+        const node = allNodes.find(n => n.id === nodeId);
+        if (!node) return;
+
+        let filteredPods = allPodsCache.filter(p => p.node_id === nodeId);
+        filteredPods.sort((a, b) => (a.namespace || "").localeCompare(b.namespace || "") || (a.name || "").localeCompare(b.name || ""));
+
+        if (searchQuery) {
+            filteredPods = filteredPods.filter(p =>
+                p.name.toLowerCase().includes(searchQuery) ||
+                p.namespace.toLowerCase().includes(searchQuery)
+            );
+        }
+
+        scannerSection.innerHTML = `
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
             <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen</h2>
         </div>
@@ -2452,6 +2555,10 @@ function renderKubernetesNodeDetails(nodeId) {
             </div>
         </div>
     `;
+    } catch (e) {
+        console.error('Error rendering Kubernetes node details:', e);
+        scannerSection.innerHTML = '<div class="glass-panel" style="padding: 20px; color: var(--danger);">Error al cargar los detalles del nodo.</div>';
+    }
 }
 
 function renderKubernetesSummary() {
@@ -2467,7 +2574,7 @@ function renderKubernetesSummary() {
 
         <div class="glass-panel" style="padding: 80px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
             <div style="font-size: 1.1rem; color: var(--text-secondary); opacity: 0.6; font-weight: 500;">
-                <i class="fa-solid fa-arrow-up" style="margin-right: 8px;"></i> Selecciona un Nodo para ver sus Pods
+                <i class="fa-solid fa-arrow-up" style="margin-right: 8px;"></i> Selecciona un Cluster para ver sus Nodos
             </div>
         </div>
     `;
@@ -3555,22 +3662,6 @@ function initSettings() {
         };
     }
 
-    function updateK8sLabels(hasKube) {
-        if (settingsCurrentCategory !== 'kubernetes') return;
-        const labels = {
-            'settings-srv-name': 'Nombre',
-            'settings-srv-ip': 'Dirección IP / Hostname',
-            'settings-srv-user': 'Usuario SSH'
-        };
-        for (const [id, original] of Object.entries(labels)) {
-            const input = document.getElementById(id);
-            if (!input) continue;
-            const labelEl = document.querySelector(`label[for="${id}"]`) || input.previousElementSibling;
-            if (labelEl && labelEl.tagName === 'LABEL') {
-                labelEl.innerText = hasKube ? `${original} (Opcional)` : original;
-            }
-        }
-    }
 
     // Category selection (sidebar items now handled in renderSettingsSidebar)
 
@@ -3762,6 +3853,23 @@ function resetSettingsForm() {
         kubeStatus.classList.remove('success');
     }
     updateK8sLabels(false);
+}
+
+function updateK8sLabels(hasKube) {
+    if (settingsCurrentCategory !== 'kubernetes') return;
+    const labels = {
+        'settings-srv-name': 'Nombre',
+        'settings-srv-ip': 'Dirección IP / Hostname',
+        'settings-srv-user': 'Usuario SSH'
+    };
+    for (const [id, original] of Object.entries(labels)) {
+        const input = document.getElementById(id);
+        if (!input) continue;
+        const labelEl = document.querySelector(`label[for="${id}"]`) || input.previousElementSibling;
+        if (labelEl && labelEl.tagName === 'LABEL') {
+            labelEl.innerText = hasKube ? `${original} (Opcional)` : original;
+        }
+    }
 }
 
 async function saveSettingsServer() {
