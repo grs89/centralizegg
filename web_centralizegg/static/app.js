@@ -2468,22 +2468,44 @@ async function renderKubernetesServerDetails(serverId) {
 
                 const memTotalGB = (node.total_memory / (1024 * 1024 * 1024)).toFixed(1);
                 const memUsedGB = (nMemUsed / (1024 * 1024 * 1024)).toFixed(1);
+                const diskTotalGB = (node.disk_total / (1024 * 1024 * 1024)).toFixed(1);
+                const diskUsedGB = (node.disk_used / (1024 * 1024 * 1024)).toFixed(1);
+                const diskPercent = node.disk_total > 0 ? ((node.disk_used / node.disk_total) * 100).toFixed(0) : 0;
+
+                // Network logic: Use backend-provided rates
+                // Store history for sparklines
+                if (!window.k8sNodeNetHistory) window.k8sNodeNetHistory = {};
+
+                // Ensure array initialization
+                if (!window.k8sNodeNetHistory[node.id]) {
+                    window.k8sNodeNetHistory[node.id] = {
+                        rx: new Array(20).fill(0),
+                        tx: new Array(20).fill(0)
+                    };
+                }
+
+                const hist = window.k8sNodeNetHistory[node.id];
+                // Push backend rates to history
+                hist.rx.push(node.net_rx_rate || 0);
+                hist.tx.push(node.net_tx_rate || 0);
+                if (hist.rx.length > 20) hist.rx.shift();
+                if (hist.tx.length > 20) hist.tx.shift();
 
                 return `
                 <div class="glass-panel" style="padding: 12px 18px; transition: all 0.2s; border-bottom: 1px solid rgba(255,255,255,0.05); border-radius: 0; background: transparent;">
-                    <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 0.5fr; gap: 20px; align-items: center; cursor: pointer;" onclick="toggleNodePods(event, ${node.id})">
+                    <div style="display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr 0.5fr; gap: 20px; align-items: center; cursor: pointer;" onclick="toggleNodePods(event, ${node.id})">
                         <!-- Column 1: Identity & Status -->
                         <div style="display: flex; align-items: center; gap: 12px; overflow: hidden;">
                              <div style="position: relative;">
                                 <i class="fa-solid fa-server" style="font-size: 1.2rem; color: var(--text-secondary); opacity: 0.8;"></i>
-                                <div style="position: absolute; bottom: -2px; right: -2px; width: 8px; height: 8px; border-radius: 50%; background-color: ${node.status === 'Ready' ? '#4ade80' : '#ef4444'}; box-shadow: 0 0 0 2px #1a1b26;"></div>
+                                <div style="position: absolute; bottom: -2px; right: -2px; width: 8px; height: 8px; border-radius: 50%; background-color: ${node.status && node.status.toLowerCase() === 'ready' ? '#4ade80' : '#ef4444'}; box-shadow: 0 0 0 2px #1a1b26;"></div>
                             </div>
                             <div style="display: flex; flex-direction: column; gap: 2px; overflow: hidden;">
                                 <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${node.hostname}</span>
                                 <div style="display: flex; align-items: center; gap: 6px; font-size: 0.7rem; color: var(--text-secondary); opacity: 0.8;">
                                     <span>v${node.version || '0.0.0'}</span>
                                     <span>•</span>
-                                    <span style="color: ${node.status === 'Ready' ? '#4ade80' : '#ef4444'};">${node.status === 'Ready' ? 'Online' : 'Offline'}</span>
+                                    <span style="color: ${node.status && node.status.toLowerCase() === 'ready' ? '#4ade80' : '#ef4444'};">${node.status && node.status.toLowerCase() === 'ready' ? 'Online' : 'Offline'}</span>
                                 </div>
                                 <div style="display: flex; align-items: center; gap: 6px; font-size: 0.65rem; color: var(--text-secondary); opacity: 0.6;">
                                     <span>${node.cpu_cores || 'N/A'} CPUs</span>
@@ -2514,7 +2536,48 @@ async function renderKubernetesServerDetails(serverId) {
                             </div>
                         </div>
 
-                        <!-- Column 4: Pods / Action -->
+                        <!-- Column 4: Disk -->
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <div style="display: flex; align-items: baseline; gap: 8px;">
+                                <span style="font-size: 0.9rem; font-weight: 600; color: ${getStatusColor(diskPercent)};">${diskPercent}%</span>
+                                <span style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.6;">${diskUsedGB}/${diskTotalGB}G</span>
+                            </div>
+                            <div style="width: 100%; height: 3px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
+                                <div style="height: 100%; width: ${diskPercent}%; background: ${getStatusColor(diskPercent)}; border-radius: 2px;"></div>
+                            </div>
+                        </div>
+
+                        <!-- Column 5: Network (Sparklines) -->
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <!-- RX Row -->
+                            <div style="display: flex; flex-direction: column; gap: 1px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem;">
+                                    <div style="display: flex; align-items: center; gap: 4px; color: var(--text-secondary); opacity: 0.8;">
+                                        <i class="fa-solid fa-arrow-down" style="font-size: 0.6rem; color: #4ade80;"></i>
+                                        <span style="font-size: 0.65rem;">RX</span>
+                                    </div>
+                                    <div style="font-weight: 600; color: var(--text-primary); font-size: 0.7rem;">${formatBytes(node.net_rx_rate || 0)}/s</div>
+                                </div>
+                                <div style="height: 12px; opacity: 0.7; width: 100%;">
+                                    ${renderSparkline(hist.rx, '#4ade80', 80, 12)}
+                                </div>
+                            </div>
+                            <!-- TX Row -->
+                            <div style="display: flex; flex-direction: column; gap: 1px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem;">
+                                    <div style="display: flex; align-items: center; gap: 4px; color: var(--text-secondary); opacity: 0.8;">
+                                        <i class="fa-solid fa-arrow-up" style="font-size: 0.6rem; color: #fbbf24;"></i>
+                                        <span style="font-size: 0.65rem;">TX</span>
+                                    </div>
+                                    <div style="font-weight: 600; color: var(--text-primary); font-size: 0.7rem;">${formatBytes(node.net_tx_rate || 0)}/s</div>
+                                </div>
+                                <div style="height: 12px; opacity: 0.7; width: 100%;">
+                                    ${renderSparkline(hist.tx, '#fbbf24', 80, 12)}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Column 6: Pods / Action -->
                         <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">
                             <div style="display: flex; align-items: center; gap: 8px;">
                                 <span style="font-size: 1rem; font-weight: 700; color: var(--text-primary);">${node.pods_count || 0}</span>
@@ -2713,7 +2776,7 @@ async function renderKubernetesServerDetails(serverId) {
                             <!-- PVs Card -->
                             <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
                                 <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 10px;">Volúmenes Persistentes</div>
-                                <div id="k8s-pv-list" style="display: flex; flex-direction: column; gap: 4px; max-height: 250px; overflow-y: auto;">
+                                <div id="k8s-pv-list" style="display: flex; flex-direction: column; gap: 4px; max-height: 600px; overflow-y: auto;">
                                     <div style="color: var(--text-secondary); font-size: 0.75rem; text-align: center; padding: 10px;">Cargando volúmenes...</div>
                                 </div>
                             </div>
@@ -2727,10 +2790,12 @@ async function renderKubernetesServerDetails(serverId) {
                             
                             <div class="glass-panel" style="padding: 0; overflow: hidden;">
                                 <!-- Table Headers -->
-                                <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 0.5fr; gap: 20px; padding: 15px 18px; border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02); font-size: 0.7rem; color: var(--text-secondary); letter-spacing: 0.05em; text-transform: uppercase;">
+                                <div style="display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr 0.5fr; gap: 20px; padding: 15px 18px; border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02); font-size: 0.7rem; color: var(--text-secondary); letter-spacing: 0.05em; text-transform: uppercase;">
                                     <div>Nombre / Sistema</div>
                                     <div>CPU</div>
                                     <div>Memoria</div>
+                                    <div>Disco</div>
+                                    <div>Red (RX/TX)</div>
                                     <div style="text-align: right;">Pods</div>
                                 </div>
                                 <div id="k8s-node-grid" style="display: flex; flex-direction: column;">

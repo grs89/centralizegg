@@ -15,13 +15,35 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+type NodeSummary struct {
+	Node struct {
+		NodeName string `json:"nodeName"`
+		Network  struct {
+			RxBytes uint64 `json:"rxBytes"`
+			TxBytes uint64 `json:"txBytes"`
+		} `json:"network"`
+		Fs struct {
+			CapacityBytes uint64 `json:"capacityBytes"`
+			UsedBytes     uint64 `json:"usedBytes"`
+		} `json:"fs"`
+	} `json:"node"`
+}
+
+type NetStats struct {
+	RxBytes   uint64
+	TxBytes   uint64
+	Timestamp time.Time
+}
+
 type KubernetesCollector struct {
-	DB *data_centralizegg.DB
+	DB           *data_centralizegg.DB
+	prevNetStats map[string]NetStats
 }
 
 func NewKubernetesCollector(db *data_centralizegg.DB) *KubernetesCollector {
 	return &KubernetesCollector{
-		DB: db,
+		DB:           db,
+		prevNetStats: make(map[string]NetStats),
 	}
 }
 
@@ -215,6 +237,51 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 		fmt.Sscanf(item.Status.Capacity.CPU, "%d", &cpuCores)
 		totalMem := kc.parseK8sQuantity(item.Status.Capacity.Memory)
 
+		// Get stats from Summary API
+		var summary NodeSummary
+		summaryJSON := ""
+		if isLocal {
+			summaryJSON, _ = kc.runLocalCommand(fmt.Sprintf("%s get --raw /api/v1/nodes/%s/proxy/stats/summary", kubectlCmd, name))
+		} else {
+			summaryJSON, _ = kc.runCommand(client, fmt.Sprintf("%s get --raw /api/v1/nodes/%s/proxy/stats/summary", kubectlCmd, name), "")
+		}
+
+		diskTotal := uint64(0)
+		diskUsed := uint64(0)
+		netRX := uint64(0)
+		netTX := uint64(0)
+
+		if summaryJSON != "" {
+			if err := json.Unmarshal([]byte(summaryJSON), &summary); err == nil {
+				diskTotal = summary.Node.Fs.CapacityBytes
+				diskUsed = summary.Node.Fs.UsedBytes
+				netRX = summary.Node.Network.RxBytes
+				netTX = summary.Node.Network.TxBytes
+			}
+		}
+
+		// Calculate Network Rate
+		rxRate := uint64(0)
+		txRate := uint64(0)
+		now := time.Now()
+
+		if prev, ok := kc.prevNetStats[name]; ok {
+			duration := now.Sub(prev.Timestamp).Seconds()
+			if duration > 0 {
+				if netRX >= prev.RxBytes {
+					rxRate = uint64(float64(netRX-prev.RxBytes) / duration)
+				}
+				if netTX >= prev.TxBytes {
+					txRate = uint64(float64(netTX-prev.TxBytes) / duration)
+				}
+			}
+		}
+		kc.prevNetStats[name] = NetStats{
+			RxBytes:   netRX,
+			TxBytes:   netTX,
+			Timestamp: now,
+		}
+
 		m := metricsMap[name]
 
 		nodeID, err := kc.DB.UpsertKubernetesNode(data_centralizegg.KubernetesNode{
@@ -230,6 +297,12 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 			TotalMemory:      totalMem,
 			CPUUsage:         m.CPUUsage,
 			FreeMemory:       totalMem - m.MemUsage,
+			DiskTotal:        diskTotal,
+			DiskUsed:         diskUsed,
+			NetRX:            netRX,
+			NetTX:            netTX,
+			NetRXRate:        rxRate,
+			NetTXRate:        txRate,
 		})
 		if err != nil {
 			log.Printf("[KubernetesCollector] Failed to upsert node %s: %v", name, err)
