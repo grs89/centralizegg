@@ -2426,7 +2426,6 @@ async function renderKubernetesServerDetails(serverId) {
         const isAlreadyRenderingServer = scannerSection.getAttribute('data-k8s-server-id') === String(serverId);
 
         const totalNodes = clusterNodes.length;
-        const totalPods = clusterNodes.reduce((acc, n) => acc + (n.pods_count || 0), 0);
         const avgCpu = clusterNodes.reduce((acc, n) => acc + (n.cpu_usage || 0), 0) / (totalNodes || 1);
         const totalCores = clusterNodes.reduce((acc, n) => acc + (n.cpu_cores || 0), 0);
         const totalMem = clusterNodes.reduce((acc, n) => acc + (n.total_memory || 0), 0);
@@ -2437,6 +2436,7 @@ async function renderKubernetesServerDetails(serverId) {
         // Calculate Running/Stopped Pods
         const clusterNodeIds = clusterNodes.map(n => n.id);
         const clusterPods = allPodsCache.filter(p => clusterNodeIds.includes(p.node_id));
+        const totalPods = clusterPods.length;
         const runningPodsCount = clusterPods.filter(p => (p.state || '').toLowerCase() === 'running').length;
         const stoppedPodsCount = totalPods - runningPodsCount;
 

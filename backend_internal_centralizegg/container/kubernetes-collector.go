@@ -273,14 +273,26 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 				diskUsed = summary.Node.Fs.UsedBytes
 				netRX = summary.Node.Network.RxBytes
 				netTX = summary.Node.Network.TxBytes
+				// log.Printf("[KubernetesCollector] Node %s Summary: Disk=%d NetworkRX=%d", name, diskTotal, netRX)
 
-				// Collect Pod Network Stats
+				// Collect Pod Network Stats and aggregate for node fallback
+				var aggRx, aggTx uint64
 				for _, p := range summary.Pods {
 					k := p.PodRef.Namespace + "/" + p.PodRef.Name
 					allPodNetStats[k] = NetStats{
 						RxBytes: p.Network.RxBytes,
 						TxBytes: p.Network.TxBytes,
 					}
+					aggRx += p.Network.RxBytes
+					aggTx += p.Network.TxBytes
+				}
+
+				// If node stats are missing (common in Talos/Cilium), use aggregated pod stats
+				if netRX == 0 {
+					netRX = aggRx
+				}
+				if netTX == 0 {
+					netTX = aggTx
 				}
 			}
 		}
