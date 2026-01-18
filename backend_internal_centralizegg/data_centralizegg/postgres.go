@@ -560,6 +560,13 @@ func ensureSchema(db *sql.DB) {
 		"ALTER TABLE containers.docker_servers ADD COLUMN IF NOT EXISTS kubeconfig_content TEXT DEFAULT ''",
 		"ALTER TABLE containers.podman_servers ADD COLUMN IF NOT EXISTS kubeconfig_path TEXT DEFAULT ''",
 		"ALTER TABLE containers.podman_servers ADD COLUMN IF NOT EXISTS kubeconfig_content TEXT DEFAULT ''",
+		"ALTER TABLE kubernetes.nodes ADD COLUMN IF NOT EXISTS ip_address VARCHAR(255) DEFAULT ''",
+		"ALTER TABLE virtualization.proxmox_servers ADD COLUMN IF NOT EXISTS control_plane_status TEXT DEFAULT '{}'",
+		"ALTER TABLE storage.nas_servers ADD COLUMN IF NOT EXISTS control_plane_status TEXT DEFAULT '{}'",
+		"ALTER TABLE storage.ceph_servers ADD COLUMN IF NOT EXISTS control_plane_status TEXT DEFAULT '{}'",
+		"ALTER TABLE containers.docker_servers ADD COLUMN IF NOT EXISTS control_plane_status TEXT DEFAULT '{}'",
+		"ALTER TABLE containers.podman_servers ADD COLUMN IF NOT EXISTS control_plane_status TEXT DEFAULT '{}'",
+		"ALTER TABLE kubernetes.kubernetes_servers ADD COLUMN IF NOT EXISTS control_plane_status TEXT DEFAULT '{}'",
 
 		// Docker Tables
 		`CREATE TABLE IF NOT EXISTS containers.hosts (
@@ -1177,25 +1184,26 @@ func (d *DB) GetFirewallHosts() ([]FirewallHost, error) { // Fetch Hosts
 
 // GenericServer is used for Proxmox, NAS, Ceph, Docker, Podman servers (same structure as KVMServer)
 type GenericServer struct {
-	ID                int64   `json:"id"`
-	Name              string  `json:"name"`
-	IPAddress         string  `json:"ip_address"`
-	SSHPort           int     `json:"ssh_port"`
-	Username          string  `json:"username"`
-	Password          string  `json:"password"`
-	SSHKeyPath        string  `json:"ssh_key_path"`
-	SSHKeyContent     string  `json:"ssh_key_content"`
-	KubeconfigPath    string  `json:"kubeconfig_path"`
-	KubeconfigContent string  `json:"kubeconfig_content"`
-	Status            string  `json:"status"`
-	CPUUsage          float64 `json:"cpu_usage"`
-	CPUCores          int     `json:"cpu_cores"`
-	TotalMemory       uint64  `json:"total_memory"`
-	FreeMemory        uint64  `json:"free_memory"`
-	StorageUsed       uint64  `json:"storage_used"`
-	StorageTotal      uint64  `json:"storage_total"`
-	OSName            string  `json:"os_name"`
-	CPUModel          string  `json:"cpu_model"`
+	ID                 int64   `json:"id"`
+	Name               string  `json:"name"`
+	IPAddress          string  `json:"ip_address"`
+	SSHPort            int     `json:"ssh_port"`
+	Username           string  `json:"username"`
+	Password           string  `json:"password"`
+	SSHKeyPath         string  `json:"ssh_key_path"`
+	SSHKeyContent      string  `json:"ssh_key_content"`
+	KubeconfigPath     string  `json:"kubeconfig_path"`
+	KubeconfigContent  string  `json:"kubeconfig_content"`
+	Status             string  `json:"status"`
+	CPUUsage           float64 `json:"cpu_usage"`
+	CPUCores           int     `json:"cpu_cores"`
+	TotalMemory        uint64  `json:"total_memory"`
+	FreeMemory         uint64  `json:"free_memory"`
+	StorageUsed        uint64  `json:"storage_used"`
+	StorageTotal       uint64  `json:"storage_total"`
+	OSName             string  `json:"os_name"`
+	CPUModel           string  `json:"cpu_model"`
+	ControlPlaneStatus string  `json:"control_plane_status"` // JSON string for Kubernetes
 }
 
 // Table names for each server type
@@ -1214,7 +1222,7 @@ func (d *DB) GetGenericServers(toolType string) ([]GenericServer, error) {
 		return nil, fmt.Errorf("unknown tool type: %s", toolType)
 	}
 
-	query := fmt.Sprintf("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, kubeconfig_path, kubeconfig_content, status, cpu_usage, cpu_cores, total_memory, free_memory, storage_used, storage_total, os_name, cpu_model FROM %s", table)
+	query := fmt.Sprintf("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, kubeconfig_path, kubeconfig_content, status, cpu_usage, cpu_cores, total_memory, free_memory, storage_used, storage_total, os_name, cpu_model, control_plane_status FROM %s", table)
 	rows, err := d.Conn.Query(query)
 	if err != nil {
 		return nil, err
@@ -1225,13 +1233,23 @@ func (d *DB) GetGenericServers(toolType string) ([]GenericServer, error) {
 	for rows.Next() {
 		var s GenericServer
 		var pwd sql.NullString
-		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.SSHKeyContent, &s.KubeconfigPath, &s.KubeconfigContent, &s.Status, &s.CPUUsage, &s.CPUCores, &s.TotalMemory, &s.FreeMemory, &s.StorageUsed, &s.StorageTotal, &s.OSName, &s.CPUModel); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.SSHKeyContent, &s.KubeconfigPath, &s.KubeconfigContent, &s.Status, &s.CPUUsage, &s.CPUCores, &s.TotalMemory, &s.FreeMemory, &s.StorageUsed, &s.StorageTotal, &s.OSName, &s.CPUModel, &s.ControlPlaneStatus); err != nil {
 			return nil, err
 		}
 		s.Password = pwd.String
 		servers = append(servers, s)
 	}
 	return servers, nil
+}
+
+func (d *DB) UpdateControlPlaneStatus(toolType string, id int64, statusJSON string) error {
+	table, ok := serverTableMap[toolType]
+	if !ok {
+		return fmt.Errorf("unknown tool type: %s", toolType)
+	}
+	query := fmt.Sprintf("UPDATE %s SET control_plane_status=$1 WHERE id=$2", table)
+	_, err := d.Conn.Exec(query, statusJSON, id)
+	return err
 }
 
 func (d *DB) AddGenericServer(toolType string, s GenericServer) (int64, error) {
@@ -1441,12 +1459,12 @@ func (d *DB) UpsertKubernetesNode(n KubernetesNode) (int64, error) {
 	err := d.Conn.QueryRow("SELECT id FROM kubernetes.nodes WHERE server_id = $1 AND hostname = $2", n.ServerID, n.Hostname).Scan(&id)
 	if err == sql.ErrNoRows {
 		err = d.Conn.QueryRow(`
-			INSERT INTO kubernetes.nodes (server_id, hostname, status, roles, version, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, kernel_version, container_runtime, pods_count, disk_total, disk_used, net_rx, net_tx, net_rx_rate, net_tx_rate)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) RETURNING id`,
-			n.ServerID, n.Hostname, n.Status, n.Roles, n.Version, n.CPUModel, n.CPUCores, n.TotalMemory, n.FreeMemory, n.CPUUsage, n.OSName, n.KernelVer, n.ContainerRuntime, n.PodsCount, n.DiskTotal, n.DiskUsed, n.NetRX, n.NetTX, n.NetRXRate, n.NetTXRate).Scan(&id)
+			INSERT INTO kubernetes.nodes (server_id, hostname, status, roles, version, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, kernel_version, container_runtime, pods_count, disk_total, disk_used, net_rx, net_tx, net_rx_rate, net_tx_rate, ip_address)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21) RETURNING id`,
+			n.ServerID, n.Hostname, n.Status, n.Roles, n.Version, n.CPUModel, n.CPUCores, n.TotalMemory, n.FreeMemory, n.CPUUsage, n.OSName, n.KernelVer, n.ContainerRuntime, n.PodsCount, n.DiskTotal, n.DiskUsed, n.NetRX, n.NetTX, n.NetRXRate, n.NetTXRate, n.IPAddress).Scan(&id)
 	} else if err == nil {
-		_, err = d.Conn.Exec(`UPDATE kubernetes.nodes SET status=$1, roles=$2, version=$3, cpu_model=$4, cpu_cores=$5, total_memory=$6, free_memory=$7, cpu_usage=$8, os_name=$9, kernel_version=$10, container_runtime=$11, pods_count=$12, disk_total=$13, disk_used=$14, net_rx=$15, net_tx=$16, net_rx_rate=$17, net_tx_rate=$18 WHERE id=$19`,
-			n.Status, n.Roles, n.Version, n.CPUModel, n.CPUCores, n.TotalMemory, n.FreeMemory, n.CPUUsage, n.OSName, n.KernelVer, n.ContainerRuntime, n.PodsCount, n.DiskTotal, n.DiskUsed, n.NetRX, n.NetTX, n.NetRXRate, n.NetTXRate, id)
+		_, err = d.Conn.Exec(`UPDATE kubernetes.nodes SET status=$1, roles=$2, version=$3, cpu_model=$4, cpu_cores=$5, total_memory=$6, free_memory=$7, cpu_usage=$8, os_name=$9, kernel_version=$10, container_runtime=$11, pods_count=$12, disk_total=$13, disk_used=$14, net_rx=$15, net_tx=$16, net_rx_rate=$17, net_tx_rate=$18, ip_address=$19 WHERE id=$20`,
+			n.Status, n.Roles, n.Version, n.CPUModel, n.CPUCores, n.TotalMemory, n.FreeMemory, n.CPUUsage, n.OSName, n.KernelVer, n.ContainerRuntime, n.PodsCount, n.DiskTotal, n.DiskUsed, n.NetRX, n.NetTX, n.NetRXRate, n.NetTXRate, n.IPAddress, id)
 	}
 	return id, err
 }
@@ -1470,7 +1488,7 @@ func (d *DB) UpsertKubernetesPod(p KubernetesPod) error {
 
 func (d *DB) GetKubernetesNodes() ([]KubernetesNode, error) {
 	rows, err := d.Conn.Query(`
-		SELECT n.id, n.server_id, n.hostname, n.status, n.roles, n.version, n.cpu_model, n.cpu_cores, n.total_memory, n.free_memory, n.cpu_usage, n.os_name, n.kernel_version, n.container_runtime, n.pods_count, n.disk_total, n.disk_used, n.net_rx, n.net_tx, n.net_rx_rate, n.net_tx_rate, ks.name, ks.ip_address
+		SELECT n.id, n.server_id, n.hostname, n.status, n.roles, n.version, n.cpu_model, n.cpu_cores, n.total_memory, n.free_memory, n.cpu_usage, n.os_name, n.kernel_version, n.container_runtime, n.pods_count, n.disk_total, n.disk_used, n.net_rx, n.net_tx, n.net_rx_rate, n.net_tx_rate, ks.name, n.ip_address
 		FROM kubernetes.nodes n
 		JOIN kubernetes.kubernetes_servers ks ON n.server_id = ks.id`)
 	if err != nil {

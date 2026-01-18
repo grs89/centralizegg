@@ -238,9 +238,12 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 
 		ip := ""
 		for _, addr := range item.Status.Addresses {
-			if addr.Type == "InternalIP" {
+			if addr.Type == "ExternalIP" {
 				ip = addr.Address
 				break
+			}
+			if addr.Type == "InternalIP" && ip == "" {
+				ip = addr.Address
 			}
 		}
 
@@ -562,7 +565,76 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 		log.Printf("[KubernetesCollector] Failed to update cluster stats: %v", err)
 	}
 
+	// 5. Collect Control Plane Status (from kube-system pods, since ComponentStatus API was removed)
+	var cpPodsJSON string
+	if isLocal {
+		cpPodsJSON, _ = kc.runLocalCommand(kubectlCmd + " get pods -n kube-system -o json")
+	} else {
+		cpPodsJSON, _ = kc.runCommand(client, kubectlCmd+" get pods -n kube-system -o json", "")
+	}
+
+	if cpPodsJSON != "" {
+		var podList struct {
+			Items []struct {
+				Metadata struct {
+					Name string `json:"name"`
+				} `json:"metadata"`
+				Status struct {
+					Phase      string `json:"phase"`
+					Conditions []struct {
+						Type   string `json:"type"`
+						Status string `json:"status"`
+					} `json:"conditions"`
+				} `json:"status"`
+			} `json:"items"`
+		}
+		if err := json.Unmarshal([]byte(cpPodsJSON), &podList); err == nil {
+			statusMap := make(map[string]string)
+
+			for _, pod := range podList.Items {
+				// Check for control plane components
+				if strings.Contains(pod.Metadata.Name, "etcd") {
+					statusMap["etcd"] = getPodHealth(pod.Status.Phase, pod.Status.Conditions)
+				} else if strings.Contains(pod.Metadata.Name, "kube-scheduler") {
+					statusMap["scheduler"] = getPodHealth(pod.Status.Phase, pod.Status.Conditions)
+				} else if strings.Contains(pod.Metadata.Name, "kube-controller-manager") {
+					statusMap["controller-manager"] = getPodHealth(pod.Status.Phase, pod.Status.Conditions)
+				}
+			}
+
+			// Add kube-apiserver status (assumed Healthy if we are here)
+			statusMap["kube-apiserver"] = "Healthy"
+
+			// For Talos or other systems where control plane pods aren't visible,
+			// assume components are healthy if we successfully connected
+			if len(statusMap) <= 1 { // Only kube-apiserver
+				statusMap["etcd"] = "Healthy"
+				statusMap["scheduler"] = "Healthy"
+				statusMap["controller-manager"] = "Healthy"
+			}
+
+			finalJSON, _ := json.Marshal(statusMap)
+			kc.DB.UpdateControlPlaneStatus("kubernetes", s.ID, string(finalJSON))
+		}
+	}
+
 	return nil
+}
+
+// Helper function to determine pod health
+func getPodHealth(phase string, conditions []struct {
+	Type   string `json:"type"`
+	Status string `json:"status"`
+}) string {
+	if phase != "Running" {
+		return "Unhealthy"
+	}
+	for _, cond := range conditions {
+		if cond.Type == "Ready" && cond.Status == "True" {
+			return "Healthy"
+		}
+	}
+	return "Unhealthy"
 }
 
 func (kc *KubernetesCollector) getSSHClient(s data_centralizegg.GenericServer) (*ssh.Client, error) {

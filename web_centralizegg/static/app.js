@@ -2514,6 +2514,9 @@ async function renderKubernetesServerDetails(serverId) {
                                     <span>•</span>
                                     <span>${memTotalGB}GB RAM</span>
                                 </div>
+                                <div style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.6; margin-top: 2px;">
+                                    IP: ${node.ip_address || 'N/A'}
+                                </div>
                             </div>
                         </div>
 
@@ -2612,6 +2615,7 @@ async function renderKubernetesServerDetails(serverId) {
                                                 <td style="padding: 8px; vertical-align: middle;">
                                                     <div style="font-weight: 500; color: var(--text-primary); margin-bottom: 2px;">${p.name}</div>
                                                     <div style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.7; font-family: monospace;">${p.image ? ((p.image.length > 30) ? '...' + p.image.slice(-30) : p.image) : '-'}</div>
+                                                    <div style="font-size: 0.65rem; color: #60a5fa; opacity: 0.9; font-family: monospace;">${p.ip_address || '-'}</div>
                                                 </td>
                                                 <td style="padding: 8px; vertical-align: middle; color: var(--text-secondary); white-space: nowrap; max-width: 100px; overflow: hidden; text-overflow: ellipsis;">
                                                     <span title="${p.ports || ''}">${p.ports || '-'}</span>
@@ -2775,7 +2779,7 @@ async function renderKubernetesServerDetails(serverId) {
 
                 <div class="glass-panel" style="padding: 24px;">
                     <!-- KVM Style Dashboard Layout (2 Columns) -->
-                    <div style="display: grid; grid-template-columns: 350px 1fr; gap: 24px;">
+                    <div style="display: grid; grid-template-columns: 350px 1fr; gap: 24px; align-items: start;">
                         
                         <!-- Left Column: Cluster Details -->
                         <div style="display: flex; flex-direction: column; gap: 15px;">
@@ -2798,6 +2802,26 @@ async function renderKubernetesServerDetails(serverId) {
                                             ACTIVE
                                         </span>
                                     </div>
+                                    ${(() => {
+                let cpStatus = {};
+                try {
+                    cpStatus = JSON.parse(server.control_plane_status || '{}');
+                } catch (e) { }
+
+                const components = ['etcd', 'scheduler', 'controller-manager'];
+                return components.map(comp => {
+                    const status = cpStatus[comp] || cpStatus[`kube-${comp}`] || 'Unknown';
+                    const isHealthy = status === 'Healthy';
+                    return `
+                                                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                                                    <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color);">${comp}</div>
+                                                    <span style="font-weight: 700; font-size: 0.65rem; color: ${isHealthy ? '#4ade80' : '#ef4444'}; text-transform: uppercase; background: ${isHealthy ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; padding: 2px 5px; border-radius: 3px; border: 1px solid ${isHealthy ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'};">
+                                                        ${status}
+                                                    </span>
+                                                </div>
+                                            `;
+                }).join('');
+            })()}
                                 </div>
 
                                 <!-- System Card -->
@@ -2838,6 +2862,89 @@ async function renderKubernetesServerDetails(serverId) {
                                         </div>
                                     </div>
                                 </div>
+
+                                <!-- Alerts Card -->
+                                ${(() => {
+                const alerts = [];
+
+                // Check for NotReady nodes
+                const notReadyNodes = clusterNodes.filter(n => n.status !== 'Ready');
+                if (notReadyNodes.length > 0) {
+                    const podsOnNotReadyNodes = allPodsCache.filter(p =>
+                        notReadyNodes.some(n => n.id === p.node_id)
+                    );
+                    if (podsOnNotReadyNodes.length > 0) {
+                        alerts.push({
+                            type: 'node_not_ready',
+                            severity: 'critical',
+                            message: `${podsOnNotReadyNodes.length} pod(s) en nodo(s) NotReady`,
+                            count: podsOnNotReadyNodes.length
+                        });
+                    }
+                }
+
+                // Check for OOM pods (based on state containing "OOM" or "CrashLoop")
+                const oomPods = allPodsCache.filter(p =>
+                    p.state && (p.state.includes('OOM') || p.state.includes('CrashLoop'))
+                );
+                if (oomPods.length > 0) {
+                    alerts.push({
+                        type: 'oom_killed',
+                        severity: 'critical',
+                        message: `${oomPods.length} pod(s) con errores OOM/CrashLoop`,
+                        count: oomPods.length
+                    });
+                }
+
+                // Check for CPU saturation (>90%)
+                const cpuSaturatedNodes = clusterNodes.filter(n => n.cpu_usage > 90);
+                if (cpuSaturatedNodes.length > 0) {
+                    alerts.push({
+                        type: 'cpu_saturation',
+                        severity: 'warning',
+                        message: `${cpuSaturatedNodes.length} nodo(s) con CPU >90%`,
+                        count: cpuSaturatedNodes.length
+                    });
+                }
+
+                // Check for Memory saturation (>90%)
+                const memSaturatedNodes = clusterNodes.filter(n => {
+                    const usedMem = n.total_memory - n.free_memory;
+                    return n.total_memory > 0 && (usedMem / n.total_memory) > 0.9;
+                });
+                if (memSaturatedNodes.length > 0) {
+                    alerts.push({
+                        type: 'memory_saturation',
+                        severity: 'warning',
+                        message: `${memSaturatedNodes.length} nodo(s) con Memoria >90%`,
+                        count: memSaturatedNodes.length
+                    });
+                }
+
+                const totalCritical = alerts.filter(a => a.severity === 'critical').length;
+                const totalWarnings = alerts.filter(a => a.severity === 'warning').length;
+
+                return `
+                                        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
+                                            <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 8px;">Alertas</div>
+                                            ${alerts.length === 0 ? `
+                                                <div style="display: flex; align-items: center; gap: 8px; color: #4ade80; font-size: 0.75rem;">
+                                                    <i class="fa-solid fa-circle-check" style="font-size: 0.9rem;"></i>
+                                                    <span>Sin alertas críticas</span>
+                                                </div>
+                                            ` : `
+                                                <div style="display: flex; flex-direction: column; gap: 6px;">
+                                                    ${alerts.map(alert => `
+                                                        <div style="display: flex; align-items: center; gap: 8px; font-size: 0.7rem; padding: 6px; background: ${alert.severity === 'critical' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(251, 191, 36, 0.1)'}; border-radius: 4px; border: 1px solid ${alert.severity === 'critical' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(251, 191, 36, 0.2)'};">
+                                                            <i class="fa-solid fa-${alert.severity === 'critical' ? 'circle-exclamation' : 'triangle-exclamation'}" style="color: ${alert.severity === 'critical' ? '#ef4444' : '#fbbf24'};"></i>
+                                                            <span style="flex: 1; color: var(--text-primary);">${alert.message}</span>
+                                                        </div>
+                                                    `).join('')}
+                                                </div>
+                                            `}
+                                        </div>
+                                    `;
+            })()}
                             </div>
 
                             <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; margin-top: 5px; border-bottom: 1px solid rgba(255,255,255,0.1);">
