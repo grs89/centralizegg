@@ -527,7 +527,8 @@ func ensureSchema(db *sql.DB) {
 			ssh_key_content TEXT DEFAULT '',
 			kubeconfig_path TEXT DEFAULT '',
 			kubeconfig_content TEXT DEFAULT '',
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			network_topology TEXT DEFAULT '{}'
 		)`,
 
 		// KVM extra columns if missing (from previous code)
@@ -582,6 +583,7 @@ func ensureSchema(db *sql.DB) {
 		"ALTER TABLE containers.podman_servers ADD COLUMN IF NOT EXISTS control_plane_status TEXT DEFAULT '{}'",
 		"ALTER TABLE kubernetes.kubernetes_servers ADD COLUMN IF NOT EXISTS control_plane_status TEXT DEFAULT '{}'",
 		"ALTER TABLE kubernetes.kubernetes_servers ADD COLUMN IF NOT EXISTS resource_counts TEXT DEFAULT '{}'",
+		"ALTER TABLE kubernetes.kubernetes_servers ADD COLUMN IF NOT EXISTS network_topology TEXT DEFAULT '{}'",
 
 		// Docker Tables
 		`CREATE TABLE IF NOT EXISTS containers.hosts (
@@ -1234,6 +1236,7 @@ type GenericServer struct {
 	CPUModel           string  `json:"cpu_model"`
 	ControlPlaneStatus string  `json:"control_plane_status"` // JSON string for Kubernetes
 	ResourceCounts     string  `json:"resource_counts"`      // JSON string for Kubernetes resource counts
+	NetworkTopology    string  `json:"network_topology"`     // JSON string for Kubernetes network map
 }
 
 // Table names for each server type
@@ -1252,7 +1255,7 @@ func (d *DB) GetGenericServers(toolType string) ([]GenericServer, error) {
 		return nil, fmt.Errorf("unknown tool type: %s", toolType)
 	}
 
-	query := fmt.Sprintf("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, kubeconfig_path, kubeconfig_content, status, cpu_usage, cpu_cores, total_memory, free_memory, storage_used, storage_total, os_name, cpu_model, control_plane_status, resource_counts FROM %s", table)
+	query := fmt.Sprintf("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, kubeconfig_path, kubeconfig_content, status, cpu_usage, cpu_cores, total_memory, free_memory, storage_used, storage_total, os_name, cpu_model, control_plane_status, resource_counts, network_topology FROM %s", table)
 	rows, err := d.Conn.Query(query)
 	if err != nil {
 		return nil, err
@@ -1263,7 +1266,7 @@ func (d *DB) GetGenericServers(toolType string) ([]GenericServer, error) {
 	for rows.Next() {
 		var s GenericServer
 		var pwd sql.NullString
-		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.SSHKeyContent, &s.KubeconfigPath, &s.KubeconfigContent, &s.Status, &s.CPUUsage, &s.CPUCores, &s.TotalMemory, &s.FreeMemory, &s.StorageUsed, &s.StorageTotal, &s.OSName, &s.CPUModel, &s.ControlPlaneStatus, &s.ResourceCounts); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.SSHKeyContent, &s.KubeconfigPath, &s.KubeconfigContent, &s.Status, &s.CPUUsage, &s.CPUCores, &s.TotalMemory, &s.FreeMemory, &s.StorageUsed, &s.StorageTotal, &s.OSName, &s.CPUModel, &s.ControlPlaneStatus, &s.ResourceCounts, &s.NetworkTopology); err != nil {
 			return nil, err
 		}
 		s.Password = pwd.String
@@ -1289,6 +1292,16 @@ func (d *DB) UpdateResourceCounts(toolType string, id int64, countsJSON string) 
 	}
 	query := fmt.Sprintf("UPDATE %s SET resource_counts=$1 WHERE id=$2", table)
 	_, err := d.Conn.Exec(query, countsJSON, id)
+	return err
+}
+
+func (d *DB) UpdateNetworkTopology(toolType string, id int64, topologyJSON string) error {
+	table, ok := serverTableMap[toolType]
+	if !ok {
+		return fmt.Errorf("unknown tool type: %s", toolType)
+	}
+	query := fmt.Sprintf("UPDATE %s SET network_topology=$1 WHERE id=$2", table)
+	_, err := d.Conn.Exec(query, topologyJSON, id)
 	return err
 }
 

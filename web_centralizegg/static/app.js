@@ -2873,6 +2873,14 @@ async function renderKubernetesServerDetails(serverId) {
                 });
             }
 
+            const mapContainer = document.getElementById('k8s-topology-map');
+            if (mapContainer) {
+                if (!window.currentK8sMap) {
+                    window.currentK8sMap = new KubernetesTopologyMap('k8s-topology-map');
+                }
+                window.currentK8sMap.render(server.network_topology);
+            }
+
             return;
         }
 
@@ -3196,6 +3204,16 @@ async function renderKubernetesServerDetails(serverId) {
                                 </div>
                             </div>
 
+                            <!-- Network Map Card -->
+                            <div style="margin-top: 20px;">
+                                <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                                    Mapa de Red del Cluster
+                                </div>
+                                <div id="k8s-map-wrapper" class="glass-panel" style="padding: 20px;">
+                                    <div id="k8s-topology-map" style="height: 500px; width: 100%; border-radius: 8px;"></div>
+                                </div>
+                            </div>
+
                             <!-- Events Card -->
                             <div style="margin-top: 20px;">
                                 <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1);">
@@ -3213,6 +3231,12 @@ async function renderKubernetesServerDetails(serverId) {
 
             </section>
         `;
+
+        const mapContainer = document.getElementById('k8s-topology-map');
+        if (mapContainer) {
+            window.currentK8sMap = new KubernetesTopologyMap('k8s-topology-map');
+            window.currentK8sMap.render(server.network_topology);
+        }
 
         // Initial Fetch for PVs (Sorted immediately, Top 10)
         fetch(API_KUBERNETES_PVS)
@@ -6105,7 +6129,209 @@ class DockerTopologyMap {
 
 window.DockerTopologyMap = DockerTopologyMap;
 
+class KubernetesTopologyMap {
+    constructor(containerId) {
+        this.containerId = containerId;
+        this.svg = null;
+        this.width = 0;
+        this.height = 500;
+        this.nodes = [];
+        this.links = [];
+    }
+
+    render(topologyJSON) {
+        const container = document.getElementById(this.containerId);
+        if (!container) return;
+
+        this.width = container.clientWidth || 800;
+
+        let topology = null;
+        try {
+            topology = topologyJSON ? JSON.parse(topologyJSON) : { nodes: [], links: [] };
+        } catch (e) {
+            console.error('[KubernetesTopologyMap] Error parsing topology:', e);
+            return;
+        }
+
+        this.nodes = topology.nodes || [];
+        this.links = topology.links || [];
+
+        if (this.nodes.length === 0) {
+            container.innerHTML = `
+                <div style="height: 200px; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); opacity: 0.5;">
+                    <div style="text-align: center;">
+                        <i class="fa-solid fa-circle-nodes" style="font-size: 2rem; margin-bottom: 10px;"></i>
+                        <div>No se detectaron servicios activos</div>
+                    </div>
+                </div>`;
+            return;
+        }
+
+        this.draw();
+    }
+
+    draw() {
+        const container = document.getElementById(this.containerId);
+        if (!container) return;
+
+        // Dynamic height based on node count to avoid cramped layout
+        this.height = Math.max(500, this.nodes.length * 30);
+
+        container.innerHTML = `
+            <svg width="100%" height="${this.height}" style="background: transparent; overflow: visible;">
+                <defs>
+                    <filter id="k8s-glow" x="-50%" y="-50%" width="200%" height="200%">
+                        <feGaussianBlur stdDeviation="4" result="blur" />
+                        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                    </filter>
+                </defs>
+                <g id="k8s-links-group"></g>
+                <g id="k8s-nodes-group"></g>
+            </svg>
+        `;
+
+        const linksGroup = container.querySelector('#k8s-links-group');
+        const nodesGroup = container.querySelector('#k8s-nodes-group');
+
+        const centerX = this.width / 2;
+
+        // Position nodes hierarchically
+        // Level 1: Internet
+        const internetNode = this.nodes.find(n => n.type === 'internet');
+        if (internetNode) {
+            internetNode.x = centerX;
+            internetNode.y = 60;
+        }
+
+        // Level 2: Services
+        const serviceNodes = this.nodes.filter(n => n.type === 'service');
+        const svcSpacing = Math.min(this.width / (serviceNodes.length + 1), 250);
+        const svcStartX = centerX - ((serviceNodes.length - 1) * svcSpacing) / 2;
+
+        serviceNodes.forEach((node, i) => {
+            node.x = svcStartX + (i * svcSpacing);
+            node.y = 200;
+        });
+
+        // Level 3: Pods
+        const podNodes = this.nodes.filter(n => n.type === 'pod');
+        const podSpacing = Math.min(this.width / (podNodes.length + 1), 120);
+        const podStartX = centerX - ((podNodes.length - 1) * podSpacing) / 2;
+
+        podNodes.forEach((node, i) => {
+            // Try to pull pods towards their connected services
+            const connectedLinks = this.links.filter(l => l.target === node.id);
+            if (connectedLinks.length > 0) {
+                let sumX = 0;
+                connectedLinks.forEach(l => {
+                    const src = this.nodes.find(n => n.id === l.source);
+                    if (src) sumX += src.x;
+                });
+                node.x = sumX / connectedLinks.length + (Math.random() - 0.5) * 40; // Add slight jitter
+            } else {
+                node.x = podStartX + (i * podSpacing);
+            }
+            node.y = 380 + (i % 2 === 0 ? 0 : 50); // Stagger pods
+        });
+
+        // Render Links
+        this.links.forEach(link => {
+            const source = this.nodes.find(n => n.id === link.source);
+            const target = this.nodes.find(n => n.id === link.target);
+            if (source && target) {
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', source.x);
+                line.setAttribute('y1', source.y);
+                line.setAttribute('x2', target.x);
+                line.setAttribute('y2', target.y);
+
+                if (link.type === 'external') {
+                    line.setAttribute('stroke', 'rgba(255,77,77,0.4)');
+                    line.setAttribute('stroke-width', '2');
+                    line.setAttribute('stroke-dasharray', '8,8');
+                    const anim = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+                    anim.setAttribute('attributeName', 'stroke-dashoffset');
+                    anim.setAttribute('from', '32');
+                    anim.setAttribute('to', '0');
+                    anim.setAttribute('dur', '1.5s');
+                    anim.setAttribute('repeatCount', 'indefinite');
+                    line.appendChild(anim);
+                } else {
+                    line.setAttribute('stroke', 'rgba(255,255,255,0.15)');
+                    line.setAttribute('stroke-width', '1.5');
+                    line.setAttribute('stroke-dasharray', '4,4');
+                }
+                linksGroup.appendChild(line);
+            }
+        });
+
+        // Render Nodes
+        this.nodes.forEach(node => {
+            const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            group.style.cursor = 'pointer';
+
+            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('cx', node.x);
+            circle.setAttribute('cy', node.y);
+            circle.setAttribute('r', node.type === 'pod' ? 14 : 24);
+            circle.setAttribute('fill', node.color || '#94a3b8');
+            circle.setAttribute('fill-opacity', '0.2');
+            circle.setAttribute('stroke', node.color || '#94a3b8');
+            circle.setAttribute('stroke-width', '2.5');
+            circle.style.transition = 'all 0.3s ease';
+
+            const foSize = node.type === 'pod' ? 24 : 36;
+            const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+            fo.setAttribute('x', node.x - foSize / 2);
+            fo.setAttribute('y', node.y - foSize / 2);
+            fo.setAttribute('width', foSize);
+            fo.setAttribute('height', foSize);
+            fo.style.pointerEvents = 'none';
+
+            let iconClass = 'fa-solid fa-cube';
+            if (node.type === 'internet') iconClass = 'fa-solid fa-globe';
+            else if (node.type === 'service') iconClass = 'fa-solid fa-link';
+
+            fo.innerHTML = `
+                <div xmlns="http://www.w3.org/1999/xhtml" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: ${node.color}; font-size: ${node.type === 'pod' ? '14px' : '20px'};">
+                    <i class="${iconClass}"></i>
+                </div>
+            `;
+
+            const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            label.setAttribute('x', node.x);
+            label.setAttribute('y', node.y + (node.type === 'pod' ? 35 : 50));
+            label.setAttribute('text-anchor', 'middle');
+            label.setAttribute('fill', 'var(--text-secondary)');
+            label.setAttribute('font-size', '10px');
+            label.setAttribute('font-weight', '600');
+            label.textContent = node.name.length > 20 ? node.name.substring(0, 18) + '...' : node.name;
+
+            const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+            title.textContent = `${node.name}\nType: ${node.type}\nNamespace: ${node.namespace || 'N/A'}\nIP: ${node.ip || 'N/A'}`;
+            group.appendChild(title);
+
+            group.appendChild(circle);
+            group.appendChild(fo);
+            group.appendChild(label);
+            nodesGroup.appendChild(group);
+
+            group.addEventListener('mouseenter', () => {
+                circle.setAttribute('fill-opacity', '0.5');
+                circle.setAttribute('stroke-width', '3.5');
+                circle.style.filter = `drop-shadow(0 0 8px ${node.color}aa)`;
+            });
+            group.addEventListener('mouseleave', () => {
+                circle.setAttribute('fill-opacity', '0.2');
+                circle.setAttribute('stroke-width', '2.5');
+                circle.style.filter = 'none';
+            });
+        });
+    }
+}
+
+window.KubernetesTopologyMap = KubernetesTopologyMap;
+
 window.toggleDockerMapDebug = function () {
     console.log('[DockerMap] Debug mode toggled');
-    // Implement extra debug info if needed
 };

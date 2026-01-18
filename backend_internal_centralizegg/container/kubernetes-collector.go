@@ -713,6 +713,153 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 	countsJSON, _ := json.Marshal(resourceCounts)
 	kc.DB.UpdateResourceCounts("kubernetes", s.ID, string(countsJSON))
 
+	// 8. Collect Network Topology (Services and Endpoints)
+	var svcJSON string
+	var epJSON string
+	if isLocal {
+		svcJSON, _ = kc.runLocalCommand(kubectlCmd + " get svc -A -o json")
+		epJSON, _ = kc.runLocalCommand(kubectlCmd + " get endpoints -A -o json")
+	} else {
+		svcJSON, _ = kc.runCommand(client, kubectlCmd+" get svc -A -o json", "")
+		epJSON, _ = kc.runCommand(client, kubectlCmd+" get endpoints -A -o json", "")
+	}
+
+	if svcJSON != "" && epJSON != "" {
+		var svcList struct {
+			Items []struct {
+				Metadata struct {
+					Name      string `json:"name"`
+					Namespace string `json:"namespace"`
+				} `json:"metadata"`
+				Spec struct {
+					Type      string `json:"type"`
+					ClusterIP string `json:"clusterIP"`
+					Ports     []struct {
+						Port     int `json:"port"`
+						NodePort int `json:"nodePort"`
+					} `json:"ports"`
+					ExternalIPs []string `json:"externalIPs"`
+				} `json:"spec"`
+				Status struct {
+					LoadBalancer struct {
+						Ingress []struct {
+							IP       string `json:"ip"`
+							Hostname string `json:"hostname"`
+						} `json:"ingress"`
+					} `json:"loadBalancer"`
+				} `json:"status"`
+			} `json:"items"`
+		}
+		var epList struct {
+			Items []struct {
+				Metadata struct {
+					Name      string `json:"name"`
+					Namespace string `json:"namespace"`
+				} `json:"metadata"`
+				Subsets []struct {
+					Addresses []struct {
+						IP string `json:"ip"`
+					} `json:"addresses"`
+				} `json:"subsets"`
+			} `json:"items"`
+		}
+
+		if err1 := json.Unmarshal([]byte(svcJSON), &svcList); err1 == nil {
+			if err2 := json.Unmarshal([]byte(epJSON), &epList); err2 == nil {
+				// Build Topology
+				type MapNode struct {
+					ID        string `json:"id"`
+					Name      string `json:"name"`
+					Type      string `json:"type"`
+					Namespace string `json:"namespace"`
+					IP        string `json:"ip"`
+					Color     string `json:"color"`
+				}
+				type MapLink struct {
+					Source string `json:"source"`
+					Target string `json:"target"`
+					Type   string `json:"type"`
+				}
+				var nodes []MapNode
+				var links []MapLink
+
+				// 1. Internet Node
+				nodes = append(nodes, MapNode{ID: "internet", Name: "Internet", Type: "internet", Color: "#ff4d4d"})
+
+				for _, svc := range svcList.Items {
+					svcID := "svc-" + svc.Metadata.Namespace + "-" + svc.Metadata.Name
+					svcIP := svc.Spec.ClusterIP
+					if svc.Spec.Type == "LoadBalancer" && len(svc.Status.LoadBalancer.Ingress) > 0 {
+						svcIP = svc.Status.LoadBalancer.Ingress[0].IP
+						if svcIP == "" {
+							svcIP = svc.Status.LoadBalancer.Ingress[0].Hostname
+						}
+					}
+
+					nodes = append(nodes, MapNode{
+						ID:        svcID,
+						Name:      svc.Metadata.Name,
+						Type:      "service",
+						Namespace: svc.Metadata.Namespace,
+						IP:        svcIP,
+						Color:     "#a855f7", // Purple for Services
+					})
+
+					// Connect to internet if exposed
+					if svc.Spec.Type == "LoadBalancer" || svc.Spec.Type == "NodePort" {
+						links = append(links, MapLink{Source: "internet", Target: svcID, Type: "external"})
+					}
+
+					// Find endpoints for this service
+					for _, ep := range epList.Items {
+						if ep.Metadata.Name == svc.Metadata.Name && ep.Metadata.Namespace == svc.Metadata.Namespace {
+							for _, sub := range ep.Subsets {
+								for _, addr := range sub.Addresses {
+									podID := "pod-" + svc.Metadata.Namespace + "-" + addr.IP
+									// Note: We use IP in ID because Pod name isn't always obvious from endpoints without more lookups
+									// app.js will handle mapping if needed or just show the IP
+									links = append(links, MapLink{Source: svcID, Target: podID, Type: "internal"})
+								}
+							}
+						}
+					}
+				}
+
+				// Add pods that are targets of links
+				podAdded := make(map[string]bool)
+				for _, l := range links {
+					if strings.HasPrefix(l.Target, "pod-") && !podAdded[l.Target] {
+						ip := strings.Replace(l.Target, "pod-", "", 1)
+						parts := strings.SplitN(ip, "-", 2)
+						namespace := ""
+						actualIP := ip
+						if len(parts) == 2 {
+							namespace = parts[0]
+							actualIP = parts[1]
+						}
+
+						nodes = append(nodes, MapNode{
+							ID:        l.Target,
+							Name:      "Pod", // Will be refined in app.js or here if we match pod ListView
+							Type:      "pod",
+							Namespace: namespace,
+							IP:        actualIP,
+							Color:     "#4ade80",
+						})
+						podAdded[l.Target] = true
+					}
+				}
+
+				topology := map[string]interface{}{
+					"nodes": nodes,
+					"links": links,
+				}
+				topoJSON, _ := json.Marshal(topology)
+				kc.DB.UpdateNetworkTopology("kubernetes", s.ID, string(topoJSON))
+			}
+		}
+	}
+
 	return nil
 }
 
