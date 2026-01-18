@@ -1143,7 +1143,7 @@ function renderDockerHostDetails(hostId) {
                     <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9;">
                         Mapa de Red Docker
                     </div>
-                    <i class="fa-solid fa-bug" onclick="window.toggleDockerMapDebug()" title="Toggle Debug Mode" style="cursor: pointer; color: var(--text-secondary); font-size: 1rem; opacity: 0.5; transition: opacity 0.2s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5"></i>
+                    <i class="fa-solid fa-flask" onclick="window.toggleDockerMapDebug()" title="Toggle Debug Mode" style="cursor: pointer; color: var(--text-secondary); font-size: 1rem; opacity: 0.5; transition: opacity 0.2s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5"></i>
                 </div>
                 <div id="docker-topology-map" style="height: 500px; width: 100%; border-radius: 8px;"></div>
             </div>
@@ -3206,9 +3206,12 @@ async function renderKubernetesServerDetails(serverId) {
 
                             <!-- Network Map Card -->
                             <div style="margin-top: 20px;">
-                                <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                                    Mapa de Red del Cluster
-                                </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 15px; padding-bottom: 10px;">
+                                        <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9;">
+                                            Mapa de Red del Cluster
+                                        </div>
+                                        <i class="fa-solid fa-flask" onclick="window.toggleK8sMapDebug()" title="Toggle Debug Mode" style="cursor: pointer; color: var(--text-secondary); font-size: 1rem; opacity: 0.5; transition: opacity 0.2s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5"></i>
+                                    </div>
                                 <div id="k8s-map-wrapper" class="glass-panel" style="padding: 20px;">
                                     <div id="k8s-topology-map" style="height: 500px; width: 100%; border-radius: 8px;"></div>
                                 </div>
@@ -5370,7 +5373,7 @@ function renderFirewallHostDetails(hostId) {
                 <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9;">
                     Mapa de Tráfico en Tiempo Real
                 </div>
-                <i class="fa-solid fa-bug" onclick="window.toggleMapDebug()" title="Toggle Debug Mode" style="cursor: pointer; color: var(--text-secondary); font-size: 1rem; opacity: 0.5; transition: opacity 0.2s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5"></i>
+                <i class="fa-solid fa-flask" onclick="window.toggleMapDebug()" title="Toggle Debug Mode" style="cursor: pointer; color: var(--text-secondary); font-size: 1rem; opacity: 0.5; transition: opacity 0.2s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5"></i>
             </div>
             <div id="trafficMap" style="height: 400px; width: 100%; border-radius: 8px; z-index: 1;"></div>
         </div>
@@ -5960,7 +5963,13 @@ class DockerTopologyMap {
         const container = document.getElementById(this.containerId);
         if (!container) return;
 
-        this.height = Math.max(500, this.nodes.length * 30);
+        // In horizontal layout, height is determined by the densest column
+        const maxNodesInCol = Math.max(
+            this.nodes.filter(n => n.type === 'internet').length,
+            this.nodes.filter(n => n.type === 'network').length,
+            this.nodes.filter(n => n.type === 'container').length
+        );
+        this.height = Math.max(400, maxNodesInCol * 80);
 
         container.innerHTML = `
             <svg width="100%" height="${this.height}" style="background: transparent; overflow: visible;">
@@ -5987,40 +5996,48 @@ class DockerTopologyMap {
         const linksGroup = container.querySelector('#links-group');
         const nodesGroup = container.querySelector('#nodes-group');
 
-        const centerX = this.width / 2;
+        const centerY = this.height / 2;
 
-        // 1. Hierarchical Spread (Top down with more spacing)
+        // 1. Horizontal Hierarchical Spread (Left to Right)
+        // Column 1: Internet (Left)
         const internetNode = this.nodes.find(n => n.type === 'internet');
         if (internetNode) {
-            internetNode.x = centerX;
-            internetNode.y = 70;
+            internetNode.x = 80;
+            internetNode.y = centerY;
         }
 
+        // Column 2: Networks (Middle)
         const networkNodes = this.nodes.filter(n => n.type === 'network');
-        const netSpacing = Math.min(this.width / (networkNodes.length + 1), 250);
-        const netStartX = centerX - ((networkNodes.length - 1) * netSpacing) / 2;
+        const netYSpacing = Math.min(this.height / (networkNodes.length + 1), 180);
+        const netStartY = centerY - ((networkNodes.length - 1) * netYSpacing) / 2;
 
         networkNodes.forEach((node, i) => {
-            node.x = netStartX + (i * netSpacing);
-            node.y = 220;
+            node.x = 300;
+            node.y = netStartY + (i * netYSpacing);
         });
 
+        // Column 3: Containers (Right)
         const containerNodes = this.nodes.filter(n => n.type === 'container');
-        const contSpacing = Math.min(this.width / (containerNodes.length + 1), 150);
-        const contStartX = centerX - ((containerNodes.length - 1) * contSpacing) / 2;
+        const contYSpacing = Math.min(this.height / (containerNodes.length + 1), 70);
+        const contStartY = centerY - ((containerNodes.length - 1) * contYSpacing) / 2;
 
         containerNodes.forEach((node, i) => {
+            node.x = 550;
+            node.y = contStartY + (i * contYSpacing);
+
+            // Try to align containers slightly closer to their connected network on Y axis
             const connectedLinks = this.links.filter(l => l.source === node.id);
             if (connectedLinks.length > 0) {
-                const targetNet = this.nodes.find(n => n.id === connectedLinks[0].target);
-                // Spread containers belonging to the same network
-                const indexInNet = connectedLinks[0] ? this.links.filter(l => l.target === connectedLinks[0].target && l.source.startsWith('c-')).indexOf(connectedLinks[0]) : 0;
-                const offset = (indexInNet - 1) * 80;
-                node.x = targetNet.x + offset;
-            } else {
-                node.x = contStartX + (i * contSpacing);
+                const targetNetCount = connectedLinks.length;
+                let sumY = 0;
+                connectedLinks.forEach(l => {
+                    const net = this.nodes.find(n => n.id === l.target);
+                    if (net) sumY += net.y;
+                });
+                // Blend hierarchical Y with network Y for a smoother look
+                const targetY = sumY / targetNetCount;
+                node.y = (node.y * 0.4) + (targetY * 0.6);
             }
-            node.y = 380 + (i % 2 === 0 ? 0 : 40);
         });
 
         // 2. Render Links
@@ -6174,8 +6191,13 @@ class KubernetesTopologyMap {
         const container = document.getElementById(this.containerId);
         if (!container) return;
 
-        // Dynamic height based on node count to avoid cramped layout
-        this.height = Math.max(500, this.nodes.length * 30);
+        // In horizontal layout, height is determined by the densest column
+        const maxNodesInCol = Math.max(
+            this.nodes.filter(n => n.type === 'internet').length,
+            this.nodes.filter(n => n.type === 'service').length,
+            this.nodes.filter(n => n.type === 'pod').length
+        );
+        this.height = Math.max(400, maxNodesInCol * 60);
 
         container.innerHTML = `
             <svg width="100%" height="${this.height}" style="background: transparent; overflow: visible;">
@@ -6193,45 +6215,46 @@ class KubernetesTopologyMap {
         const linksGroup = container.querySelector('#k8s-links-group');
         const nodesGroup = container.querySelector('#k8s-nodes-group');
 
-        const centerX = this.width / 2;
+        const centerY = this.height / 2;
 
-        // Position nodes hierarchically
-        // Level 1: Internet
+        // Position nodes hierarchically (Horizontal)
+        // Column 1: Internet (Left)
         const internetNode = this.nodes.find(n => n.type === 'internet');
         if (internetNode) {
-            internetNode.x = centerX;
-            internetNode.y = 60;
+            internetNode.x = 80;
+            internetNode.y = centerY;
         }
 
-        // Level 2: Services
+        // Column 2: Services (Middle)
         const serviceNodes = this.nodes.filter(n => n.type === 'service');
-        const svcSpacing = Math.min(this.width / (serviceNodes.length + 1), 250);
-        const svcStartX = centerX - ((serviceNodes.length - 1) * svcSpacing) / 2;
+        const svcYSpacing = Math.min(this.height / (serviceNodes.length + 1), 150);
+        const svcStartY = centerY - ((serviceNodes.length - 1) * svcYSpacing) / 2;
 
         serviceNodes.forEach((node, i) => {
-            node.x = svcStartX + (i * svcSpacing);
-            node.y = 200;
+            node.x = 300;
+            node.y = svcStartY + (i * svcYSpacing);
         });
 
-        // Level 3: Pods
+        // Column 3: Pods (Right)
         const podNodes = this.nodes.filter(n => n.type === 'pod');
-        const podSpacing = Math.min(this.width / (podNodes.length + 1), 120);
-        const podStartX = centerX - ((podNodes.length - 1) * podSpacing) / 2;
+        const podYSpacing = Math.min(this.height / (podNodes.length + 1), 50);
+        const podStartY = centerY - ((podNodes.length - 1) * podYSpacing) / 2;
 
         podNodes.forEach((node, i) => {
-            // Try to pull pods towards their connected services
+            node.x = 550;
+            node.y = podStartY + (i * podYSpacing);
+
+            // Pull pods towards their connected services
             const connectedLinks = this.links.filter(l => l.target === node.id);
             if (connectedLinks.length > 0) {
-                let sumX = 0;
+                let sumY = 0;
                 connectedLinks.forEach(l => {
                     const src = this.nodes.find(n => n.id === l.source);
-                    if (src) sumX += src.x;
+                    if (src) sumY += src.y;
                 });
-                node.x = sumX / connectedLinks.length + (Math.random() - 0.5) * 40; // Add slight jitter
-            } else {
-                node.x = podStartX + (i * podSpacing);
+                const targetY = sumY / connectedLinks.length;
+                node.y = (node.y * 0.4) + (targetY * 0.6);
             }
-            node.y = 380 + (i % 2 === 0 ? 0 : 50); // Stagger pods
         });
 
         // Render Links
@@ -6334,4 +6357,8 @@ window.KubernetesTopologyMap = KubernetesTopologyMap;
 
 window.toggleDockerMapDebug = function () {
     console.log('[DockerMap] Debug mode toggled');
+};
+
+window.toggleK8sMapDebug = function () {
+    console.log('[K8sMap] Debug mode toggled');
 };
