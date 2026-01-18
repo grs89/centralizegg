@@ -999,6 +999,7 @@ async function checkAndFetchHostsForTool(toolKey) {
                         }
                         fetchContainers();
                     } else if (toolKey === 'kubernetes') {
+                        allHostsCache = hosts || [];
                         renderHostNodes('host-nodes-container-generic', {
                             icon: tools[toolKey].icon,
                             showOSInfo: false,
@@ -1744,8 +1745,12 @@ function renderHostNodes(containerId = 'host-nodes-container', config = {}) {
         const cpuPercent = host.cpu_usage ? host.cpu_usage.toFixed(0) : 0;
         const isActive = (selectedHostId === host.id ||
             selectedFirewallHostId === host.id ||
+            selectedDockerHostId === host.id ||
             selectedKubernetesServerId === host.id ||
-            selectedKubernetesNodeId === host.id) ? 'active' : '';
+            selectedKubernetesNodeId === host.id ||
+            selectedPodmanHostId === host.id ||
+            selectedProxmoxHostId === host.id ||
+            selectedNasHostId === host.id) ? 'active' : '';
 
         // Find if server is online from specialized cache
         let serverCache = currentServers;
@@ -1773,7 +1778,7 @@ function renderHostNodes(containerId = 'host-nodes-container', config = {}) {
                     </div>
                     <div class="host-title-group">
                         <h3>${host.server_name || host.name || 'Unknown'}</h3>
-                        <div class="ip-badge">${host.ip_address || 'N/A'}</div>
+                        <div class="ip-badge">${host.ip_address || (host.tool_type === 'kubernetes' ? 'Cluster' : 'N/A')}</div>
                     </div>
                 </div>
                 <div class="host-status-badge ${isOnline ? '' : 'offline'}">
@@ -2399,12 +2404,91 @@ async function renderKubernetesServerDetails(serverId) {
             return;
         }
 
+        const totalNodes = clusterNodes.length;
+        const totalPods = clusterNodes.reduce((acc, n) => acc + (n.pods_count || 0), 0);
+        const avgCpu = clusterNodes.reduce((acc, n) => acc + (n.cpu_usage || 0), 0) / totalNodes;
+        const totalMem = clusterNodes.reduce((acc, n) => acc + (n.total_memory || 0), 0);
+        const freeMem = clusterNodes.reduce((acc, n) => acc + (n.free_memory || 0), 0);
+        const usedMem = totalMem - freeMem;
+        const memPercent = totalMem > 0 ? ((usedMem / totalMem) * 100).toFixed(0) : 0;
+
         scannerSection.innerHTML = `
-            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
-                <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;"><i class="fa-solid fa-dharmachakra"></i> Cluster: ${server.name}</h2>
-                <div class="status-badge ${server.status === 'online' ? 'online' : 'offline'}" style="margin-left: 10px;">
-                    ${server.status || 'unknown'}
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;"><i class="fa-solid fa-dharmachakra"></i> Cluster: ${server.name}</h2>
+                    <div class="status-badge ${server.status === 'online' ? 'online' : 'offline'}" style="margin-left: 10px;">
+                        ${server.status || 'unknown'}
+                    </div>
                 </div>
+                <div style="font-size: 0.9rem; color: var(--text-secondary);">
+                    IP: ${server.ip_address || 'Kubeconfig Mode'}
+                </div>
+            </div>
+
+            <!-- Cluster Summary Card -->
+            <div class="glass-panel" style="padding: 24px; margin-bottom: 30px; display: grid; grid-template-columns: 1fr 2fr; gap: 40px; border-left: 4px solid var(--accent-color);">
+                <div>
+                    <h3 style="margin: 0 0 15px 0; font-size: 1.1rem; opacity: 0.8; display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-solid fa-chart-pie"></i> Resumen del Cluster
+                    </h3>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px;">
+                            <span class="label" style="font-size: 0.7rem; opacity: 0.6; text-transform: uppercase; display: block; margin-bottom: 4px;">Nodos</span>
+                            <span class="value" style="font-size: 1.4rem; font-weight: 800; color: var(--accent-color);">${totalNodes}</span>
+                        </div>
+                        <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px;">
+                            <span class="label" style="font-size: 0.7rem; opacity: 0.6; text-transform: uppercase; display: block; margin-bottom: 4px;">Total Pods</span>
+                            <span class="value" style="font-size: 1.4rem; font-weight: 800;">${totalPods}</span>
+                        </div>
+                        <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px;">
+                            <span class="label" style="font-size: 0.7rem; opacity: 0.6; text-transform: uppercase; display: block; margin-bottom: 4px;">CPU Promedio</span>
+                            <span class="value" style="font-size: 1.4rem; font-weight: 800; color: ${getStatusColor(avgCpu)}">${avgCpu.toFixed(1)}%</span>
+                        </div>
+                        <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px;">
+                            <span class="label" style="font-size: 0.7rem; opacity: 0.6; text-transform: uppercase; display: block; margin-bottom: 4px;">Memoria Total</span>
+                            <span class="value" style="font-size: 1.4rem; font-weight: 800; color: ${getStatusColor(memPercent)}">${memPercent}%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 style="margin: 0 0 15px 0; font-size: 1.1rem; opacity: 0.8; display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-solid fa-server"></i> Recursos por Nodo
+                    </h3>
+                    <div style="display: flex; flex-direction: column; gap: 10px; max-height: 200px; overflow-y: auto; padding-right: 10px;">
+                        ${clusterNodes.map(node => {
+            const nCpu = (node.cpu_usage || 0);
+            const nMemUsed = node.total_memory - node.free_memory;
+            const nMemPerc = node.total_memory > 0 ? (nMemUsed / node.total_memory * 100) : 0;
+            return `
+                            <div style="display: grid; grid-template-columns: 150px 1fr 1fr 80px; align-items: center; gap: 15px; padding: 8px 12px; background: rgba(255,255,255,0.02); border-radius: 6px; font-size: 0.85rem;">
+                                <div style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${node.hostname}">${node.hostname}</div>
+                                <div>
+                                    <div style="display: flex; justify-content: space-between; font-size: 0.7rem; margin-bottom: 2px; opacity: 0.7;">
+                                        <span>CPU</span><span>${nCpu.toFixed(1)}%</span>
+                                    </div>
+                                    <div style="height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
+                                        <div style="height: 100%; width: ${nCpu}%; background: ${getStatusColor(nCpu)};"></div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div style="display: flex; justify-content: space-between; font-size: 0.7rem; margin-bottom: 2px; opacity: 0.7;">
+                                        <span>RAM</span><span>${nMemPerc.toFixed(1)}%</span>
+                                    </div>
+                                    <div style="height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
+                                        <div style="height: 100%; width: ${nMemPerc}%; background: ${getStatusColor(nMemPerc)};"></div>
+                                    </div>
+                                </div>
+                                <div style="text-align: right; font-weight: 800; opacity: 0.8;">${node.pods_count || 0} p</div>
+                            </div>
+                            `;
+        }).join('')}
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 15px; display: flex; align-items: center; gap: 8px; opacity: 0.8;">
+                <h3 style="margin: 0; font-size: 1.1rem;"><i class="fa-solid fa-list"></i> Detalle de Nodos</h3>
             </div>
 
             <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 20px;">

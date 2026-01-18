@@ -294,6 +294,23 @@ func NewPostgresDB(connStr string) (*DB, error) {
 	_, _ = db.Exec("ALTER TABLE firewall.hosts ADD COLUMN IF NOT EXISTS state_table_limit BIGINT DEFAULT 0")
 	_, _ = db.Exec("ALTER TABLE firewall.hosts ADD COLUMN IF NOT EXISTS temperature INTEGER DEFAULT 0")
 
+	// Migration: Generic servers kubeconfig & ssh key content support
+	genericTables := []string{
+		"virtualization.kvm_servers",
+		"virtualization.proxmox_servers",
+		"storage.nas_servers",
+		"storage.ceph_servers",
+		"containers.docker_servers",
+		"containers.podman_servers",
+		"kubernetes.kubernetes_servers",
+		"firewall.pfsense_servers",
+	}
+	for _, t := range genericTables {
+		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS kubeconfig_path TEXT DEFAULT ''", t))
+		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS kubeconfig_content TEXT DEFAULT ''", t))
+		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS ssh_key_content TEXT DEFAULT ''", t))
+	}
+
 	return &DB{Conn: db}, nil
 }
 
@@ -314,6 +331,9 @@ func ensureSchema(db *sql.DB) {
 			status VARCHAR(50) DEFAULT 'unknown',
 			password VARCHAR(255),
 			ssh_key_path VARCHAR(255) DEFAULT '/root/.ssh/id_rsa',
+			ssh_key_content TEXT DEFAULT '',
+			kubeconfig_path TEXT DEFAULT '',
+			kubeconfig_content TEXT DEFAULT '',
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE TABLE IF NOT EXISTS firewall.hosts (
@@ -328,7 +348,6 @@ func ensureSchema(db *sql.DB) {
 			os_name VARCHAR(255),
 			net_rx_total BIGINT DEFAULT 0,
 			net_tx_total BIGINT DEFAULT 0,
-			net_rx_bytes_per_sec BIGINT DEFAULT 0,
 			net_rx_bytes_per_sec BIGINT DEFAULT 0,
 			net_tx_bytes_per_sec BIGINT DEFAULT 0,
 			state_table_size BIGINT DEFAULT 0,
@@ -376,6 +395,9 @@ func ensureSchema(db *sql.DB) {
 			status VARCHAR(50) DEFAULT 'unknown',
 			password VARCHAR(255),
 			ssh_key_path VARCHAR(255) DEFAULT '/root/.ssh/id_rsa',
+			ssh_key_content TEXT DEFAULT '',
+			kubeconfig_path TEXT DEFAULT '',
+			kubeconfig_content TEXT DEFAULT '',
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE TABLE IF NOT EXISTS storage.nas_servers (
@@ -387,6 +409,9 @@ func ensureSchema(db *sql.DB) {
 			status VARCHAR(50) DEFAULT 'unknown',
 			password VARCHAR(255),
 			ssh_key_path VARCHAR(255) DEFAULT '/root/.ssh/id_rsa',
+			ssh_key_content TEXT DEFAULT '',
+			kubeconfig_path TEXT DEFAULT '',
+			kubeconfig_content TEXT DEFAULT '',
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE TABLE IF NOT EXISTS storage.ceph_servers (
@@ -398,6 +423,9 @@ func ensureSchema(db *sql.DB) {
 			status VARCHAR(50) DEFAULT 'unknown',
 			password VARCHAR(255),
 			ssh_key_path VARCHAR(255) DEFAULT '/root/.ssh/id_rsa',
+			ssh_key_content TEXT DEFAULT '',
+			kubeconfig_path TEXT DEFAULT '',
+			kubeconfig_content TEXT DEFAULT '',
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE TABLE IF NOT EXISTS containers.docker_servers (
@@ -409,6 +437,9 @@ func ensureSchema(db *sql.DB) {
 			status VARCHAR(50) DEFAULT 'unknown',
 			password VARCHAR(255),
 			ssh_key_path VARCHAR(255) DEFAULT '/root/.ssh/id_rsa',
+			ssh_key_content TEXT DEFAULT '',
+			kubeconfig_path TEXT DEFAULT '',
+			kubeconfig_content TEXT DEFAULT '',
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE TABLE IF NOT EXISTS containers.podman_servers (
@@ -420,6 +451,9 @@ func ensureSchema(db *sql.DB) {
 			status VARCHAR(50) DEFAULT 'unknown',
 			password VARCHAR(255),
 			ssh_key_path VARCHAR(255) DEFAULT '/root/.ssh/id_rsa',
+			ssh_key_content TEXT DEFAULT '',
+			kubeconfig_path TEXT DEFAULT '',
+			kubeconfig_content TEXT DEFAULT '',
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE TABLE IF NOT EXISTS kubernetes.kubernetes_servers (
@@ -431,6 +465,9 @@ func ensureSchema(db *sql.DB) {
 			status VARCHAR(50) DEFAULT 'unknown',
 			password VARCHAR(255),
 			ssh_key_path VARCHAR(255) DEFAULT '/root/.ssh/id_rsa',
+			ssh_key_content TEXT DEFAULT '',
+			kubeconfig_path TEXT DEFAULT '',
+			kubeconfig_content TEXT DEFAULT '',
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`,
 
