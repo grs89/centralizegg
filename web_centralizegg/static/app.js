@@ -2464,8 +2464,8 @@ async function renderKubernetesServerDetails(serverId) {
                 const nMemUsed = node.total_memory - node.free_memory;
                 const nMemPercent = node.total_memory > 0 ? ((nMemUsed / node.total_memory) * 100).toFixed(0) : 0;
                 const nodePods = allPodsCache.filter(p => p.node_id === node.id);
-                // Sort by CPU usage descending
-                nodePods.sort((a, b) => (b.cpu_usage || 0) - (a.cpu_usage || 0));
+                // Sort by Memory usage descending
+                nodePods.sort((a, b) => (b.memory_usage || 0) - (a.memory_usage || 0));
                 const isExpanded = expandedK8sNodes[node.id] || false;
 
                 const memTotalGB = (node.total_memory / (1024 * 1024 * 1024)).toFixed(1);
@@ -2736,7 +2736,29 @@ async function renderKubernetesServerDetails(serverId) {
 
 
             const gridEl = document.getElementById('k8s-node-grid');
-            if (gridEl) gridEl.innerHTML = renderNodeCards();
+            if (gridEl) {
+                // Capture scroll positions of open pod lists
+                const scrollMap = {};
+                document.querySelectorAll('[id^="k8s-node-pods-"]').forEach(el => {
+                    const scrollContainer = el.querySelector('.custom-scrollbar');
+                    if (scrollContainer) {
+                        scrollMap[el.id] = scrollContainer.scrollTop;
+                    }
+                });
+
+                gridEl.innerHTML = renderNodeCards();
+
+                // Restore scroll positions
+                Object.keys(scrollMap).forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) {
+                        const scrollContainer = el.querySelector('.custom-scrollbar');
+                        if (scrollContainer) {
+                            scrollContainer.scrollTop = scrollMap[id];
+                        }
+                    }
+                });
+            }
 
             return;
         }
