@@ -3436,9 +3436,6 @@ async function fetchPodmanContainers() {
         // Update history for sparklines
         updateContainerHistory(allPodmanContainersCache);
 
-        // Update history for sparklines
-        updateContainerHistory(allPodmanContainersCache);
-
         if (currentTool === 'podman') {
             if (selectedPodmanHostId) {
                 renderPodmanHostDetails(selectedPodmanHostId);
@@ -3471,6 +3468,9 @@ function renderPodmanHostDetails(hostId) {
 
     const host = allHostsCache.find(h => h.id === hostId);
     if (!host) return;
+
+    console.log(`[PodmanDebug] Rendering host details for: ${host.server_name || host.name} (ID: ${hostId})`);
+    console.log(`[PodmanDebug] Containers in cache for this host:`, allPodmanContainersCache.filter(c => c.host_id === hostId).length);
 
     let statsWrapper = document.getElementById('podman-stats-wrapper');
     let mapWrapper = document.getElementById('podman-map-wrapper');
@@ -3664,6 +3664,11 @@ function renderPodmanHostDetails(hostId) {
             const isRunning = (c.state || '').toLowerCase() === 'running';
             const memPercent = c.memory_limit > 0 ? (c.memory_usage / c.memory_limit * 100) : 0;
 
+            // Debug each row
+            if (isRunning) {
+                console.log(`[PodmanDebug] Container row: ${c.name} | NetRX: ${c.net_rx} | BlockIn: ${c.block_in}`);
+            }
+
             return `
             <div style="display: grid; grid-template-columns: 2fr 1.5fr 0.8fr 1.2fr 1.8fr 1fr; gap: 15px; align-items: center; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.05); transition: all 0.2s ease;">
                      <!--Name & Image-->
@@ -3695,7 +3700,7 @@ function renderPodmanHostDetails(hostId) {
                          </div>
                      </div>
  
-                     <!--RAM Usage / Limit-- >
+                     <!-- RAM Usage / Limit -->
                      <div style="display: flex; flex-direction: column; gap: 3px;">
                          <div style="font-size: 0.85rem; font-weight: 600; color: ${getStatusColor(memPercent)};">
                              ${formatBytes(c.memory_usage, 1)}
@@ -3708,7 +3713,11 @@ function renderPodmanHostDetails(hostId) {
                      <div style="display: flex; flex-direction: column; gap: 2px;">
                          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem;">
                              <span style="color: var(--text-secondary); opacity: 0.8;"><i class="fa-solid fa-arrow-down" style="font-size: 0.65rem; color: #4ade80;"></i> RX</span>
-                             <span style="font-weight: 600; font-family: monospace;">${formatBytes(c.net_rx, 0)}</span>
+                             <span style="font-weight: 600; font-family: monospace;">${(() => {
+                    const val = formatBytes(c.net_rx, 0);
+                    if (c.name === 'mi-servidor') console.log(`[PodmanDebug] mi-servidor NetRX formatted: ${val}`);
+                    return val;
+                })()}</span>
                          </div>
                           <div style="height: 18px; width: 100%; opacity: 0.8;">
                              ${(() => {
@@ -3731,7 +3740,11 @@ function renderPodmanHostDetails(hostId) {
                      <!--Disk -->
             <div style="display: flex; flex-direction: column; gap: 1px; font-size: 0.8rem;">
                 <div style="display: flex; align-items: center; gap: 5px; color: var(--text-secondary); opacity: 0.8;" title="Disk Read (Block In)">
-                    <i class="fa-solid fa-hard-drive" style="font-size: 0.7rem;"></i> ${formatBytes(c.block_in, 0)}
+                    <i class="fa-solid fa-hard-drive" style="font-size: 0.7rem;"></i> ${(() => {
+                    const val = formatBytes(c.block_in, 0);
+                    if (c.name === 'mi-servidor') console.log(`[PodmanDebug] mi-servidor BlockIn formatted: ${val}`);
+                    return val;
+                })()}
                 </div>
                 <div style="display: flex; align-items: center; gap: 5px; color: var(--text-secondary); opacity: 0.8;" title="Disk Write (Block Out)">
                     <i class="fa-solid fa-pen-to-square" style="font-size: 0.7rem;"></i> ${formatBytes(c.block_out, 0)}
@@ -3798,22 +3811,14 @@ function renderPodmanHostDetails(hostId) {
         if (gpuWrapperEl) gpuWrapperEl.innerHTML = renderGPUCard();
 
         // Map update
-        const mapContainer = document.getElementById('podman-topology-map');
-        if (mapContainer && host.podman_networks) {
-            // We can reuse DockerTopologyMap since structure is likely compatible if networks JSON is similar
-            // or we need a PodmanTopologyMap. For now assuming reuse or if we need to create one.
-            // Ideally we should rename DockerTopologyMap to ContainerTopologyMap but for now let's try to reuse if possible
-            // or check if window.currentDockerMap instance can be used. 
-            // Better to create a separate instance key for podman to avoid conflicts.
+        if (host.podman_networks) {
             if (!window.currentPodmanMap) {
-                // Check if DockerTopologyMap class exists (it's likely defined globally in app.js or similar)
-                // If it is generic enough:
                 if (typeof DockerTopologyMap !== 'undefined') {
                     window.currentPodmanMap = new DockerTopologyMap('podman-topology-map');
                 }
             }
             if (window.currentPodmanMap) {
-                window.currentPodmanMap.render(host.podman_networks);
+                window.currentPodmanMap.render(host.podman_networks, true, allPodmanContainersCache);
             }
         }
 
@@ -3967,13 +3972,12 @@ function renderPodmanHostDetails(hostId) {
     `;
 
     // Draw Map
-    const mapContainer = document.getElementById('podman-topology-map');
-    if (mapContainer && host.podman_networks) {
+    if (host.podman_networks) {
         if (typeof DockerTopologyMap !== 'undefined') {
             if (!window.currentPodmanMap) {
                 window.currentPodmanMap = new DockerTopologyMap('podman-topology-map');
             }
-            window.currentPodmanMap.render(host.podman_networks);
+            window.currentPodmanMap.render(host.podman_networks, true, allPodmanContainersCache);
         }
     }
 }
@@ -4973,6 +4977,7 @@ checkServerStatus(); // Run immediately
 
 
 function formatBytes(bytes, decimals = 2) {
+    if (bytes === undefined || bytes === null || isNaN(bytes)) return '0 Bytes';
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
     const dm = decimals < 0 ? 0 : decimals;
@@ -5892,7 +5897,7 @@ class DockerTopologyMap {
         this.initialized = false;
     }
 
-    render(networksJSON) {
+    render(networksJSON, activeOnly = false, containersCache = []) {
         const container = document.getElementById(this.containerId);
         if (!container) return;
 
@@ -5941,6 +5946,15 @@ class DockerTopologyMap {
             Object.keys(containers).forEach(cid => {
                 const c = containers[cid];
                 const cleanName = c.Name.replace(/^\//, '').split('.')[0]; // Shorten name
+
+                // Filter by active status if requested
+                if (activeOnly && containersCache && containersCache.length > 0) {
+                    const cacheEntry = containersCache.find(cc => cc.name === cleanName || cc.id === cid || cc.name === c.Name.replace(/^\//, ''));
+                    if (cacheEntry && (cacheEntry.state || '').toLowerCase() !== 'running') {
+                        return; // Skip inactive
+                    }
+                }
+
                 const cnodeId = `c-${cid}`;
 
                 if (!nodeMap.has(cnodeId)) {

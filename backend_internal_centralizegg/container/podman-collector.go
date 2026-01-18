@@ -417,10 +417,18 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 	statsMap := make(map[string]podmanStats)
 	if err == nil {
 		// DEBUG: Print raw stats output to verify JSON keys
-		// log.Printf("[PodmanDebug] Raw stats output from %s: %s", hostname, statsOutput)
+		log.Printf("[PodmanDebug] Raw stats output length: %d", len(statsOutput))
+		if len(statsOutput) > 0 {
+			snippetLen := len(statsOutput)
+			if snippetLen > 500 {
+				snippetLen = 500
+			}
+			log.Printf("[PodmanDebug] Raw stats snippet: %s", statsOutput[:snippetLen])
+		}
 		var stList []podmanStats
 		if err := json.Unmarshal([]byte(statsOutput), &stList); err == nil {
 			for _, st := range stList {
+				log.Printf("[PodmanDebug] Container: %s, NetIO: %s, NetIO_Fallback: %s, BlockIO: %s, BlockIO_Fallback: %s", st.Name, st.NetIO, st.NetIO_Fallback, st.BlockIO, st.BlockIO_Fallback)
 				if st.Name != "" {
 					statsMap[st.Name] = st
 				}
@@ -508,6 +516,22 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 			memUsage = st.Mem
 		}
 
+		// Network Fallback
+		netIO := st.NetIO
+		if netIO == "" || netIO == "--" || netIO == "0B / 0B" {
+			if st.NetIO_Fallback != "" && st.NetIO_Fallback != "--" {
+				netIO = st.NetIO_Fallback
+			}
+		}
+
+		// Block Fallback
+		blockIO := st.BlockIO
+		if blockIO == "" || blockIO == "--" || blockIO == "0B / 0B" {
+			if st.BlockIO_Fallback != "" && st.BlockIO_Fallback != "--" {
+				blockIO = st.BlockIO_Fallback
+			}
+		}
+
 		// Handle PIDs as interface (can be int or string like "--")
 		var pids int
 		switch v := st.PIDs.(type) {
@@ -530,10 +554,10 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 			CPUUsage:        pc.parsePercent(cpuPerc),
 			MemUsage:        pc.parseBytes(memUsage),
 			MemLimit:        pc.parseBytes(st.MemLimit),
-			NetRX:           pc.parseNetBytes(st.NetIO, true),
-			NetTX:           pc.parseNetBytes(st.NetIO, false),
-			BlockIn:         pc.parseNetBytes(st.BlockIO, true),
-			BlockOut:        pc.parseNetBytes(st.BlockIO, false),
+			NetRX:           pc.parseNetBytes(netIO, true),
+			NetTX:           pc.parseNetBytes(netIO, false),
+			BlockIn:         pc.parseNetBytes(blockIO, true),
+			BlockOut:        pc.parseNetBytes(blockIO, false),
 			PIDs:            pids,
 			IPAddress:       ipAddr,
 			OOMKilled:       false,  // logic to detect OOM requires podman inspect
@@ -553,14 +577,16 @@ type podmanStats struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	// Support both casing styles seen in different Podman versions
-	CPUPerc  string      `json:"cpu_percent"`
-	CPU      string      `json:"CPU"` // fallback
-	MemUsage string      `json:"mem_usage"`
-	Mem      string      `json:"MemUsage"` // fallback
-	MemLimit string      `json:"mem_limit"`
-	NetIO    string      `json:"net_io"`
-	BlockIO  string      `json:"block_io"`
-	PIDs     interface{} `json:"pids"`
+	CPUPerc          string      `json:"cpu_percent"`
+	CPU              string      `json:"CPU"` // fallback
+	MemUsage         string      `json:"mem_usage"`
+	Mem              string      `json:"MemUsage"` // fallback
+	MemLimit         string      `json:"mem_limit"`
+	NetIO            string      `json:"net_io"`
+	NetIO_Fallback   string      `json:"NetIO"` // fallback
+	BlockIO          string      `json:"block_io"`
+	BlockIO_Fallback string      `json:"BlockIO"` // fallback
+	PIDs             interface{} `json:"pids"`
 }
 
 type podmanPS struct {
@@ -680,14 +706,24 @@ func (pc *PodmanCollector) parseBytes(s string) uint64 {
 }
 
 func (pc *PodmanCollector) parseNetBytes(s string, rx bool) uint64 {
-	parts := strings.Split(s, " / ")
+	if s == "" || s == "--" {
+		return 0
+	}
+	// Support both " / " and "/" and handle any spacing
+	var parts []string
+	if strings.Contains(s, " / ") {
+		parts = strings.Split(s, " / ")
+	} else if strings.Contains(s, "/") {
+		parts = strings.Split(s, "/")
+	}
+
 	if len(parts) < 2 {
 		return 0
 	}
 
-	target := parts[0]
+	target := strings.TrimSpace(parts[0])
 	if !rx {
-		target = parts[1]
+		target = strings.TrimSpace(parts[1])
 	}
 
 	return pc.parseBytes(target)
