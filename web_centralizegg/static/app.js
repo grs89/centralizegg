@@ -2376,8 +2376,8 @@ function selectKubernetesServer(id) {
     selectedKubernetesNodeId = null; // Reset node selection when switching clusters
     renderHostNodes('host-nodes-container-generic', {
         icon: tools['kubernetes']?.icon || 'fa-solid fa-dharmachakra',
-        showOSInfo: false,
-        showStats: false,
+        showOSInfo: true,
+        showStats: true,
         onHostClick: 'selectKubernetesServer'
     });
     renderKubernetesServerDetails(id);
