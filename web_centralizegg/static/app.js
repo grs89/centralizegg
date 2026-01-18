@@ -2735,6 +2735,31 @@ async function renderKubernetesServerDetails(serverId) {
                             pvListEl.innerHTML = newHTML;
                             pvListEl.scrollTop = scrollPos;
                         }
+
+                        // Update storage summary counts
+                        const pvCountEl = document.getElementById('k8s-pv-count');
+                        const pvcCountEl = document.getElementById('k8s-pvc-count');
+                        const scCountEl = document.getElementById('k8s-sc-count');
+
+                        if (pvCountEl) pvCountEl.textContent = clusterPVs.length;
+
+                        // Count unique PVCs (PVs that have a PVC bound)
+                        const uniquePVCs = new Set();
+                        clusterPVs.forEach(pv => {
+                            if (pv.pvc_name && pv.pvc_namespace) {
+                                uniquePVCs.add(`${pv.pvc_namespace}/${pv.pvc_name}`);
+                            }
+                        });
+                        if (pvcCountEl) pvcCountEl.textContent = uniquePVCs.size;
+
+                        // Count unique StorageClasses
+                        const uniqueSCs = new Set();
+                        clusterPVs.forEach(pv => {
+                            if (pv.storage_class) {
+                                uniqueSCs.add(pv.storage_class);
+                            }
+                        });
+                        if (scCountEl) scCountEl.textContent = uniqueSCs.size;
                     });
             }
 
@@ -2965,6 +2990,34 @@ async function renderKubernetesServerDetails(serverId) {
                                 </div>
                             </div>
 
+                            <!-- Storage Resources Summary Card -->
+                            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
+                                <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 10px;">Recursos de Almacenamiento</div>
+                                <div id="k8s-storage-summary" style="display: flex; flex-direction: column; gap: 8px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem;">
+                                        <span style="color: var(--text-secondary); display: flex; align-items: center; gap: 6px;">
+                                            <i class="fa-solid fa-database" style="font-size: 0.7rem; opacity: 0.7;"></i>
+                                            Persistent Volumes
+                                        </span>
+                                        <span style="font-weight: 700; color: var(--text-primary);" id="k8s-pv-count">0</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem;">
+                                        <span style="color: var(--text-secondary); display: flex; align-items: center; gap: 6px;">
+                                            <i class="fa-solid fa-hard-drive" style="font-size: 0.7rem; opacity: 0.7;"></i>
+                                            Persistent Volume Claims
+                                        </span>
+                                        <span style="font-weight: 700; color: var(--text-primary);" id="k8s-pvc-count">0</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem;">
+                                        <span style="color: var(--text-secondary); display: flex; align-items: center; gap: 6px;">
+                                            <i class="fa-solid fa-layer-group" style="font-size: 0.7rem; opacity: 0.7;"></i>
+                                            Storage Classes
+                                        </span>
+                                        <span style="font-weight: 700; color: var(--text-primary);" id="k8s-sc-count">0</span>
+                                    </div>
+                                </div>
+                            </div>
+
                             <!-- PVs Card -->
                             <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
                                 <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 10px;">Volúmenes Persistentes</div>
@@ -2976,7 +3029,7 @@ async function renderKubernetesServerDetails(serverId) {
 
                         <!-- Right Column: Node Details -->
                         <div style="display: flex; flex-direction: column; gap: 20px; min-width: 0;">
-                            <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); width: 100%;">
+                            <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
                                 Nodos del Cluster
                             </div>
                             
