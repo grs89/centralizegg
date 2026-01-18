@@ -2884,7 +2884,7 @@ async function renderKubernetesServerDetails(serverId) {
                 if (!window.currentK8sMap) {
                     window.currentK8sMap = new KubernetesTopologyMap('k8s-topology-map');
                 }
-                window.currentK8sMap.render(server.network_topology);
+                window.currentK8sMap.renderFromData(clusterNodes, allPodsCache);
             }
 
             return;
@@ -3247,8 +3247,8 @@ async function renderKubernetesServerDetails(serverId) {
                                 Mapa de Red del Cluster
                             </div>
                         </div>
-                        <div id="k8s-map-wrapper" class="glass-panel" style="padding: 24px;">
-                            <div id="k8s-topology-map" style="height: 500px; width: 100%; border-radius: 8px;"></div>
+                        <div id="k8s-map-wrapper" class="glass-panel" style="padding: 24px; position: relative;">
+                            <div id="k8s-topology-map" style="height: 500px; width: 100%; border-radius: 8px; overflow-y: auto; overflow-x: hidden;"></div>
                         </div>
                     </div>
                 </div>
@@ -3263,7 +3263,7 @@ async function renderKubernetesServerDetails(serverId) {
                     if (!window.currentK8sMap) {
                         window.currentK8sMap = new KubernetesTopologyMap('k8s-topology-map');
                     }
-                    window.currentK8sMap.render(clusterNodes, allPodsCache);
+                    window.currentK8sMap.renderFromData(clusterNodes, allPodsCache);
                 }
             }
         }, 100);
@@ -6233,169 +6233,269 @@ class KubernetesTopologyMap {
         this.draw();
     }
 
+    renderFromData(nodesData, podsData) {
+        const container = document.getElementById(this.containerId);
+        if (!container) return;
+        this.width = container.clientWidth || 800;
+
+        this.nodes = [];
+        this.links = [];
+
+        // 1. Root Node (Internet/Cluster)
+        this.nodes.push({
+            id: 'internet',
+            name: 'Cluster API',
+            type: 'internet',
+            status: 'active'
+        });
+
+        // 2. Nodes (as Services/Hosts layer)
+        const nodeIds = new Set();
+        nodesData.forEach(node => {
+            const nodeId = 'node-' + node.id;
+            nodeIds.add(node.id);
+            this.nodes.push({
+                id: nodeId,
+                name: node.hostname,
+                type: 'service', // Reusing 'service' style for K8s Nodes
+                status: (node.status && node.status.toLowerCase() === 'ready') ? 'active' : 'stopped',
+                original: node
+            });
+
+            // Link Internet -> Node
+            this.links.push({
+                source: 'internet',
+                target: nodeId
+            });
+        });
+
+        // 3. Pods
+        podsData.forEach(pod => {
+            // Only show pods belonging to these nodes
+            if (!nodeIds.has(pod.node_id)) return;
+
+            const podId = 'pod-' + pod.id;
+            this.nodes.push({
+                id: podId,
+                name: pod.name,
+                type: 'pod',
+                status: (pod.state === 'Running') ? 'active' : 'stopped',
+                original: pod
+            });
+
+            // Link Node -> Pod
+            this.links.push({
+                source: 'node-' + pod.node_id,
+                target: podId
+            });
+        });
+
+        // --- DIAGNOSTIC START ---
+        if (this.nodes.length === 0) {
+            console.warn('[KubernetesTopologyMap] No nodes found after data processing.');
+            container.innerHTML = `
+                <div style="height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #ef4444; background: rgba(239, 68, 68, 0.05); border: 1px dashed rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 20px;">
+                    <i class="fa-solid fa-bug" style="font-size: 2rem; margin-bottom: 10px;"></i>
+                    <div style="font-weight: 700;">Modo Diagnóstico: Mapa Vacío</div>
+                    <div style="font-size: 0.8rem; opacity: 0.9; margin-top: 5px; text-align: center;">
+                        <div>Nodos recibidos: ${nodesData ? nodesData.length : 'NULL'}</div>
+                        <div>Pods recibidos: ${podsData ? podsData.length : 'NULL'}</div>
+                        <div>Nodos procesados: 0</div>
+                    </div>
+                </div>`;
+            return;
+        }
+        // --- DIAGNOSTIC END ---
+
+        this.draw();
+    }
+
     draw() {
         const container = document.getElementById(this.containerId);
         if (!container) return;
 
-        // In horizontal layout, height is determined by the densest column
-        const maxNodesInCol = Math.max(
-            this.nodes.filter(n => n.type === 'internet').length,
-            this.nodes.filter(n => n.type === 'service').length,
-            this.nodes.filter(n => n.type === 'pod').length
-        );
-        this.height = Math.max(400, maxNodesInCol * 60);
+        try {
+            // In horizontal layout, height is determined by the densest column
+            const maxNodesInCol = Math.max(
+                this.nodes.filter(n => n.type === 'internet').length,
+                this.nodes.filter(n => n.type === 'service').length,
+                this.nodes.filter(n => n.type === 'pod').length
+            );
+            this.height = Math.max(400, maxNodesInCol * 60);
 
-        container.innerHTML = `
-            <svg width="100%" height="${this.height}" style="background: transparent; overflow: visible;">
-                <defs>
-                    <filter id="k8s-glow" x="-50%" y="-50%" width="200%" height="200%">
-                        <feGaussianBlur stdDeviation="4" result="blur" />
-                        <feComposite in="SourceGraphic" in2="blur" operator="over" />
-                    </filter>
-                </defs>
-                <g id="k8s-links-group"></g>
-                <g id="k8s-nodes-group"></g>
-            </svg>
-        `;
-
-        const linksGroup = container.querySelector('#k8s-links-group');
-        const nodesGroup = container.querySelector('#k8s-nodes-group');
-
-        const centerY = this.height / 2;
-
-        // Position nodes hierarchically (Horizontal)
-        // Column 1: Internet (Left)
-        const internetNode = this.nodes.find(n => n.type === 'internet');
-        if (internetNode) {
-            internetNode.x = Math.max(80, this.width * 0.1);
-            internetNode.y = centerY;
-        }
-
-        // Column 2: Services (Middle)
-        const serviceNodes = this.nodes.filter(n => n.type === 'service');
-        const svcYSpacing = Math.min(this.height / (serviceNodes.length + 1), 150);
-        const svcStartY = centerY - ((serviceNodes.length - 1) * svcYSpacing) / 2;
-
-        serviceNodes.forEach((node, i) => {
-            node.x = this.width * 0.4;
-            node.y = svcStartY + (i * svcYSpacing);
-        });
-
-        // Column 3: Pods (Right)
-        const podNodes = this.nodes.filter(n => n.type === 'pod');
-        const podYSpacing = Math.min(this.height / (podNodes.length + 1), 50);
-        const podStartY = centerY - ((podNodes.length - 1) * podYSpacing) / 2;
-
-        podNodes.forEach((node, i) => {
-            node.x = Math.min(this.width - 80, this.width * 0.85);
-            node.y = podStartY + (i * podYSpacing);
-
-            // Pull pods towards their connected services
-            const connectedLinks = this.links.filter(l => l.target === node.id);
-            if (connectedLinks.length > 0) {
-                let sumY = 0;
-                connectedLinks.forEach(l => {
-                    const src = this.nodes.find(n => n.id === l.source);
-                    if (src) sumY += src.y;
-                });
-                const targetY = sumY / connectedLinks.length;
-                node.y = (node.y * 0.4) + (targetY * 0.6);
-            }
-        });
-
-        // Render Links
-        this.links.forEach(link => {
-            const source = this.nodes.find(n => n.id === link.source);
-            const target = this.nodes.find(n => n.id === link.target);
-            if (source && target) {
-                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                line.setAttribute('x1', source.x);
-                line.setAttribute('y1', source.y);
-                line.setAttribute('x2', target.x);
-                line.setAttribute('y2', target.y);
-
-                if (link.type === 'external') {
-                    line.setAttribute('stroke', 'rgba(255,77,77,0.4)');
-                    line.setAttribute('stroke-width', '2');
-                    line.setAttribute('stroke-dasharray', '8,8');
-                    const anim = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
-                    anim.setAttribute('attributeName', 'stroke-dashoffset');
-                    anim.setAttribute('from', '32');
-                    anim.setAttribute('to', '0');
-                    anim.setAttribute('dur', '1.5s');
-                    anim.setAttribute('repeatCount', 'indefinite');
-                    line.appendChild(anim);
-                } else {
-                    line.setAttribute('stroke', 'rgba(255,255,255,0.15)');
-                    line.setAttribute('stroke-width', '1.5');
-                    line.setAttribute('stroke-dasharray', '4,4');
-                }
-                linksGroup.appendChild(line);
-            }
-        });
-
-        // Render Nodes
-        this.nodes.forEach(node => {
-            const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-            group.style.cursor = 'pointer';
-
-            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            circle.setAttribute('cx', node.x);
-            circle.setAttribute('cy', node.y);
-            circle.setAttribute('r', node.type === 'pod' ? 14 : 24);
-            circle.setAttribute('fill', node.color || '#94a3b8');
-            circle.setAttribute('fill-opacity', '0.2');
-            circle.setAttribute('stroke', node.color || '#94a3b8');
-            circle.setAttribute('stroke-width', '2.5');
-            circle.style.transition = 'all 0.3s ease';
-
-            const foSize = node.type === 'pod' ? 24 : 36;
-            const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
-            fo.setAttribute('x', node.x - foSize / 2);
-            fo.setAttribute('y', node.y - foSize / 2);
-            fo.setAttribute('width', foSize);
-            fo.setAttribute('height', foSize);
-            fo.style.pointerEvents = 'none';
-
-            let iconClass = 'fa-solid fa-cube';
-            if (node.type === 'internet') iconClass = 'fa-solid fa-globe';
-            else if (node.type === 'service') iconClass = 'fa-solid fa-link';
-
-            fo.innerHTML = `
-                <div xmlns="http://www.w3.org/1999/xhtml" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: ${node.color}; font-size: ${node.type === 'pod' ? '14px' : '20px'};">
-                    <i class="${iconClass}"></i>
-                </div>
+            container.innerHTML = `
+                <svg width="100%" height="${this.height}" style="background: transparent; display: block;">
+                    <defs>
+                        <filter id="k8s-glow" x="-50%" y="-50%" width="200%" height="200%">
+                            <feGaussianBlur stdDeviation="4" result="blur" />
+                            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                        </filter>
+                    </defs>
+                    <g id="k8s-links-group"></g>
+                    <g id="k8s-nodes-group"></g>
+                </svg>
             `;
 
-            const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            label.setAttribute('x', node.x);
-            label.setAttribute('y', node.y + (node.type === 'pod' ? 35 : 50));
-            label.setAttribute('text-anchor', 'middle');
-            label.setAttribute('fill', 'var(--text-secondary)');
-            label.setAttribute('font-size', '10px');
-            label.setAttribute('font-weight', '600');
-            label.textContent = node.name.length > 20 ? node.name.substring(0, 18) + '...' : node.name;
+            const linksGroup = container.querySelector('#k8s-links-group');
+            const nodesGroup = container.querySelector('#k8s-nodes-group');
 
-            const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-            title.textContent = `${node.name}\nType: ${node.type}\nNamespace: ${node.namespace || 'N/A'}\nIP: ${node.ip || 'N/A'}`;
-            group.appendChild(title);
+            if (!linksGroup || !nodesGroup) {
+                throw new Error("Failed to create SVG groups");
+            }
 
-            group.appendChild(circle);
-            group.appendChild(fo);
-            group.appendChild(label);
-            nodesGroup.appendChild(group);
+            const centerY = this.height / 2;
 
-            group.addEventListener('mouseenter', () => {
-                circle.setAttribute('fill-opacity', '0.5');
-                circle.setAttribute('stroke-width', '3.5');
-                circle.style.filter = `drop-shadow(0 0 8px ${node.color}aa)`;
+            // Position nodes hierarchically (Horizontal)
+            // Column 1: Internet (Left)
+            const internetNode = this.nodes.find(n => n.type === 'internet');
+            if (internetNode) {
+                internetNode.x = Math.max(80, this.width * 0.1);
+                internetNode.y = centerY;
+            }
+
+            // Column 2: Services (Middle)
+            const serviceNodes = this.nodes.filter(n => n.type === 'service');
+            const svcYSpacing = Math.min(this.height / (serviceNodes.length + 1), 150);
+            const svcStartY = centerY - ((serviceNodes.length - 1) * svcYSpacing) / 2;
+
+            serviceNodes.forEach((node, i) => {
+                node.x = this.width * 0.4;
+                node.y = svcStartY + (i * svcYSpacing);
             });
-            group.addEventListener('mouseleave', () => {
+
+            // Column 3: Pods (Right)
+            const podNodes = this.nodes.filter(n => n.type === 'pod');
+            const podYSpacing = Math.min(this.height / (podNodes.length + 1), 50);
+            const podStartY = centerY - ((podNodes.length - 1) * podYSpacing) / 2;
+
+            podNodes.forEach((node, i) => {
+                node.x = Math.min(this.width - 80, this.width * 0.85);
+                node.y = podStartY + (i * podYSpacing);
+
+                // Pull pods towards their connected services
+                const connectedLinks = this.links.filter(l => l.target === node.id);
+                if (connectedLinks.length > 0) {
+                    let sumY = 0;
+                    connectedLinks.forEach(l => {
+                        const src = this.nodes.find(n => n.id === l.source);
+                        if (src) sumY += src.y;
+                    });
+                    const targetY = sumY / connectedLinks.length;
+                    node.y = (node.y * 0.4) + (targetY * 0.6);
+                }
+            });
+
+            // Check if nodes are populated (Sanity Check)
+            if (this.nodes.length === 0) {
+                console.warn('[KubernetesTopologyMap] No nodes to draw');
+                return;
+            }
+
+            // Render Links
+            this.links.forEach(link => {
+                const source = this.nodes.find(n => n.id === link.source);
+                const target = this.nodes.find(n => n.id === link.target);
+                if (source && target) {
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', source.x);
+                    line.setAttribute('y1', source.y);
+                    line.setAttribute('x2', target.x);
+                    line.setAttribute('y2', target.y);
+
+                    if (link.type === 'external') {
+                        line.setAttribute('stroke', 'rgba(255,77,77,0.4)');
+                        line.setAttribute('stroke-width', '2');
+                        line.setAttribute('stroke-dasharray', '8,8');
+                        const anim = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+                        anim.setAttribute('attributeName', 'stroke-dashoffset');
+                        anim.setAttribute('from', '32');
+                        anim.setAttribute('to', '0');
+                        anim.setAttribute('dur', '1.5s');
+                        anim.setAttribute('repeatCount', 'indefinite');
+                        line.appendChild(anim);
+                    } else {
+                        line.setAttribute('stroke', 'rgba(255,255,255,0.15)');
+                        line.setAttribute('stroke-width', '1.5');
+                        line.setAttribute('stroke-dasharray', '4,4');
+                    }
+                    linksGroup.appendChild(line);
+                } else {
+                    console.warn('[KubernetesTopologyMap] Missing source/target for link:', link);
+                }
+            });
+
+            // Render Nodes
+            this.nodes.forEach(node => {
+                const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                group.style.cursor = 'pointer';
+
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('cx', node.x);
+                circle.setAttribute('cy', node.y);
+                circle.setAttribute('r', node.type === 'pod' ? 14 : 24);
+                circle.setAttribute('fill', node.color || '#94a3b8');
                 circle.setAttribute('fill-opacity', '0.2');
+                circle.setAttribute('stroke', node.color || '#94a3b8');
                 circle.setAttribute('stroke-width', '2.5');
-                circle.style.filter = 'none';
+                circle.style.transition = 'all 0.3s ease';
+
+                const foSize = node.type === 'pod' ? 24 : 36;
+                const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+                fo.setAttribute('x', node.x - foSize / 2);
+                fo.setAttribute('y', node.y - foSize / 2);
+                fo.setAttribute('width', foSize);
+                fo.setAttribute('height', foSize);
+                fo.style.pointerEvents = 'none';
+
+                let iconClass = 'fa-solid fa-cube';
+                if (node.type === 'internet') iconClass = 'fa-solid fa-globe';
+                else if (node.type === 'service') iconClass = 'fa-solid fa-link';
+
+                fo.innerHTML = `
+                    <div xmlns="http://www.w3.org/1999/xhtml" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: ${node.color}; font-size: ${node.type === 'pod' ? '14px' : '20px'};">
+                        <i class="${iconClass}"></i>
+                    </div>
+                `;
+
+                const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                label.setAttribute('x', node.x);
+                label.setAttribute('y', node.y + (node.type === 'pod' ? 35 : 50));
+                label.setAttribute('text-anchor', 'middle');
+                label.setAttribute('fill', 'var(--text-secondary)');
+                label.setAttribute('font-size', '10px');
+                label.setAttribute('font-weight', '600');
+                label.textContent = node.name.length > 20 ? node.name.substring(0, 18) + '...' : node.name;
+
+                const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+                title.textContent = `${node.name}\nType: ${node.type}\nNamespace: ${node.namespace || 'N/A'}\nIP: ${node.ip || 'N/A'}`;
+                group.appendChild(title);
+
+                group.appendChild(circle);
+                group.appendChild(fo);
+                group.appendChild(label);
+                nodesGroup.appendChild(group);
+
+                group.addEventListener('mouseenter', () => {
+                    circle.setAttribute('fill-opacity', '0.5');
+                    circle.setAttribute('stroke-width', '3.5');
+                    circle.style.filter = `drop-shadow(0 0 8px ${node.color}aa)`;
+                });
+                group.addEventListener('mouseleave', () => {
+                    circle.setAttribute('fill-opacity', '0.2');
+                    circle.setAttribute('stroke-width', '2.5');
+                    circle.style.filter = 'none';
+                });
             });
-        });
+
+        } catch (e) {
+            console.error('[KubernetesTopologyMap] Rendering error:', e);
+            container.innerHTML = `
+                <div style="height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #ef4444; background: rgba(239, 68, 68, 0.05); border: 1px dashed rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 20px;">
+                    <i class="fa-solid fa-triangle-exclamation" style="font-size: 2rem; margin-bottom: 10px;"></i>
+                    <div style="font-weight: 700;">Error de Renderizado</div>
+                    <div style="font-size: 0.8rem; opacity: 0.9; margin-top: 5px; text-align: center;">${e.message}</div>
+                </div>`;
+        }
     }
 }
 
