@@ -2468,54 +2468,63 @@ async function renderKubernetesServerDetails(serverId) {
 
                 const memTotalGB = (node.total_memory / (1024 * 1024 * 1024)).toFixed(1);
                 const memUsedGB = (nMemUsed / (1024 * 1024 * 1024)).toFixed(1);
+
                 return `
-                <div class="glass-panel" style="padding: 18px; transition: all 0.3s; border: 1px solid rgba(255,255,255,0.03);">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
-                        <div>
-                            <h3 style="margin:0; font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">${node.hostname}</h3>
-                            <div style="font-size: 0.7rem; color: var(--text-secondary); opacity: 0.6; margin-top: 2px;">v${node.version || '0.0.0'}</div>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                            <div style="display: flex; align-items: center; gap: 6px; padding: 4px 12px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; box-shadow: inset 0 0 10px rgba(0,0,0,0.2);">
-                                <div style="width: 6px; height: 6px; border-radius: 50%; background-color: ${node.status === 'Ready' ? '#4ade80' : '#ef4444'}; box-shadow: 0 0 6px ${node.status === 'Ready' ? '#4ade80' : '#ef4444'};"></div>
-                                <span style="font-size: 0.75rem; font-weight: 500; color: #e2e8f0;">${node.status === 'Ready' ? 'Online' : 'Offline'}</span>
+                <div class="glass-panel" style="padding: 12px 18px; transition: all 0.2s; border-bottom: 1px solid rgba(255,255,255,0.05); border-radius: 0; background: transparent;">
+                    <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 0.5fr; gap: 20px; align-items: center; cursor: pointer;" onclick="toggleNodePods(event, ${node.id})">
+                        <!-- Column 1: Identity & Status -->
+                        <div style="display: flex; align-items: center; gap: 12px; overflow: hidden;">
+                             <div style="position: relative;">
+                                <i class="fa-solid fa-server" style="font-size: 1.2rem; color: var(--text-secondary); opacity: 0.8;"></i>
+                                <div style="position: absolute; bottom: -2px; right: -2px; width: 8px; height: 8px; border-radius: 50%; background-color: ${node.status === 'Ready' ? '#4ade80' : '#ef4444'}; box-shadow: 0 0 0 2px #1a1b26;"></div>
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 2px; overflow: hidden;">
+                                <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${node.hostname}</span>
+                                <div style="display: flex; align-items: center; gap: 6px; font-size: 0.7rem; color: var(--text-secondary); opacity: 0.8;">
+                                    <span>v${node.version || '0.0.0'}</span>
+                                    <span>•</span>
+                                    <span style="color: ${node.status === 'Ready' ? '#4ade80' : '#ef4444'};">${node.status === 'Ready' ? 'Online' : 'Offline'}</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 6px; font-size: 0.65rem; color: var(--text-secondary); opacity: 0.6;">
+                                    <span>${node.cpu_cores || 'N/A'} CPUs</span>
+                                    <span>•</span>
+                                    <span>${memTotalGB}GB RAM</span>
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 0.6fr; gap: 20px; margin-bottom: 20px; align-items: start;">
-                        <!-- CPU (KVM Style) -->
-                        <div style="display: flex; flex-direction: column; gap: 5px;">
-                            <div style="display: flex; justify-content: space-between; align-items: baseline;">
-                                <span style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.8;">CPU</span>
+                        <!-- Column 2: CPU -->
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <div style="display: flex; align-items: baseline; gap: 6px;">
                                 <span style="font-size: 0.9rem; font-weight: 600; color: ${getStatusColor(cpuPercent)};">${cpuPercent}%</span>
                             </div>
-                            <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
+                            <div style="width: 100%; height: 3px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
                                 <div style="height: 100%; width: ${cpuPercent}%; background: ${getStatusColor(cpuPercent)}; border-radius: 2px;"></div>
                             </div>
                         </div>
 
-                        <!-- RAM (KVM Style) -->
-                        <div style="display: flex; flex-direction: column; gap: 5px;">
-                            <div style="display: flex; justify-content: space-between; align-items: baseline;">
-                                <span style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.8;">RAM</span>
-                                <div style="font-size: 0.9rem; font-weight: 600; color: ${getStatusColor(nMemPercent)};">
-                                    ${nMemPercent}% <span style="font-size: 0.65rem; font-weight: 400; opacity: 0.6; color: var(--text-secondary);">${memUsedGB}G</span>
-                                </div>
+                        <!-- Column 3: RAM -->
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <div style="display: flex; align-items: baseline; gap: 8px;">
+                                <span style="font-size: 0.9rem; font-weight: 600; color: ${getStatusColor(nMemPercent)};">${nMemPercent}%</span>
+                                <span style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.6;">${memUsedGB}/${memTotalGB}G</span>
                             </div>
-                            <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
+                            <div style="width: 100%; height: 3px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
                                 <div style="height: 100%; width: ${nMemPercent}%; background: ${getStatusColor(nMemPercent)}; border-radius: 2px;"></div>
                             </div>
                         </div>
 
-                        <!-- Pods (Simple Style) -->
-                        <div style="display: flex; flex-direction: column; gap: 5px; text-align: right;">
-                            <span style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.8;">Pods</span>
-                            <span style="font-size: 1rem; font-weight: 700; color: var(--text-primary);">${node.pods_count || 0}</span>
+                        <!-- Column 4: Pods / Action -->
+                        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 1rem; font-weight: 700; color: var(--text-primary);">${node.pods_count || 0}</span>
+                                <i class="fa-solid fa-chevron-down" style="font-size: 0.7rem; color: var(--text-secondary); opacity: 0.7; transition: transform 0.3s; ${isExpanded ? 'transform: rotate(180deg);' : ''}" id="k8s-node-chevron-${node.id}"></i>
+                            </div>
+                            <div style="font-size: 0.6rem; color: var(--text-secondary); opacity: 0.5;">PODS</div>
                         </div>
                     </div>
 
-                    <div id="k8s-node-pods-${node.id}" style="display: ${isExpanded ? 'block' : 'none'}; margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.05);">
+                    <div id="k8s-node-pods-${node.id}" style="display: ${isExpanded ? 'block' : 'none'}; margin-top: 0; padding-top: 15px; padding-bottom: 5px; border-top: 1px solid rgba(255,255,255,0.05); margin-top: 12px;">
                         <div style="font-size: 0.75rem; font-weight: 600; color: var(--accent-color); margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
                             <i class="fa-solid fa-cubes"></i> Pods en este Nodo
                         </div>
@@ -2531,15 +2540,6 @@ async function renderKubernetesServerDetails(serverId) {
                                     </span>
                                 </div>
                             `).join('')}
-                        </div>
-                    </div>
-
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px;">
-                        <div style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.5;">
-                            <i class="fa-solid fa-microchip"></i> ${node.cpu_cores || 'N/A'} Cores
-                        </div>
-                        <div style="font-size: 0.75rem; color: var(--accent-color); font-weight: 700; display: flex; align-items: center; gap: 4px; cursor: pointer;" onclick="toggleNodePods(event, ${node.id}); event.stopPropagation();">
-                            Explorar <i class="fa-solid fa-chevron-down" style="font-size: 0.6rem; transition: transform 0.3s; ${isExpanded ? 'transform: rotate(180deg);' : ''}" id="k8s-node-chevron-${node.id}"></i>
                         </div>
                     </div>
                 </div>
@@ -2721,11 +2721,21 @@ async function renderKubernetesServerDetails(serverId) {
 
                         <!-- Right Column: Node Details -->
                         <div style="display: flex; flex-direction: column; gap: 20px; min-width: 0;">
-                            <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); width: 100%;">
+                            <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); width: 100%;">
                                 Nodos del Cluster
                             </div>
-                            <div id="k8s-node-grid" style="display: grid; grid-template-columns: 1fr; gap: 15px;">
-                                ${renderNodeCards()}
+                            
+                            <div class="glass-panel" style="padding: 0; overflow: hidden;">
+                                <!-- Table Headers -->
+                                <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 0.5fr; gap: 20px; padding: 15px 18px; border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02); font-size: 0.7rem; color: var(--text-secondary); letter-spacing: 0.05em; text-transform: uppercase;">
+                                    <div>Nombre / Sistema</div>
+                                    <div>CPU</div>
+                                    <div>Memoria</div>
+                                    <div style="text-align: right;">Pods</div>
+                                </div>
+                                <div id="k8s-node-grid" style="display: flex; flex-direction: column;">
+                                    ${renderNodeCards()}
+                                </div>
                             </div>
                         </div>
                     </div>
