@@ -417,18 +417,9 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 	statsMap := make(map[string]podmanStats)
 	if err == nil {
 		// DEBUG: Print raw stats output to verify JSON keys
-		log.Printf("[PodmanDebug] Raw stats output length: %d", len(statsOutput))
-		if len(statsOutput) > 0 {
-			snippetLen := len(statsOutput)
-			if snippetLen > 500 {
-				snippetLen = 500
-			}
-			log.Printf("[PodmanDebug] Raw stats snippet: %s", statsOutput[:snippetLen])
-		}
 		var stList []podmanStats
 		if err := json.Unmarshal([]byte(statsOutput), &stList); err == nil {
 			for _, st := range stList {
-				log.Printf("[PodmanDebug] Container: %s, NetIO: %s, NetIO_Fallback: %s, BlockIO: %s, BlockIO_Fallback: %s", st.Name, st.NetIO, st.NetIO_Fallback, st.BlockIO, st.BlockIO_Fallback)
 				if st.Name != "" {
 					statsMap[st.Name] = st
 				}
