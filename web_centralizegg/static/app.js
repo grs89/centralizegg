@@ -2397,6 +2397,12 @@ async function renderKubernetesServerDetails(serverId) {
     const server = allHostsCache.find(s => s.id === serverId);
     if (!server) return;
 
+    // Ensure pods are loaded to avoid 0 counts
+    if (allPodsCache.length === 0) {
+        console.log('[K8s] cache empty, fetching pods before server details...');
+        await fetchPods();
+    }
+
     // Fetch nodes for this specific server
     try {
         const resp = await fetch(API_KUBERNETES_NODES);
