@@ -102,20 +102,27 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 	// 1. Get Nodes
 	kubectlCmd := "kubectl"
 	if kubeconfigPath != "" {
-		kubectlCmd = fmt.Sprintf("KUBECONFIG=%s kubectl", kubeconfigPath)
 		if isLocal {
 			kubectlCmd = fmt.Sprintf("kubectl --kubeconfig=%s", kubeconfigPath)
+			log.Printf("[KubernetesCollector] Using local kubeconfig: %s", kubeconfigPath)
+		} else {
+			kubectlCmd = fmt.Sprintf("KUBECONFIG=%s kubectl", kubeconfigPath)
+			log.Printf("[KubernetesCollector] Using remote kubeconfig: %s", kubeconfigPath)
 		}
+	} else {
+		log.Printf("[KubernetesCollector] No kubeconfig provided, using system default")
 	}
 
 	var nodesJSON string
 	if isLocal {
+		log.Printf("[KubernetesCollector] Running local command: %s get nodes", kubectlCmd)
 		nodesJSON, err = kc.runLocalCommand(kubectlCmd + " get nodes -o json")
 	} else {
+		log.Printf("[KubernetesCollector] Running remote command: %s get nodes", kubectlCmd)
 		nodesJSON, err = kc.runCommand(client, kubectlCmd+" get nodes -o json", "")
 	}
 	if err != nil {
-		return fmt.Errorf("kubectl get nodes: %w", err)
+		return fmt.Errorf("kubectl get nodes (output: %s): %w", strings.TrimSpace(nodesJSON), err)
 	}
 
 	var nodeListView struct {
@@ -234,11 +241,15 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 	// 2. Get Pods
 	var podsJSON string
 	if isLocal {
+		log.Printf("[KubernetesCollector] Running local command: %s get pods -A", kubectlCmd)
 		podsJSON, err = kc.runLocalCommand(kubectlCmd + " get pods -A -o json")
 	} else {
+		log.Printf("[KubernetesCollector] Running remote command: %s get pods -A", kubectlCmd)
 		podsJSON, err = kc.runCommand(client, kubectlCmd+" get pods -A -o json", "")
 	}
-	if err == nil {
+	if err != nil {
+		log.Printf("[KubernetesCollector] Failed to get pods (output: %s): %v", strings.TrimSpace(podsJSON), err)
+	} else {
 		var podListView struct {
 			Items []struct {
 				Metadata struct {
