@@ -965,6 +965,9 @@ async function checkAndFetchHostsForTool(toolKey) {
             if (response.ok) {
                 const hosts = await response.json();
                 if (hosts && hosts.length > 0) {
+                    // Enrich with tool type
+                    hosts.forEach(h => h.tool_type = toolKey);
+
                     // Sort hosts alphabetically
                     hosts.sort((a, b) => {
                         const nameA = a.server_name || a.name || '';
@@ -1002,12 +1005,16 @@ async function checkAndFetchHostsForTool(toolKey) {
                         allHostsCache = hosts || [];
                         renderHostNodes('host-nodes-container-generic', {
                             icon: tools[toolKey].icon,
-                            showOSInfo: false,
-                            showStats: false,
+                            showOSInfo: true,
+                            showStats: true,
                             onHostClick: 'selectKubernetesServer'
                         });
                         if (selectedKubernetesServerId) {
-                            renderKubernetesServerDetails(selectedKubernetesServerId);
+                            if (selectedKubernetesNodeId) {
+                                renderKubernetesNodeDetails(selectedKubernetesNodeId);
+                            } else {
+                                renderKubernetesServerDetails(selectedKubernetesServerId);
+                            }
                         } else {
                             renderKubernetesSummary();
                         }
@@ -2353,6 +2360,8 @@ async function fetchPods() {
         if (currentTool === 'kubernetes') {
             if (selectedKubernetesNodeId) {
                 renderKubernetesNodeDetails(selectedKubernetesNodeId);
+            } else if (selectedKubernetesServerId) {
+                renderKubernetesServerDetails(selectedKubernetesServerId);
             } else {
                 renderKubernetesSummary();
             }
@@ -2404,133 +2413,220 @@ async function renderKubernetesServerDetails(serverId) {
             return;
         }
 
+        const isAlreadyRenderingServer = scannerSection.getAttribute('data-k8s-server-id') === String(serverId);
+
         const totalNodes = clusterNodes.length;
         const totalPods = clusterNodes.reduce((acc, n) => acc + (n.pods_count || 0), 0);
-        const avgCpu = clusterNodes.reduce((acc, n) => acc + (n.cpu_usage || 0), 0) / totalNodes;
+        const avgCpu = clusterNodes.reduce((acc, n) => acc + (n.cpu_usage || 0), 0) / (totalNodes || 1);
         const totalMem = clusterNodes.reduce((acc, n) => acc + (n.total_memory || 0), 0);
         const freeMem = clusterNodes.reduce((acc, n) => acc + (n.free_memory || 0), 0);
         const usedMem = totalMem - freeMem;
         const memPercent = totalMem > 0 ? ((usedMem / totalMem) * 100).toFixed(0) : 0;
 
+        const renderPodDistribution = () => {
+            return clusterNodes.map(node => `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.03); border-radius: 8px; font-size: 0.8rem;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-solid fa-cube" style="font-size: 0.7rem; opacity: 0.5;"></i>
+                        <span style="opacity: 0.9;">${node.hostname}</span>
+                    </div>
+                    <span style="font-weight: 800; color: var(--accent-color);">${node.pods_count || 0}</span>
+                </div>
+            `).join('');
+        };
+
+        const renderNodeCards = () => {
+            return clusterNodes.map(node => {
+                const cpuPercent = (node.cpu_usage || 0).toFixed(1);
+                const nMemUsed = node.total_memory - node.free_memory;
+                const nMemPercent = node.total_memory > 0 ? ((nMemUsed / node.total_memory) * 100).toFixed(0) : 0;
+
+                return `
+                <div class="glass-panel" style="padding: 18px; cursor: pointer; transition: all 0.3s; border: 1px solid rgba(255,255,255,0.03);" onclick="selectKubernetesNode(${node.id})">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px;">
+                        <div>
+                            <h3 style="margin:0; font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">${node.hostname}</h3>
+                            <div style="font-size: 0.7rem; color: var(--text-secondary); opacity: 0.6; margin-top: 2px;">v${node.version || '0.0.0'}</div>
+                        </div>
+                        <div class="status-badge ${node.status === 'Ready' ? 'online' : 'offline'}" style="font-size: 0.65rem; padding: 2px 8px;">
+                            ${node.status}
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 15px;">
+                        <div style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 8px; text-align: center; border: 1px solid rgba(255,255,255,0.03);">
+                            <div style="font-size: 0.55rem; opacity: 0.5; text-transform: uppercase;">CPU</div>
+                            <div style="font-weight: 700; color: ${getStatusColor(cpuPercent)}; font-size: 0.9rem;">${cpuPercent}%</div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 8px; text-align: center; border: 1px solid rgba(255,255,255,0.03);">
+                            <div style="font-size: 0.55rem; opacity: 0.5; text-transform: uppercase;">RAM</div>
+                            <div style="font-weight: 700; color: ${getStatusColor(nMemPercent)}; font-size: 0.9rem;">${nMemPercent}%</div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 8px; text-align: center; border: 1px solid rgba(255,255,255,0.03);">
+                            <div style="font-size: 0.55rem; opacity: 0.5; text-transform: uppercase;">Pods</div>
+                            <div style="font-weight: 700; font-size: 0.9rem;">${node.pods_count || 0}</div>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.5;">
+                            <i class="fa-solid fa-microchip"></i> ${node.cpu_cores || 'N/A'} Cores
+                        </div>
+                        <div style="font-size: 0.75rem; color: var(--accent-color); font-weight: 700; display: flex; align-items: center; gap: 4px;">
+                            Explorar <i class="fa-solid fa-arrow-right" style="font-size: 0.6rem;"></i>
+                        </div>
+                    </div>
+                </div>
+                `;
+            }).join('');
+        };
+
+        if (isAlreadyRenderingServer) {
+            // --- PARTIAL UPDATE ---
+            const nodesEl = document.getElementById('k8s-stat-nodes');
+            if (nodesEl) nodesEl.textContent = totalNodes;
+
+            const podsEl = document.getElementById('k8s-stat-pods');
+            if (podsEl) podsEl.textContent = totalPods;
+
+            const cpuEl = document.getElementById('k8s-stat-cpu');
+            if (cpuEl) {
+                cpuEl.textContent = `${avgCpu.toFixed(1)}%`;
+                cpuEl.style.color = getStatusColor(avgCpu);
+            }
+
+            const ramEl = document.getElementById('k8s-stat-ram');
+            if (ramEl) {
+                ramEl.textContent = `${memPercent}%`;
+                ramEl.style.color = getStatusColor(memPercent);
+            }
+
+            const distEl = document.getElementById('k8s-pod-distribution');
+            if (distEl) distEl.innerHTML = renderPodDistribution();
+
+            const gridEl = document.getElementById('k8s-node-grid');
+            if (gridEl) gridEl.innerHTML = renderNodeCards();
+
+            return;
+        }
+
+        // --- FULL RENDER ---
+        scannerSection.setAttribute('data-k8s-server-id', serverId);
         scannerSection.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;"><i class="fa-solid fa-dharmachakra"></i> Cluster: ${server.name}</h2>
-                    <div class="status-badge ${server.status === 'online' ? 'online' : 'offline'}" style="margin-left: 10px;">
-                        ${server.status || 'unknown'}
-                    </div>
-                </div>
-                <div style="font-size: 0.9rem; color: var(--text-secondary);">
-                    IP: ${server.ip_address || 'Kubeconfig Mode'}
-                </div>
-            </div>
-
-            <!-- Cluster Summary Card -->
-            <div class="glass-panel" style="padding: 24px; margin-bottom: 30px; display: grid; grid-template-columns: 1fr 2fr; gap: 40px; border-left: 4px solid var(--accent-color);">
-                <div>
-                    <h3 style="margin: 0 0 15px 0; font-size: 1.1rem; opacity: 0.8; display: flex; align-items: center; gap: 8px;">
-                        <i class="fa-solid fa-chart-pie"></i> Resumen del Cluster
-                    </h3>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                        <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px;">
-                            <span class="label" style="font-size: 0.7rem; opacity: 0.6; text-transform: uppercase; display: block; margin-bottom: 4px;">Nodos</span>
-                            <span class="value" style="font-size: 1.4rem; font-weight: 800; color: var(--accent-color);">${totalNodes}</span>
-                        </div>
-                        <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px;">
-                            <span class="label" style="font-size: 0.7rem; opacity: 0.6; text-transform: uppercase; display: block; margin-bottom: 4px;">Total Pods</span>
-                            <span class="value" style="font-size: 1.4rem; font-weight: 800;">${totalPods}</span>
-                        </div>
-                        <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px;">
-                            <span class="label" style="font-size: 0.7rem; opacity: 0.6; text-transform: uppercase; display: block; margin-bottom: 4px;">CPU Promedio</span>
-                            <span class="value" style="font-size: 1.4rem; font-weight: 800; color: ${getStatusColor(avgCpu)}">${avgCpu.toFixed(1)}%</span>
-                        </div>
-                        <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px;">
-                            <span class="label" style="font-size: 0.7rem; opacity: 0.6; text-transform: uppercase; display: block; margin-bottom: 4px;">Memoria Total</span>
-                            <span class="value" style="font-size: 1.4rem; font-weight: 800; color: ${getStatusColor(memPercent)}">${memPercent}%</span>
-                        </div>
+            <section class="vm-section">
+                <div class="section-header" style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <h2 style="margin:0;"><i class="fa-solid fa-list-ul"></i> Resumen</h2>
                     </div>
                 </div>
 
-                <div>
-                    <h3 style="margin: 0 0 15px 0; font-size: 1.1rem; opacity: 0.8; display: flex; align-items: center; gap: 8px;">
-                        <i class="fa-solid fa-server"></i> Recursos por Nodo
-                    </h3>
-                    <div style="display: flex; flex-direction: column; gap: 10px; max-height: 200px; overflow-y: auto; padding-right: 10px;">
-                        ${clusterNodes.map(node => {
-            const nCpu = (node.cpu_usage || 0);
-            const nMemUsed = node.total_memory - node.free_memory;
-            const nMemPerc = node.total_memory > 0 ? (nMemUsed / node.total_memory * 100) : 0;
-            return `
-                            <div style="display: grid; grid-template-columns: 150px 1fr 1fr 80px; align-items: center; gap: 15px; padding: 8px 12px; background: rgba(255,255,255,0.02); border-radius: 6px; font-size: 0.85rem;">
-                                <div style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${node.hostname}">${node.hostname}</div>
-                                <div>
-                                    <div style="display: flex; justify-content: space-between; font-size: 0.7rem; margin-bottom: 2px; opacity: 0.7;">
-                                        <span>CPU</span><span>${nCpu.toFixed(1)}%</span>
-                                    </div>
-                                    <div style="height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
-                                        <div style="height: 100%; width: ${nCpu}%; background: ${getStatusColor(nCpu)};"></div>
-                                    </div>
-                                </div>
-                                <div>
-                                    <div style="display: flex; justify-content: space-between; font-size: 0.7rem; margin-bottom: 2px; opacity: 0.7;">
-                                        <span>RAM</span><span>${nMemPerc.toFixed(1)}%</span>
-                                    </div>
-                                    <div style="height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
-                                        <div style="height: 100%; width: ${nMemPerc}%; background: ${getStatusColor(nMemPerc)};"></div>
-                                    </div>
-                                </div>
-                                <div style="text-align: right; font-weight: 800; opacity: 0.8;">${node.pods_count || 0} p</div>
+                <div class="glass-panel" style="padding: 24px;">
+                    <!-- KVM Style Dashboard Layout (2 Columns) -->
+                    <div style="display: grid; grid-template-columns: 350px 1fr; gap: 24px;">
+                        
+                        <!-- Left Column: Cluster Details -->
+                        <div style="display: flex; flex-direction: column; gap: 15px;">
+                            <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 5px; display: flex; align-items: center; gap: 10px;">
+                                <i class="fa-solid fa-chart-line" style="color: var(--accent-color);"></i>
+                                Estado del Cluster
                             </div>
-                            `;
-        }).join('')}
-                    </div>
-                </div>
-            </div>
+                            
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
+                                    <div style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px;">Nodos</div>
+                                    <div id="k8s-stat-nodes" style="font-size: 1.6rem; font-weight: 800; color: var(--accent-color);">${totalNodes}</div>
+                                </div>
+                                <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
+                                    <div style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px;">Pods</div>
+                                    <div id="k8s-stat-pods" style="font-size: 1.6rem; font-weight: 800; color: #fff;">${totalPods}</div>
+                                </div>
+                                <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
+                                    <div style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px;">CPU Avg</div>
+                                    <div id="k8s-stat-cpu" style="font-size: 1.6rem; font-weight: 800; color: ${getStatusColor(avgCpu)}">${avgCpu.toFixed(1)}%</div>
+                                </div>
+                                <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
+                                    <div style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px;">RAM</div>
+                                    <div id="k8s-stat-ram" style="font-size: 1.6rem; font-weight: 800; color: ${getStatusColor(memPercent)}">${memPercent}%</div>
+                                </div>
+                            </div>
 
-            <div style="margin-bottom: 15px; display: flex; align-items: center; gap: 8px; opacity: 0.8;">
-                <h3 style="margin: 0; font-size: 1.1rem;"><i class="fa-solid fa-list"></i> Detalle de Nodos</h3>
-            </div>
+                            <div style="margin-top: 10px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
+                                <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 10px; font-weight: 600;">Distribución de Pods</div>
+                                <div id="k8s-pod-distribution" style="display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto; padding-right: 5px;" class="custom-scrollbar">
+                                    ${clusterNodes.map(node => `
+                                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.03); border-radius: 8px; font-size: 0.8rem;">
+                                            <div style="display: flex; align-items: center; gap: 8px;">
+                                                <i class="fa-solid fa-cube" style="font-size: 0.7rem; opacity: 0.5;"></i>
+                                                <span style="opacity: 0.9;">${node.hostname}</span>
+                                            </div>
+                                            <span style="font-weight: 800; color: var(--accent-color);">${node.pods_count || 0}</span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        </div>
 
-            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 20px;">
-                ${clusterNodes.map(node => {
+                        <!-- Right Column: Node Details -->
+                        <div style="display: flex; flex-direction: column; gap: 20px; min-width: 0;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+                                <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--text-primary);">
+                                    <i class="fa-solid fa-server" style="color: var(--accent-color); font-size: 1rem; margin-right: 8px;"></i>
+                                    Nodos del Cluster
+                                </h3>
+                                <div style="font-size: 0.8rem; color: var(--text-secondary); opacity: 0.7;">
+                                    ${totalNodes} nodos detectados
+                                </div>
+                            </div>
+
+                            <div id="k8s-node-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px;">
+                                ${clusterNodes.map(node => {
             const cpuPercent = (node.cpu_usage || 0).toFixed(1);
             const memUsed = node.total_memory - node.free_memory;
             const memPercent = node.total_memory > 0 ? ((memUsed / node.total_memory) * 100).toFixed(0) : 0;
 
             return `
-                    <div class="glass-panel" style="padding: 20px; cursor: pointer; transition: transform 0.2s;" onclick="selectKubernetesNode(${node.id})">
-                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px;">
-                            <div>
-                                <h3 style="margin:0; font-size: 1.2rem;">${node.hostname}</h3>
-                                <div style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.8;">${node.version} | ${node.os_name}</div>
-                            </div>
-                            <div class="status-badge ${node.status === 'Ready' ? 'online' : 'offline'}">
-                                ${node.status}
-                            </div>
-                        </div>
+                                    <div class="glass-panel" style="padding: 18px; cursor: pointer; transition: all 0.3s; border: 1px solid rgba(255,255,255,0.03);" onclick="selectKubernetesNode(${node.id})">
+                                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px;">
+                                            <div>
+                                                <h3 style="margin:0; font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">${node.hostname}</h3>
+                                                <div style="font-size: 0.7rem; color: var(--text-secondary); opacity: 0.6; margin-top: 2px;">v${node.version || '0.0.0'}</div>
+                                            </div>
+                                            <div class="status-badge ${node.status === 'Ready' ? 'online' : 'offline'}" style="font-size: 0.65rem; padding: 2px 8px;">
+                                                ${node.status}
+                                            </div>
+                                        </div>
 
-                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 15px;">
-                            <div style="background: rgba(255,255,255,0.03); padding: 8px; border-radius: 4px; text-align: center;">
-                                <div style="font-size: 0.65rem; opacity: 0.5; text-transform: uppercase;">CPU</div>
-                                <div style="font-weight: 700; color: ${getStatusColor(cpuPercent)};">${cpuPercent}%</div>
-                            </div>
-                            <div style="background: rgba(255,255,255,0.03); padding: 8px; border-radius: 4px; text-align: center;">
-                                <div style="font-size: 0.65rem; opacity: 0.5; text-transform: uppercase;">Memoria</div>
-                                <div style="font-weight: 700; color: ${getStatusColor(memPercent)};">${memPercent}%</div>
-                            </div>
-                            <div style="background: rgba(255,255,255,0.03); padding: 8px; border-radius: 4px; text-align: center;">
-                                <div style="font-size: 0.65rem; opacity: 0.5; text-transform: uppercase;">Pods</div>
-                                <div style="font-weight: 700;">${node.pods_count || 0}</div>
-                            </div>
-                        </div>
+                                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 15px;">
+                                            <div style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 8px; text-align: center; border: 1px solid rgba(255,255,255,0.03);">
+                                                <div style="font-size: 0.55rem; opacity: 0.5; text-transform: uppercase;">CPU</div>
+                                                <div style="font-weight: 700; color: ${getStatusColor(cpuPercent)}; font-size: 0.9rem;">${cpuPercent}%</div>
+                                            </div>
+                                            <div style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 8px; text-align: center; border: 1px solid rgba(255,255,255,0.03);">
+                                                <div style="font-size: 0.55rem; opacity: 0.5; text-transform: uppercase;">RAM</div>
+                                                <div style="font-weight: 700; color: ${getStatusColor(memPercent)}; font-size: 0.9rem;">${memPercent}%</div>
+                                            </div>
+                                            <div style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 8px; text-align: center; border: 1px solid rgba(255,255,255,0.03);">
+                                                <div style="font-size: 0.55rem; opacity: 0.5; text-transform: uppercase;">Pods</div>
+                                                <div style="font-weight: 700; font-size: 0.9rem;">${node.pods_count || 0}</div>
+                                            </div>
+                                        </div>
 
-                        <div style="text-align: right; font-size: 0.75rem; color: var(--accent-color); font-weight: 600;">
-                            Ver Pods <i class="fa-solid fa-arrow-right"></i>
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <div style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.5;">
+                                                <i class="fa-solid fa-microchip"></i> ${node.cpu_cores || 'N/A'} Cores
+                                            </div>
+                                            <div style="font-size: 0.75rem; color: var(--accent-color); font-weight: 700; display: flex; align-items: center; gap: 4px;">
+                                                Explorar <i class="fa-solid fa-arrow-right" style="font-size: 0.6rem;"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    `;
+        }).join('')}
+                            </div>
                         </div>
                     </div>
-                    `;
-        }).join('')}
-            </div>
+                </div>
+            </section>
         `;
 
     } catch (e) {
@@ -2568,77 +2664,107 @@ async function renderKubernetesNodeDetails(nodeId) {
                 p.namespace.toLowerCase().includes(searchQuery)
             );
         }
+        const renderPodGrid = (pods) => {
+            return pods.map(p => `
+                <div class="glass-panel pod-card" style="padding: 15px; border-left: 4px solid ${p.state === 'Running' ? '#4ade80' : '#ef4444'};">
+                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                        <div style="max-width: 200px;">
+                            <div style="font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase;">${p.namespace}</div>
+                            <div style="font-weight: 700; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${p.name}">${p.name}</div>
+                        </div>
+                        <div style="font-size: 0.75rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: rgba(255,255,255,0.05);">
+                            ${p.state}
+                        </div>
+                    </div>
+                    <div style="margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.8rem; color: var(--text-secondary);">
+                        <div><i class="fa-solid fa-redo" style="font-size: 0.7rem;"></i> ${p.restarts} restarts</div>
+                        <div><i class="fa-solid fa-clock" style="font-size: 0.7rem;"></i> ${p.age}</div>
+                    </div>
+                </div>
+            `).join('');
+        };
 
+        const isAlreadyRenderingNode = scannerSection.getAttribute('data-k8s-node-id') === String(nodeId);
+
+        if (isAlreadyRenderingNode) {
+            // --- PARTIAL UPDATE ---
+            const podsStatEl = document.getElementById('k8s-node-stat-pods');
+            if (podsStatEl) podsStatEl.textContent = node.pods_count || 0;
+
+            const cpuStatEl = document.getElementById('k8s-node-stat-cpu');
+            if (cpuStatEl) cpuStatEl.textContent = `${(node.cpu_usage || 0).toFixed(1)}%`;
+
+            const ramStatEl = document.getElementById('k8s-node-stat-ram');
+            if (ramStatEl) ramStatEl.textContent = `${formatBytes(node.total_memory - node.free_memory)} / ${formatBytes(node.total_memory)}`;
+
+            const titleEl = document.getElementById('k8s-node-pod-count-title');
+            if (titleEl) titleEl.textContent = `Pods en este Nodo (${filteredPods.length})`;
+
+            const gridEl = document.getElementById('k8s-node-pod-grid');
+            if (gridEl) gridEl.innerHTML = renderPodGrid(filteredPods);
+
+            return;
+        }
+
+        // --- FULL RENDER ---
+        scannerSection.setAttribute('data-k8s-node-id', nodeId);
         scannerSection.innerHTML = `
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
-            <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen</h2>
+        <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 24px;">
+            <button onclick="selectKubernetesServer(${selectedKubernetesServerId})" class="secondary-btn" style="padding: 8px 15px; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); border-radius: 10px; color: var(--text-secondary); cursor: pointer; transition: all 0.3s; display: flex; align-items: center; gap: 8px;">
+                <i class="fa-solid fa-arrow-left"></i> Volver al Cluster
+            </button>
+            <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;"><i class="fa-solid fa-server"></i> Nodo: ${node.hostname}</h2>
         </div>
 
-        <div style="display: grid; grid-template-columns: 350px 1fr; gap: 24px; align-items: start;">
-            <!-- Left Column: Information -->
-            <div style="display: flex; flex-direction: column; gap: 15px;">
-                <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                    Sistema y Red
-                </div>
-
-                <div class="glass-panel" style="padding: 24px; text-align: left;">
-                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
-                        <div>
-                            <h3 style="margin:0; font-size: 1.3rem;">${node.hostname}</h3>
-                            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
-                                ${node.version} | ${node.os_name}
-                            </div>
-                        </div>
-                        <div class="status-badge ${node.status === 'Ready' ? 'online' : 'offline'}">
-                            ${node.status}
-                        </div>
+            <div style="display: grid; grid-template-columns: 350px 1fr; gap: 24px; align-items: start;">
+                <!-- Left Column: Information -->
+                <div style="display: flex; flex-direction: column; gap: 15px;">
+                    <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                        Sistema y Red
                     </div>
 
-                    <div style="display: grid; grid-template-columns: 1fr; gap: 12px;">
-                        <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 6px;">
-                            <span class="label" style="font-size: 0.7rem; opacity: 0.6;">Pods</span>
-                            <span class="value" style="font-weight: 700;">${node.pods_count || 0}</span>
+                    <div class="glass-panel" style="padding: 24px; text-align: left;">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+                            <div>
+                                <h3 style="margin:0; font-size: 1.3rem;">${node.hostname}</h3>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
+                                    ${node.version} | ${node.os_name}
+                                </div>
+                            </div>
+                            <div class="status-badge ${node.status === 'Ready' ? 'online' : 'offline'}">
+                                ${node.status}
+                            </div>
                         </div>
-                        <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 6px;">
-                            <span class="label" style="font-size: 0.7rem; opacity: 0.6;">CPU Usage</span>
-                            <span class="value" style="font-weight: 700;">${(node.cpu_usage || 0).toFixed(1)}%</span>
+
+                        <div style="display: grid; grid-template-columns: 1fr; gap: 12px;">
+                            <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 6px;">
+                                <span class="label" style="font-size: 0.7rem; opacity: 0.6;">Pods</span>
+                                <span id="k8s-node-stat-pods" class="value" style="font-weight: 700;">${node.pods_count || 0}</span>
+                            </div>
+                            <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 6px;">
+                                <span class="label" style="font-size: 0.7rem; opacity: 0.6;">CPU Usage</span>
+                                <span id="k8s-node-stat-cpu" class="value" style="font-weight: 700;">${(node.cpu_usage || 0).toFixed(1)}%</span>
+                            </div>
+                            <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 6px;">
+                                <span class="label" style="font-size: 0.7rem; opacity: 0.6;">Memoria</span>
+                                <span id="k8s-node-stat-ram" class="value" style="font-weight: 700;">${formatBytes(node.total_memory - node.free_memory)} / ${formatBytes(node.total_memory)}</span>
+                            </div>
                         </div>
-                        <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 6px;">
-                            <span class="label" style="font-size: 0.7rem; opacity: 0.6;">Memoria</span>
-                            <span class="value" style="font-weight: 700;">${formatBytes(node.total_memory - node.free_memory)} / ${formatBytes(node.total_memory)}</span>
-                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Pods -->
+                <div style="display: flex; flex-direction: column; gap: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h4 style="margin:0;"><i class="fa-solid fa-cubes"></i> <span id="k8s-node-pod-count-title">Pods en este Nodo (${filteredPods.length})</span></h4>
+                    </div>
+
+                    <div id="k8s-node-pod-grid" class="pod-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px;">
+                        ${renderPodGrid(filteredPods)}
                     </div>
                 </div>
             </div>
-
-            <!-- Right Column: Pods -->
-            <div style="display: flex; flex-direction: column; gap: 20px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <h4 style="margin:0;"><i class="fa-solid fa-cubes"></i> Pods en este Nodo (${filteredPods.length})</h4>
-                </div>
-
-                <div class="pod-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px;">
-                    ${filteredPods.map(p => `
-                        <div class="glass-panel pod-card" style="padding: 15px; border-left: 4px solid ${p.state === 'Running' ? '#4ade80' : '#ef4444'};">
-                            <div style="display: flex; justify-content: space-between; align-items: start;">
-                                <div style="max-width: 200px;">
-                                    <div style="font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase;">${p.namespace}</div>
-                                    <div style="font-weight: 700; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${p.name}">${p.name}</div>
-                                </div>
-                                <div style="font-size: 0.75rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: rgba(255,255,255,0.05);">
-                                    ${p.state}
-                                </div>
-                            </div>
-                            <div style="margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.8rem; color: var(--text-secondary);">
-                                <div><i class="fa-solid fa-redo" style="font-size: 0.7rem;"></i> ${p.restarts} restarts</div>
-                                <div><i class="fa-solid fa-clock" style="font-size: 0.7rem;"></i> ${p.age}</div>
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-        </div>
-    `;
+        `;
     } catch (e) {
         console.error('Error rendering Kubernetes node details:', e);
         scannerSection.innerHTML = '<div class="glass-panel" style="padding: 20px; color: var(--danger);">Error al cargar los detalles del nodo.</div>';
@@ -2653,15 +2779,15 @@ function renderKubernetesSummary() {
 
     scannerSection.innerHTML = `
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
-            <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen</h2>
+                <h2 style="margin:0; font-size: 1.8rem; font-weight: 600;"><i class="fa-solid fa-list-ul"></i> Resumen</h2>
         </div>
 
-        <div class="glass-panel" style="padding: 80px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
-            <div style="font-size: 1.1rem; color: var(--text-secondary); opacity: 0.6; font-weight: 500;">
-                <i class="fa-solid fa-arrow-up" style="margin-right: 8px;"></i> Selecciona un Cluster para ver sus Nodos
+            <div class="glass-panel" style="padding: 80px 25px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                <div style="font-size: 1.1rem; color: var(--text-secondary); opacity: 0.6; font-weight: 500;">
+                    <i class="fa-solid fa-arrow-up" style="margin-right: 8px;"></i> Selecciona un Cluster para ver sus Nodos
+                </div>
             </div>
-        </div>
-    `;
+        `;
 }
 
 async function fetchPodmanContainers() {
@@ -2714,14 +2840,14 @@ function renderPodmanHostDetails(hostId) {
     if (!statsWrapper) {
         scannerSection.innerHTML = `
             <div id="podman-stats-wrapper" style="text-align: left; margin-bottom: 20px;"></div>
-            <div id="podman-map-wrapper" class="glass-panel" style="padding: 20px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 15px; padding-bottom: 10px;">
-                    <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9;">
-                        Mapa de Red Podman
+                <div id="podman-map-wrapper" class="glass-panel" style="padding: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 15px; padding-bottom: 10px;">
+                        <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9;">
+                            Mapa de Red Podman
+                        </div>
                     </div>
+                    <div id="podman-topology-map" style="height: 500px; width: 100%; border-radius: 8px;"></div>
                 </div>
-                <div id="podman-topology-map" style="height: 500px; width: 100%; border-radius: 8px;"></div>
-            </div>
         `;
         statsWrapper = document.getElementById('podman-stats-wrapper');
         mapWrapper = document.getElementById('podman-map-wrapper');
@@ -2752,14 +2878,14 @@ function renderPodmanHostDetails(hostId) {
         let gpuContent = '';
         if (!gpus || gpus.length === 0) {
             gpuContent = `
-                <div style="text-align: center; padding: 15px; background: rgba(255,255,255,0.02); border-radius: 4px; border: 1px dashed rgba(255,255,255,0.1);">
-                    <span style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.6;">No se detectaron GPUs (N/A)</span>
+            <div style="text-align: center; padding: 15px; background: rgba(255,255,255,0.02); border-radius: 4px; border: 1px dashed rgba(255,255,255,0.1);">
+                <span style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.6;">No se detectaron GPUs (N/A)</span>
                 </div>
             `;
         } else {
             gpuContent = `
-                <div id="podman-gpu-list" style="display: flex; flex-direction: column; gap: 12px;">
-                    ${gpus.map(gpu => `
+            <div id="podman-gpu-list" style="display: flex; flex-direction: column; gap: 12px;">
+                ${gpus.map(gpu => `
                         <div style="display: flex; flex-direction: column; gap: 6px;">
                             <div style="display: flex; justify-content: space-between; align-items: start;">
                                 <span style="font-size: 0.75rem; font-weight: 700; color: var(--text-primary); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${gpu.name}">${gpu.name}</span>
@@ -2781,20 +2907,21 @@ function renderPodmanHostDetails(hostId) {
                                 </div>
                             </div>
                         </div>
-                    `).join('')}
+                    `).join('')
+                }
                 </div>
             `;
         }
 
         return `
-            <!-- Monitoreo de GPU -->
-            <div id="gpu-monitoring-card" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px; margin-bottom: 5px;">
-                <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
-                    <i class="fa-solid fa-microchip" style="color: #4ade80;"></i>
-                    <span>Monitoreo de GPU</span>
+            <!--Monitoreo de GPU-->
+                <div id="gpu-monitoring-card" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px; margin-bottom: 5px;">
+                    <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-solid fa-microchip" style="color: #4ade80;"></i>
+                        <span>Monitoreo de GPU</span>
+                    </div>
+                    ${gpuContent}
                 </div>
-                ${gpuContent}
-            </div>
         `;
     };
 
@@ -2803,7 +2930,7 @@ function renderPodmanHostDetails(hostId) {
         // OOM Alerts
         filteredContainers.filter(c => c.oom_killed).forEach(c => {
             alerts.push(`
-                <div style="display: flex; align-items: flex-start; gap: 10px; padding: 8px; background: rgba(239, 68, 68, 0.05); border: 1px solid rgba(239, 68, 68, 0.1); border-radius: 4px;">
+            <div style="display: flex; align-items: flex-start; gap: 10px; padding: 8px; background: rgba(239, 68, 68, 0.05); border: 1px solid rgba(239, 68, 68, 0.1); border-radius: 4px;">
                     <i class="fa-solid fa-circle-exclamation" style="color: #ef4444; margin-top: 2px;"></i>
                     <div style="display: flex; flex-direction: column; gap: 2px;">
                         <span style="font-size: 0.8rem; font-weight: 700; color: #ef4444;">OOM Killed: ${c.name}</span>
@@ -2820,23 +2947,23 @@ function renderPodmanHostDetails(hostId) {
 
             if (isCritical || isHigh) {
                 alerts.push(`
-                    <div style="display: flex; align-items: flex-start; gap: 10px; padding: 8px; background: ${isCritical ? 'rgba(239, 68, 68, 0.05)' : 'rgba(234, 179, 8, 0.05)'}; border: 1px solid ${isCritical ? 'rgba(239, 68, 68, 0.1)' : 'rgba(234, 179, 8, 0.1)'}; border-radius: 4px;">
+            <div style="display: flex; align-items: flex-start; gap: 10px; padding: 8px; background: ${isCritical ? 'rgba(239, 68, 68, 0.05)' : 'rgba(234, 179, 8, 0.05)'}; border: 1px solid ${isCritical ? 'rgba(239, 68, 68, 0.1)' : 'rgba(234, 179, 8, 0.1)'}; border-radius: 4px;">
                         <i class="fa-solid fa-shield-virus" style="color: ${isCritical ? '#ef4444' : '#eab308'}; margin-top: 2px;"></i>
                         <div style="display: flex; flex-direction: column; gap: 2px;">
                             <span style="font-size: 0.8rem; font-weight: 700; color: ${isCritical ? '#ef4444' : '#eab308'};">CVE: ${c.image}</span>
                             <span style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.8;">${c.vulnerabilities}</span>
                         </div>
                     </div>
-                `);
+            `);
             }
         });
 
         if (alerts.length === 0) {
             return `
-                <div style="display: flex; align-items: center; gap: 8px; color: var(--text-secondary); opacity: 0.6; font-size: 0.8rem;">
+            <div style="display: flex; align-items: center; gap: 8px; color: var(--text-secondary); opacity: 0.6; font-size: 0.8rem;">
                     <i class="fa-solid fa-check-circle" style="color: #4ade80;"></i>
                     <span>Sin alertas críticas</span>
-                </div>`;
+                </div> `;
         }
         return alerts.join('');
     };
@@ -2885,9 +3012,10 @@ function renderPodmanHostDetails(hostId) {
                 <span style="color: var(--text-primary); font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px;" title="${v.Name || v.VolumeName}">${v.Name || v.VolumeName}</span>
                 ${v.Size && v.Size !== 'N/A' ?
                 `<span style="color: #38bdf8; font-weight: 700; font-size: 0.85rem; text-shadow: 0 0 5px rgba(56, 189, 248, 0.3);">${v.Size}</span>`
-                : ''}
+                : ''
+            }
             </div>
-        `).join('');
+            `).join('');
     };
 
     const renderContainerRows = () => {
@@ -2899,8 +3027,8 @@ function renderPodmanHostDetails(hostId) {
             const memPercent = c.memory_limit > 0 ? (c.memory_usage / c.memory_limit * 100) : 0;
 
             return `
-                 <div style="display: grid; grid-template-columns: 2fr 1.5fr 0.8fr 1.2fr 1.8fr 1fr; gap: 15px; align-items: center; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.05); transition: all 0.2s ease;">
-                     <!-- Name & Image -->
+            <div style="display: grid; grid-template-columns: 2fr 1.5fr 0.8fr 1.2fr 1.8fr 1fr; gap: 15px; align-items: center; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.05); transition: all 0.2s ease;">
+                     <!--Name & Image-->
                      <div style="display: flex; align-items: center; gap: 10px; overflow: hidden;">
                          <i class="fa-solid fa-otter" style="color: ${isRunning ? '#4ade80' : '#ef4444'}; font-size: 1.2rem; opacity: 0.9;"></i>
                          <div style="display: flex; flex-direction: column; overflow: hidden;">
@@ -2916,12 +3044,12 @@ function renderPodmanHostDetails(hostId) {
                          </div>
                      </div>
  
-                     <!-- Ports -->
+                     <!--Ports -->
                      <div style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${c.ports || 'N/A'}">
                          <span style="font-family: monospace;">${c.ports || '-'}</span>
                      </div>
  
-                     <!-- CPU -->
+                     <!--CPU -->
                      <div style="display: flex; flex-direction: column; gap: 3px;">
                          <div style="font-size: 0.85rem; font-weight: 600; color: ${getStatusColor(c.cpu_usage || 0)};">${(c.cpu_usage || 0).toFixed(1)}%</div>
                          <div style="width: 100%; height: 3px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
@@ -2929,7 +3057,7 @@ function renderPodmanHostDetails(hostId) {
                          </div>
                      </div>
  
-                     <!-- RAM Usage / Limit -->
+                     <!--RAM Usage / Limit-- >
                      <div style="display: flex; flex-direction: column; gap: 3px;">
                          <div style="font-size: 0.85rem; font-weight: 600; color: ${getStatusColor(memPercent)};">
                              ${formatBytes(c.memory_usage, 1)}
@@ -2962,17 +3090,17 @@ function renderPodmanHostDetails(hostId) {
                          </div>
                      </div>
  
-                     <!-- Disk -->
-                     <div style="display: flex; flex-direction: column; gap: 1px; font-size: 0.8rem;">
-                         <div style="display: flex; align-items: center; gap: 5px; color: var(--text-secondary); opacity: 0.8;" title="Disk Read (Block In)">
-                             <i class="fa-solid fa-hard-drive" style="font-size: 0.7rem;"></i> ${formatBytes(c.block_in, 0)}
-                         </div>
-                         <div style="display: flex; align-items: center; gap: 5px; color: var(--text-secondary); opacity: 0.8;" title="Disk Write (Block Out)">
-                             <i class="fa-solid fa-pen-to-square" style="font-size: 0.7rem;"></i> ${formatBytes(c.block_out, 0)}
-                         </div>
-                     </div>
+                     <!--Disk -->
+            <div style="display: flex; flex-direction: column; gap: 1px; font-size: 0.8rem;">
+                <div style="display: flex; align-items: center; gap: 5px; color: var(--text-secondary); opacity: 0.8;" title="Disk Read (Block In)">
+                    <i class="fa-solid fa-hard-drive" style="font-size: 0.7rem;"></i> ${formatBytes(c.block_in, 0)}
+                </div>
+                <div style="display: flex; align-items: center; gap: 5px; color: var(--text-secondary); opacity: 0.8;" title="Disk Write (Block Out)">
+                    <i class="fa-solid fa-pen-to-square" style="font-size: 0.7rem;"></i> ${formatBytes(c.block_out, 0)}
+                </div>
+            </div>
                  </div>
-             `;
+            `;
         }).join('');
     };
 
@@ -2998,7 +3126,7 @@ function renderPodmanHostDetails(hostId) {
         if (uptimeEl) uptimeEl.textContent = host.uptime || 'N/A';
 
         const cpuEl = document.getElementById('podman-host-cpu-load');
-        if (cpuEl) cpuEl.textContent = `${(host.cpu_usage || 0).toFixed(1)}%`;
+        if (cpuEl) cpuEl.textContent = `${(host.cpu_usage || 0).toFixed(1)}% `;
 
         const latencyEl = document.getElementById('podman-host-latency');
         if (latencyEl) {

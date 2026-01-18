@@ -309,6 +309,11 @@ func NewPostgresDB(connStr string) (*DB, error) {
 		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS kubeconfig_path TEXT DEFAULT ''", t))
 		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS kubeconfig_content TEXT DEFAULT ''", t))
 		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS ssh_key_content TEXT DEFAULT ''", t))
+		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS cpu_usage DOUBLE PRECISION DEFAULT 0", t))
+		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS total_memory BIGINT DEFAULT 0", t))
+		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS free_memory BIGINT DEFAULT 0", t))
+		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS os_name VARCHAR(255) DEFAULT ''", t))
+		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS cpu_model VARCHAR(255) DEFAULT ''", t))
 	}
 
 	return &DB{Conn: db}, nil
@@ -1119,17 +1124,22 @@ func (d *DB) GetFirewallHosts() ([]FirewallHost, error) { // Fetch Hosts
 
 // GenericServer is used for Proxmox, NAS, Ceph, Docker, Podman servers (same structure as KVMServer)
 type GenericServer struct {
-	ID                int64  `json:"id"`
-	Name              string `json:"name"`
-	IPAddress         string `json:"ip_address"`
-	SSHPort           int    `json:"ssh_port"`
-	Username          string `json:"username"`
-	Password          string `json:"password"`
-	SSHKeyPath        string `json:"ssh_key_path"`
-	SSHKeyContent     string `json:"ssh_key_content"`
-	KubeconfigPath    string `json:"kubeconfig_path"`
-	KubeconfigContent string `json:"kubeconfig_content"`
-	Status            string `json:"status"`
+	ID                int64   `json:"id"`
+	Name              string  `json:"name"`
+	IPAddress         string  `json:"ip_address"`
+	SSHPort           int     `json:"ssh_port"`
+	Username          string  `json:"username"`
+	Password          string  `json:"password"`
+	SSHKeyPath        string  `json:"ssh_key_path"`
+	SSHKeyContent     string  `json:"ssh_key_content"`
+	KubeconfigPath    string  `json:"kubeconfig_path"`
+	KubeconfigContent string  `json:"kubeconfig_content"`
+	Status            string  `json:"status"`
+	CPUUsage          float64 `json:"cpu_usage"`
+	TotalMemory       uint64  `json:"total_memory"`
+	FreeMemory        uint64  `json:"free_memory"`
+	OSName            string  `json:"os_name"`
+	CPUModel          string  `json:"cpu_model"`
 }
 
 // Table names for each server type
@@ -1148,7 +1158,7 @@ func (d *DB) GetGenericServers(toolType string) ([]GenericServer, error) {
 		return nil, fmt.Errorf("unknown tool type: %s", toolType)
 	}
 
-	query := fmt.Sprintf("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, kubeconfig_path, kubeconfig_content, status FROM %s", table)
+	query := fmt.Sprintf("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, kubeconfig_path, kubeconfig_content, status, cpu_usage, total_memory, free_memory, os_name, cpu_model FROM %s", table)
 	rows, err := d.Conn.Query(query)
 	if err != nil {
 		return nil, err
@@ -1159,7 +1169,7 @@ func (d *DB) GetGenericServers(toolType string) ([]GenericServer, error) {
 	for rows.Next() {
 		var s GenericServer
 		var pwd sql.NullString
-		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.SSHKeyContent, &s.KubeconfigPath, &s.KubeconfigContent, &s.Status); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.SSHKeyContent, &s.KubeconfigPath, &s.KubeconfigContent, &s.Status, &s.CPUUsage, &s.TotalMemory, &s.FreeMemory, &s.OSName, &s.CPUModel); err != nil {
 			return nil, err
 		}
 		s.Password = pwd.String
@@ -1226,6 +1236,17 @@ func (d *DB) SetGenericServerStatus(toolType string, id int64, status string) er
 
 	query := fmt.Sprintf("UPDATE %s SET status=$1 WHERE id=$2", table)
 	_, err := d.Conn.Exec(query, status, id)
+	return err
+}
+
+func (d *DB) UpdateGenericServerStats(toolType string, id int64, cpuUsage float64, totalMem, freeMem uint64, osName, cpuModel string) error {
+	table, ok := serverTableMap[toolType]
+	if !ok {
+		return fmt.Errorf("unknown tool type: %s", toolType)
+	}
+
+	query := fmt.Sprintf("UPDATE %s SET cpu_usage=$1, total_memory=$2, free_memory=$3, os_name=$4, cpu_model=$5 WHERE id=$6", table)
+	_, err := d.Conn.Exec(query, cpuUsage, totalMem, freeMem, osName, cpuModel, id)
 	return err
 }
 

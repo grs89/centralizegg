@@ -352,6 +352,30 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 		}
 	}
 
+	// 3. Aggregate cluster stats and update server record
+	var totalCPUUsage float64
+	var clusterTotalMemory uint64
+	var clusterFreeMemory uint64
+	nodeCount := len(nodeListView.Items)
+
+	for _, item := range nodeListView.Items {
+		name := item.Metadata.Name
+		m := metricsMap[name]
+		totalCPUUsage += m.CPUUsage
+		clusterTotalMemory += kc.parseK8sQuantity(item.Status.Capacity.Memory)
+		clusterFreeMemory += (kc.parseK8sQuantity(item.Status.Capacity.Memory) - m.MemUsage)
+	}
+
+	avgCPUUsage := 0.0
+	if nodeCount > 0 {
+		avgCPUUsage = totalCPUUsage / float64(nodeCount)
+	}
+
+	err = kc.DB.UpdateGenericServerStats("kubernetes", s.ID, avgCPUUsage, clusterTotalMemory, clusterFreeMemory, "Kubernetes Cluster", "Cluster Resources")
+	if err != nil {
+		log.Printf("[KubernetesCollector] Failed to update cluster stats: %v", err)
+	}
+
 	return nil
 }
 
