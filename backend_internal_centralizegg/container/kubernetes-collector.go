@@ -352,10 +352,69 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 		}
 	}
 
-	// 3. Aggregate cluster stats and update server record
+	// 3. Get Persistent Volumes (PVs)
+	var clusterTotalStorage uint64
+	var clusterUsedStorage uint64
+	var pvsJSON string
+	if isLocal {
+		pvsJSON, err = kc.runLocalCommand(kubectlCmd + " get pv -o json")
+	} else {
+		pvsJSON, err = kc.runCommand(client, kubectlCmd+" get pv -o json", "")
+	}
+
+	if err == nil {
+		var pvListView struct {
+			Items []struct {
+				Metadata struct {
+					Name string `json:"name"`
+				} `json:"metadata"`
+				Spec struct {
+					Capacity struct {
+						Storage string `json:"storage"`
+					} `json:"capacity"`
+					ClaimRef struct {
+						Name      string `json:"name"`
+						Namespace string `json:"namespace"`
+					} `json:"claimRef"`
+					StorageClassName string `json:"storageClassName"`
+				} `json:"spec"`
+				Status struct {
+					Phase string `json:"phase"`
+				} `json:"status"`
+			} `json:"items"`
+		}
+
+		if err := json.Unmarshal([]byte(pvsJSON), &pvListView); err == nil {
+			for _, item := range pvListView.Items {
+				capBytes := kc.parseK8sQuantity(item.Spec.Capacity.Storage)
+				clusterTotalStorage += capBytes
+				// For usage, K8s doesn't give "used" bytes easily for PVs without additional tools
+				// We'll treat Bound as "used" for the aggregate bar or similar if needed
+				// but for now let's just show capacity.
+				// Actually, many providers show used space. Let's assume Bound means the space is reserved/allocated.
+				if item.Status.Phase == "Bound" {
+					clusterUsedStorage += capBytes
+				}
+
+				pv := data_centralizegg.KubernetesPV{
+					ServerID:     s.ID,
+					Name:         item.Metadata.Name,
+					Capacity:     capBytes,
+					Status:       item.Status.Phase,
+					PVCName:      item.Spec.ClaimRef.Name,
+					PVCNamespace: item.Spec.ClaimRef.Namespace,
+					StorageClass: item.Spec.StorageClassName,
+				}
+				kc.DB.UpsertKubernetesPV(pv)
+			}
+		}
+	}
+
+	// 4. Aggregate cluster stats and update server record
 	var totalCPUUsage float64
 	var clusterTotalMemory uint64
 	var clusterFreeMemory uint64
+	var totalCores int
 	nodeCount := len(nodeListView.Items)
 
 	for _, item := range nodeListView.Items {
@@ -364,6 +423,14 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 		totalCPUUsage += m.CPUUsage
 		clusterTotalMemory += kc.parseK8sQuantity(item.Status.Capacity.Memory)
 		clusterFreeMemory += (kc.parseK8sQuantity(item.Status.Capacity.Memory) - m.MemUsage)
+
+		cpuStr := item.Status.Capacity.CPU
+		if strings.HasSuffix(cpuStr, "m") {
+			coresVal := kc.parseK8sQuantity(cpuStr)
+			totalCores += int(coresVal / 1000)
+		} else {
+			totalCores += int(kc.parseK8sQuantity(cpuStr))
+		}
 	}
 
 	avgCPUUsage := 0.0
@@ -371,7 +438,7 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 		avgCPUUsage = totalCPUUsage / float64(nodeCount)
 	}
 
-	err = kc.DB.UpdateGenericServerStats("kubernetes", s.ID, avgCPUUsage, clusterTotalMemory, clusterFreeMemory, "Kubernetes Cluster", "Cluster Resources")
+	err = kc.DB.UpdateGenericServerStats("kubernetes", s.ID, avgCPUUsage, totalCores, clusterTotalMemory, clusterFreeMemory, clusterUsedStorage, clusterTotalStorage, "Kubernetes Cluster", "Cluster Resources")
 	if err != nil {
 		log.Printf("[KubernetesCollector] Failed to update cluster stats: %v", err)
 	}

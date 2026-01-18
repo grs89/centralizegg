@@ -177,6 +177,19 @@ type KubernetesPod struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type KubernetesPV struct {
+	ID           int64     `json:"id"`
+	ServerID     int64     `json:"server_id"`
+	Name         string    `json:"name"`
+	Capacity     uint64    `json:"capacity"`
+	Usage        uint64    `json:"usage"`
+	Status       string    `json:"status"`
+	PVCName      string    `json:"pvc_name"`
+	PVCNamespace string    `json:"pvc_namespace"`
+	StorageClass string    `json:"storage_class"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
 type ProxmoxHost struct {
 	ID          int64   `json:"id"`
 	ServerID    int64   `json:"server_id"`
@@ -310,8 +323,11 @@ func NewPostgresDB(connStr string) (*DB, error) {
 		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS kubeconfig_content TEXT DEFAULT ''", t))
 		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS ssh_key_content TEXT DEFAULT ''", t))
 		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS cpu_usage DOUBLE PRECISION DEFAULT 0", t))
+		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS cpu_cores INTEGER DEFAULT 0", t))
 		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS total_memory BIGINT DEFAULT 0", t))
 		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS free_memory BIGINT DEFAULT 0", t))
+		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS storage_used BIGINT DEFAULT 0", t))
+		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS storage_total BIGINT DEFAULT 0", t))
 		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS os_name VARCHAR(255) DEFAULT ''", t))
 		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS cpu_model VARCHAR(255) DEFAULT ''", t))
 	}
@@ -597,6 +613,19 @@ func ensureSchema(db *sql.DB) {
 			container_runtime VARCHAR(255),
 			pods_count INT DEFAULT 0,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS kubernetes.persistent_volumes (
+			id SERIAL PRIMARY KEY,
+			server_id INT REFERENCES kubernetes.kubernetes_servers(id) ON DELETE CASCADE,
+			name VARCHAR(255) NOT NULL,
+			capacity BIGINT DEFAULT 0,
+			usage BIGINT DEFAULT 0,
+			status VARCHAR(50),
+			pvc_name VARCHAR(255),
+			pvc_namespace VARCHAR(255),
+			storage_class VARCHAR(255),
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(server_id, name)
 		)`,
 		`CREATE TABLE IF NOT EXISTS kubernetes.pods (
 			id SERIAL PRIMARY KEY,
@@ -1136,8 +1165,11 @@ type GenericServer struct {
 	KubeconfigContent string  `json:"kubeconfig_content"`
 	Status            string  `json:"status"`
 	CPUUsage          float64 `json:"cpu_usage"`
+	CPUCores          int     `json:"cpu_cores"`
 	TotalMemory       uint64  `json:"total_memory"`
 	FreeMemory        uint64  `json:"free_memory"`
+	StorageUsed       uint64  `json:"storage_used"`
+	StorageTotal      uint64  `json:"storage_total"`
 	OSName            string  `json:"os_name"`
 	CPUModel          string  `json:"cpu_model"`
 }
@@ -1158,7 +1190,7 @@ func (d *DB) GetGenericServers(toolType string) ([]GenericServer, error) {
 		return nil, fmt.Errorf("unknown tool type: %s", toolType)
 	}
 
-	query := fmt.Sprintf("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, kubeconfig_path, kubeconfig_content, status, cpu_usage, total_memory, free_memory, os_name, cpu_model FROM %s", table)
+	query := fmt.Sprintf("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, kubeconfig_path, kubeconfig_content, status, cpu_usage, cpu_cores, total_memory, free_memory, storage_used, storage_total, os_name, cpu_model FROM %s", table)
 	rows, err := d.Conn.Query(query)
 	if err != nil {
 		return nil, err
@@ -1169,7 +1201,7 @@ func (d *DB) GetGenericServers(toolType string) ([]GenericServer, error) {
 	for rows.Next() {
 		var s GenericServer
 		var pwd sql.NullString
-		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.SSHKeyContent, &s.KubeconfigPath, &s.KubeconfigContent, &s.Status, &s.CPUUsage, &s.TotalMemory, &s.FreeMemory, &s.OSName, &s.CPUModel); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.SSHKeyContent, &s.KubeconfigPath, &s.KubeconfigContent, &s.Status, &s.CPUUsage, &s.CPUCores, &s.TotalMemory, &s.FreeMemory, &s.StorageUsed, &s.StorageTotal, &s.OSName, &s.CPUModel); err != nil {
 			return nil, err
 		}
 		s.Password = pwd.String
@@ -1239,18 +1271,74 @@ func (d *DB) SetGenericServerStatus(toolType string, id int64, status string) er
 	return err
 }
 
-func (d *DB) UpdateGenericServerStats(toolType string, id int64, cpuUsage float64, totalMem, freeMem uint64, osName, cpuModel string) error {
+func (d *DB) UpdateGenericServerStats(toolType string, id int64, cpuUsage float64, cpuCores int, totalMem, freeMem, storageUsed, storageTotal uint64, osName, cpuModel string) error {
 	table, ok := serverTableMap[toolType]
 	if !ok {
 		return fmt.Errorf("unknown tool type: %s", toolType)
 	}
 
-	query := fmt.Sprintf("UPDATE %s SET cpu_usage=$1, total_memory=$2, free_memory=$3, os_name=$4, cpu_model=$5 WHERE id=$6", table)
-	_, err := d.Conn.Exec(query, cpuUsage, totalMem, freeMem, osName, cpuModel, id)
+	query := fmt.Sprintf("UPDATE %s SET cpu_usage=$1, cpu_cores=$2, total_memory=$3, free_memory=$4, storage_used=$5, storage_total=$6, os_name=$7, cpu_model=$8 WHERE id=$9", table)
+	_, err := d.Conn.Exec(query, cpuUsage, cpuCores, totalMem, freeMem, storageUsed, storageTotal, osName, cpuModel, id)
 	return err
 }
 
 // Docker specific methods
+func (d *DB) UpsertKubernetesPV(pv KubernetesPV) error {
+	var id int64
+	err := d.Conn.QueryRow("SELECT id FROM kubernetes.persistent_volumes WHERE name = $1 AND server_id = $2", pv.Name, pv.ServerID).Scan(&id)
+
+	if err == sql.ErrNoRows {
+		_, err = d.Conn.Exec(`
+			INSERT INTO kubernetes.persistent_volumes (server_id, name, capacity, usage, status, pvc_name, pvc_namespace, storage_class, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+			pv.ServerID, pv.Name, pv.Capacity, pv.Usage, pv.Status, pv.PVCName, pv.PVCNamespace, pv.StorageClass)
+	} else if err == nil {
+		_, err = d.Conn.Exec(`
+			UPDATE kubernetes.persistent_volumes SET capacity=$1, usage=$2, status=$3, pvc_name=$4, pvc_namespace=$5, storage_class=$6, updated_at=NOW()
+			WHERE id=$7`,
+			pv.Capacity, pv.Usage, pv.Status, pv.PVCName, pv.PVCNamespace, pv.StorageClass, id)
+	}
+	return err
+}
+
+func (d *DB) GetKubernetesPVs(serverID int64) ([]KubernetesPV, error) {
+	query := "SELECT id, server_id, name, capacity, usage, status, pvc_name, pvc_namespace, storage_class, updated_at FROM kubernetes.persistent_volumes WHERE server_id = $1"
+	rows, err := d.Conn.Query(query, serverID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var pvs []KubernetesPV
+	for rows.Next() {
+		var pv KubernetesPV
+		if err := rows.Scan(&pv.ID, &pv.ServerID, &pv.Name, &pv.Capacity, &pv.Usage, &pv.Status, &pv.PVCName, &pv.PVCNamespace, &pv.StorageClass, &pv.UpdatedAt); err != nil {
+			return nil, err
+		}
+		pvs = append(pvs, pv)
+	}
+	return pvs, nil
+}
+
+func (d *DB) GetAllKubernetesPVs() ([]KubernetesPV, error) {
+	query := "SELECT id, server_id, name, capacity, usage, status, pvc_name, pvc_namespace, storage_class, updated_at FROM kubernetes.persistent_volumes"
+	rows, err := d.Conn.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var pvs []KubernetesPV
+	for rows.Next() {
+		var pv KubernetesPV
+		if err := rows.Scan(&pv.ID, &pv.ServerID, &pv.Name, &pv.Capacity, &pv.Usage, &pv.Status, &pv.PVCName, &pv.PVCNamespace, &pv.StorageClass, &pv.UpdatedAt); err != nil {
+			return nil, err
+		}
+		pvs = append(pvs, pv)
+	}
+	return pvs, nil
+}
+
 func (d *DB) UpsertDockerHost(h DockerHost) (int64, error) {
 	var id int64
 	err := d.Conn.QueryRow("SELECT id FROM containers.hosts WHERE server_id = $1", h.ServerID).Scan(&id)

@@ -162,6 +162,18 @@ func main() {
 		json.NewEncoder(w).Encode(pods)
 	}).Methods("GET")
 
+	// Kubernetes persistent volumes API
+	r.HandleFunc("/api/kubernetes/pvs", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s", r.Method, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		pvs, err := db.GetAllKubernetesPVs()
+		if err != nil {
+			log.Printf("Error GetAllKubernetesPVs: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(pvs)
+	}).Methods("GET")
 	// Podman hosts API
 	r.HandleFunc("/api/podman/hosts", func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("%s %s", r.Method, r.URL.Path)

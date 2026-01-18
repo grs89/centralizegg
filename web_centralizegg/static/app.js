@@ -8,6 +8,7 @@ const API_CONTAINER_HOSTS = '/api/containers/hosts';
 const API_CONTAINER_CONTAINERS = '/api/containers/containers';
 const API_KUBERNETES_NODES = '/api/kubernetes/nodes';
 const API_KUBERNETES_PODS = '/api/kubernetes/pods';
+const API_KUBERNETES_PVS = '/api/kubernetes/pvs';
 const API_PODMAN_HOSTS = '/api/podman/hosts';
 const API_PODMAN_CONTAINERS = '/api/podman/containers';
 const API_PROXMOX_HOSTS = '/api/proxmox/hosts';
@@ -1775,6 +1776,7 @@ function renderHostNodes(containerId = 'host-nodes-container', config = {}) {
         const fullInfo = ((host.cpu_model || '') + ' ' + (host.os_name || '')).toLowerCase();
         if (fullInfo.includes('amd64') || fullInfo.includes('x86_64')) arch = 'x86_64';
         else if (fullInfo.includes('arm') || fullInfo.includes('aarch64')) arch = 'ARM';
+        else if (host.tool_type === 'kubernetes') arch = 'Cluster Resources';
 
         return `
         <div class="host-node-card glass-panel ${isActive}" onclick="${onClickHandler}(${host.id})">
@@ -2418,10 +2420,27 @@ async function renderKubernetesServerDetails(serverId) {
         const totalNodes = clusterNodes.length;
         const totalPods = clusterNodes.reduce((acc, n) => acc + (n.pods_count || 0), 0);
         const avgCpu = clusterNodes.reduce((acc, n) => acc + (n.cpu_usage || 0), 0) / (totalNodes || 1);
+        const totalCores = clusterNodes.reduce((acc, n) => acc + (n.cpu_cores || 0), 0);
         const totalMem = clusterNodes.reduce((acc, n) => acc + (n.total_memory || 0), 0);
         const freeMem = clusterNodes.reduce((acc, n) => acc + (n.free_memory || 0), 0);
         const usedMem = totalMem - freeMem;
         const memPercent = totalMem > 0 ? ((usedMem / totalMem) * 100).toFixed(0) : 0;
+
+        const renderK8sPVList = (pvs) => {
+            if (!pvs || pvs.length === 0) return '<div style="color: var(--text-secondary); font-size: 0.75rem; text-align: center; padding: 10px;">No hay volúmenes persistentes</div>';
+            return pvs.map(pv => `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.03);">
+                        <div style="display: flex; flex-direction: column;">
+                            <span style="font-size: 0.8rem; font-weight: 500; color: var(--text-primary);">${pv.name}</span>
+                            <span style="font-size: 0.65rem; color: var(--text-secondary);">${pv.pvc_namespace}/${pv.pvc_name}</span>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 0.8rem; color: var(--accent-color); font-weight: 600;">${formatBytes(pv.capacity, 1)}</div>
+                            <div style="font-size: 0.6rem; color: ${pv.status === 'Bound' ? '#4ade80' : '#fbbf24'}; text-transform: uppercase;">${pv.status}</div>
+                        </div>
+                    </div>
+                `).join('');
+        };
 
         const renderPodDistribution = () => {
             return clusterNodes.map(node => `
@@ -2429,8 +2448,6 @@ async function renderKubernetesServerDetails(serverId) {
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <i class="fa-solid fa-cube" style="font-size: 0.7rem; opacity: 0.5;"></i>
                         <span style="opacity: 0.9;">${node.hostname}</span>
-                    </div>
-                    <span style="font-weight: 800; color: var(--accent-color);">${node.pods_count || 0}</span>
                 </div>
             `).join('');
         };
@@ -2501,6 +2518,47 @@ async function renderKubernetesServerDetails(serverId) {
                 ramEl.style.color = getStatusColor(memPercent);
             }
 
+            const coresTotalEl = document.getElementById('k8s-stat-cores-total');
+            if (coresTotalEl) coresTotalEl.textContent = totalCores || 'N/A';
+
+            const clusterStatusEl = document.getElementById('k8s-cluster-status');
+            if (clusterStatusEl) {
+                clusterStatusEl.textContent = server.status || 'offline';
+                clusterStatusEl.style.color = server.status === 'online' ? '#4ade80' : '#ef4444';
+            }
+
+            const k8sVersionEl = document.getElementById('k8s-cluster-version');
+            if (k8sVersionEl) k8sVersionEl.textContent = `v${clusterNodes[0]?.version || '0.0.0'}`;
+
+            const k8sLoadEl = document.getElementById('k8s-cluster-cpu-load');
+            if (k8sLoadEl) k8sLoadEl.textContent = `${avgCpu.toFixed(1)}%`;
+
+            const k8sPodsTotalEl = document.getElementById('k8s-cluster-pods-total');
+            if (k8sPodsTotalEl) k8sPodsTotalEl.textContent = totalPods;
+
+            const storageUsedEl = document.getElementById('k8s-cluster-storage-used');
+            const storageTotalEl = document.getElementById('k8s-cluster-storage-total');
+            const storageBarEl = document.getElementById('k8s-cluster-storage-bar');
+
+            if (storageUsedEl) storageUsedEl.textContent = formatBytes(server.storage_used, 1);
+            if (storageTotalEl) storageTotalEl.textContent = formatBytes(server.storage_total, 1);
+            if (storageBarEl) {
+                const percent = server.storage_total > 0 ? (server.storage_used / server.storage_total * 100) : 0;
+                storageBarEl.style.width = `${percent}%`;
+                storageBarEl.style.background = getStatusColor(percent);
+            }
+
+            const pvListEl = document.getElementById('k8s-pv-list');
+            if (pvListEl) {
+                fetch(API_KUBERNETES_PVS)
+                    .then(res => res.json())
+                    .then(pvs => {
+                        const clusterPVs = pvs.filter(pv => pv.server_id === selectedKubernetesServerId);
+                        clusterPVs.sort((a, b) => b.capacity - a.capacity);
+                        pvListEl.innerHTML = renderK8sPVList(clusterPVs.slice(0, 5));
+                    });
+            }
+
             const distEl = document.getElementById('k8s-pod-distribution');
             if (distEl) distEl.innerHTML = renderPodDistribution();
 
@@ -2526,31 +2584,94 @@ async function renderKubernetesServerDetails(serverId) {
                         
                         <!-- Left Column: Cluster Details -->
                         <div style="display: flex; flex-direction: column; gap: 15px;">
-                            <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 5px; display: flex; align-items: center; gap: 10px;">
-                                <i class="fa-solid fa-chart-line" style="color: var(--accent-color);"></i>
-                                Estado del Cluster
+                            <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                                Sistema y Red
                             </div>
                             
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                                <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
-                                    <div style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px;">Nodos</div>
-                                    <div id="k8s-stat-nodes" style="font-size: 1.6rem; font-weight: 800; color: var(--accent-color);">${totalNodes}</div>
+                            <div style="display: flex; flex-direction: column; gap: 12px;">
+                                <!-- Connection Card -->
+                                <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                        <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color);">Conexión</div>
+                                        <span id="k8s-cluster-status" style="font-weight: 800; font-size: 0.7rem; color: ${server.status === 'online' ? '#4ade80' : '#ef4444'}; text-transform: uppercase; background: ${server.status === 'online' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; padding: 2px 6px; border-radius: 4px; border: 1px solid ${server.status === 'online' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'};">
+                                            ${server.status || 'offline'}
+                                        </span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color);">API Server</div>
+                                        <span id="k8s-api-status" style="font-weight: 800; font-size: 0.7rem; color: #4ade80; text-transform: uppercase; background: rgba(34, 197, 94, 0.1); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(34, 197, 94, 0.2);">
+                                            ACTIVE
+                                        </span>
+                                    </div>
                                 </div>
-                                <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
-                                    <div style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px;">Pods</div>
-                                    <div id="k8s-stat-pods" style="font-size: 1.6rem; font-weight: 800; color: #fff;">${totalPods}</div>
+
+                                <!-- System Card -->
+                                <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                        <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color);">Sistema y Versión</div>
+                                        <span id="k8s-cluster-version" style="color: #38bdf8; font-weight: 700; font-size: 0.75rem;">v${clusterNodes[0]?.version || '0.0.0'}</span>
+                                    </div>
+                                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                                        <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                                            <i class="fa-solid fa-server" style="font-size: 0.8rem; opacity: 0.7;"></i> 
+                                            <span>Nodes: <span id="k8s-stat-nodes" style="color: var(--text-primary); font-weight: 500;">${totalNodes}</span></span>
+                                        </div>
+                                        <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                                            <i class="fa-solid fa-microchip" style="font-size: 0.8rem; opacity: 0.7;"></i> 
+                                            <span>Total Cores: <span id="k8s-stat-cores-total" style="color: var(--text-primary); font-weight: 500;">${totalCores}</span></span>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
-                                    <div style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px;">CPU Avg</div>
-                                    <div id="k8s-stat-cpu" style="font-size: 1.6rem; font-weight: 800; color: ${getStatusColor(avgCpu)}">${avgCpu.toFixed(1)}%</div>
-                                </div>
-                                <div class="mini-stat-card" style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
-                                    <div style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px;">RAM</div>
-                                    <div id="k8s-stat-ram" style="font-size: 1.6rem; font-weight: 800; color: ${getStatusColor(memPercent)}">${memPercent}%</div>
+
+                                <!-- Performance Card -->
+                                <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
+                                    <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 8px;">Rendimiento</div>
+                                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                                                <i class="fa-solid fa-microchip" style="font-size: 0.8rem; opacity: 0.7;"></i> 
+                                                <span>Carga CPU Avg</span>
+                                            </div>
+                                            <span id="k8s-cluster-cpu-load" style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">${avgCpu.toFixed(1)}%</span>
+                                        </div>
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                                                <i class="fa-solid fa-cube" style="font-size: 0.8rem; opacity: 0.7;"></i> 
+                                                <span>Pods Totales</span>
+                                            </div>
+                                            <span id="k8s-cluster-pods-total" style="font-weight: 700; font-size: 0.85rem; color: var(--accent-color);">${totalPods}</span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
-                            <div style="margin-top: 10px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
+                            <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; margin-top: 5px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                                Almacenamiento
+                            </div>
+
+                            <!-- Storage Card -->
+                            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
+                                <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 10px;">Almacenamiento del Cluster</div>
+                                <div style="display: flex; flex-direction: column; gap: 4px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem;">
+                                        <span style="color: var(--text-secondary);">Recursos Persistentes (Total)</span>
+                                        <span style="font-weight: 600;"><span id="k8s-cluster-storage-used">${formatBytes(server.storage_used, 1)}</span> / <span id="k8s-cluster-storage-total">${formatBytes(server.storage_total, 1)}</span></span>
+                                    </div>
+                                    <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
+                                        <div id="k8s-cluster-storage-bar" style="height: 100%; width: ${server.storage_total > 0 ? (server.storage_used / server.storage_total * 100) : 0}%; background: ${getStatusColor(server.storage_total > 0 ? (server.storage_used / server.storage_total * 100) : 0)};"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- PVs Card -->
+                            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
+                                <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 10px;">Volúmenes Persistentes</div>
+                                <div id="k8s-pv-list" style="display: flex; flex-direction: column; gap: 4px; max-height: 250px; overflow-y: auto;">
+                                    <div style="color: var(--text-secondary); font-size: 0.75rem; text-align: center; padding: 10px;">Cargando volúmenes...</div>
+                                </div>
+                            </div>
+                        </div>
+     <div style="margin-top: 10px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
                                 <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 10px; font-weight: 600;">Distribución de Pods</div>
                                 <div id="k8s-pod-distribution" style="display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto; padding-right: 5px;" class="custom-scrollbar">
                                     ${clusterNodes.map(node => `
@@ -2573,9 +2694,6 @@ async function renderKubernetesServerDetails(serverId) {
                                     <i class="fa-solid fa-server" style="color: var(--accent-color); font-size: 1rem; margin-right: 8px;"></i>
                                     Nodos del Cluster
                                 </h3>
-                                <div style="font-size: 0.8rem; color: var(--text-secondary); opacity: 0.7;">
-                                    ${totalNodes} nodos detectados
-                                </div>
                             </div>
 
                             <div id="k8s-node-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px;">
