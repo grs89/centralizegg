@@ -504,7 +504,12 @@ function switchTool(toolKey) {
                     } else if (toolKey === 'docker') {
                         renderDockerSummary();
                     } else if (toolKey === 'kubernetes') {
-                        renderKubernetesSummary();
+                        // Restore previous selection if exists
+                        if (selectedKubernetesServerId) {
+                            renderKubernetesServerDetails(selectedKubernetesServerId);
+                        } else {
+                            renderKubernetesSummary();
+                        }
                     } else if (toolKey === 'podman') {
                         renderPodmanSummary();
                     } else if (toolKey === 'proxmox') {
