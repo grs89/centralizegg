@@ -84,7 +84,8 @@
     - Métricas precisas de RTT y Desviación estándar.
 *   **Monitoreo de Kubernetes (K8s)**:
     - Visualización de Nodos y Pods en tiempo real.
-    - Métricas de consumo de recursos por Namespace.
+    - Métricas de consumo de recursos por Namespace y estadísticas de red (RX/TX) corregidas en nodos.
+    - Contadores de Pods corregidos; tráfico de red agregado desde pods cuando el nodo no reporta.
 *   **Sparklines de Red**: Gráficos lineales en tiempo real para visualizar tendencias de tráfico RX/TX.
 *   **Filtrado Inteligente**: Selecciona un host para filtrar instantáneamente su cuadrícula de máquinas virtuales.
 *   **Búsqueda Global ("Search Everything")**:

@@ -543,6 +543,7 @@ Nodos del cluster Proxmox.
        - **Almacenamiento**: Gráficos de disco (Donut Charts) y alertas OOM.
    - Indicadores de estado (online/offline)
    - Iconos de SO según distribución detectada
+* **Kubernetes (K8s)**: Estadísticas de red (RX/TX) corregidas y contadores de Pods precisos mediante agregación de tráfico de pods cuando el nodo no reporta.
 
 3. **Visualización de VMs**
    - Grid de tarjetas con estado visual
