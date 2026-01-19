@@ -4919,6 +4919,7 @@ async function checkServerStatus() {
                             ip: s.ip_address || s.IPAddress || s.ip || s.IP || 'Sin IP',
                             port: s.ssh_port || s.SSHPort || s.port || 22,
                             status: (s.status || s.Status || 'unknown').toLowerCase(),
+                            offline_since: s.offline_since || null,
                             toolLabel: tool.label,
                             toolIcon: tool.icon
                         };
@@ -4966,7 +4967,28 @@ async function checkServerStatus() {
             if (offlineServers.length > 0) {
                 badge.textContent = offlineServers.length;
                 badge.classList.remove('hidden');
-                list.innerHTML = offlineServers.map(s => `
+                list.innerHTML = offlineServers.map(s => {
+                    let offlineTimeStr = '';
+                    if (s.offline_since) {
+                        const offlineDate = new Date(s.offline_since);
+                        const now = new Date();
+                        const diffMs = now - offlineDate;
+                        const diffMins = Math.floor(diffMs / 60000);
+                        const diffHours = Math.floor(diffMins / 60);
+                        const diffDays = Math.floor(diffHours / 24);
+
+                        if (diffDays > 0) {
+                            offlineTimeStr = `Offline hace ${diffDays}d ${diffHours % 24}h`;
+                        } else if (diffHours > 0) {
+                            offlineTimeStr = `Offline hace ${diffHours}h ${diffMins % 60}m`;
+                        } else if (diffMins > 0) {
+                            offlineTimeStr = `Offline hace ${diffMins}m`;
+                        } else {
+                            offlineTimeStr = 'Offline hace menos de 1m';
+                        }
+                    }
+
+                    return `
                     <li>
                         <i class="fa-solid fa-circle-exclamation" style="color:var(--danger); font-size: 1.1rem;"></i>
                         <div class="notif-item-content">
@@ -4975,9 +4997,11 @@ async function checkServerStatus() {
                                 <span class="offline-host-name">${s.name}</span>
                             </div>
                             <span class="offline-details">${s.ip}:${s.port} no accesible</span>
+                            ${offlineTimeStr ? `<span class="offline-time" style="font-size: 0.7rem; color: var(--text-tertiary); display: block; margin-top: 2px;"><i class="fa-regular fa-clock"></i> ${offlineTimeStr}</span>` : ''}
                         </div>
                     </li>
-                `).join('');
+                `;
+                }).join('');
             } else {
                 badge.classList.add('hidden');
                 list.innerHTML = '<li style="color:var(--text-secondary); text-align:center; display:block; padding: 20px;">Todos los sistemas activos</li>';

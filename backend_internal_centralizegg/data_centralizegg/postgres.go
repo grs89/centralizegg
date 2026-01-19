@@ -703,6 +703,15 @@ func ensureSchema(db *sql.DB) {
 		"ALTER TABLE kubernetes.kubernetes_servers ADD COLUMN IF NOT EXISTS resource_counts TEXT DEFAULT '{}'",
 		"ALTER TABLE kubernetes.kubernetes_servers ADD COLUMN IF NOT EXISTS network_topology TEXT DEFAULT '{}'",
 
+		// Offline since timestamp migrations
+		"ALTER TABLE virtualization.proxmox_servers ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
+		"ALTER TABLE storage.nas_servers ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
+		"ALTER TABLE storage.ceph_servers ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
+		"ALTER TABLE containers.docker_servers ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
+		"ALTER TABLE containers.podman_servers ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
+		"ALTER TABLE kubernetes.kubernetes_servers ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
+		"ALTER TABLE firewall.pfsense_servers ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
+
 		// Docker Tables
 		`CREATE TABLE IF NOT EXISTS containers.hosts (
 			id SERIAL PRIMARY KEY,
@@ -1333,28 +1342,29 @@ func (d *DB) GetFirewallHosts() ([]FirewallHost, error) { // Fetch Hosts
 
 // GenericServer is used for Proxmox, NAS, Ceph, Docker, Podman servers (same structure as KVMServer)
 type GenericServer struct {
-	ID                 int64   `json:"id"`
-	Name               string  `json:"name"`
-	IPAddress          string  `json:"ip_address"`
-	SSHPort            int     `json:"ssh_port"`
-	Username           string  `json:"username"`
-	Password           string  `json:"password"`
-	SSHKeyPath         string  `json:"ssh_key_path"`
-	SSHKeyContent      string  `json:"ssh_key_content"`
-	KubeconfigPath     string  `json:"kubeconfig_path"`
-	KubeconfigContent  string  `json:"kubeconfig_content"`
-	Status             string  `json:"status"`
-	CPUUsage           float64 `json:"cpu_usage"`
-	CPUCores           int     `json:"cpu_cores"`
-	TotalMemory        uint64  `json:"total_memory"`
-	FreeMemory         uint64  `json:"free_memory"`
-	StorageUsed        uint64  `json:"storage_used"`
-	StorageTotal       uint64  `json:"storage_total"`
-	OSName             string  `json:"os_name"`
-	CPUModel           string  `json:"cpu_model"`
-	ControlPlaneStatus string  `json:"control_plane_status"` // JSON string for Kubernetes
-	ResourceCounts     string  `json:"resource_counts"`      // JSON string for Kubernetes resource counts
-	NetworkTopology    string  `json:"network_topology"`     // JSON string for Kubernetes network map
+	ID                 int64      `json:"id"`
+	Name               string     `json:"name"`
+	IPAddress          string     `json:"ip_address"`
+	SSHPort            int        `json:"ssh_port"`
+	Username           string     `json:"username"`
+	Password           string     `json:"password"`
+	SSHKeyPath         string     `json:"ssh_key_path"`
+	SSHKeyContent      string     `json:"ssh_key_content"`
+	KubeconfigPath     string     `json:"kubeconfig_path"`
+	KubeconfigContent  string     `json:"kubeconfig_content"`
+	Status             string     `json:"status"`
+	CPUUsage           float64    `json:"cpu_usage"`
+	CPUCores           int        `json:"cpu_cores"`
+	TotalMemory        uint64     `json:"total_memory"`
+	FreeMemory         uint64     `json:"free_memory"`
+	StorageUsed        uint64     `json:"storage_used"`
+	StorageTotal       uint64     `json:"storage_total"`
+	OSName             string     `json:"os_name"`
+	CPUModel           string     `json:"cpu_model"`
+	ControlPlaneStatus string     `json:"control_plane_status"` // JSON string for Kubernetes
+	ResourceCounts     string     `json:"resource_counts"`      // JSON string for Kubernetes resource counts
+	NetworkTopology    string     `json:"network_topology"`     // JSON string for Kubernetes network map
+	OfflineSince       *time.Time `json:"offline_since"`        // Timestamp when server went offline
 }
 
 // Table names for each server type
@@ -1373,7 +1383,7 @@ func (d *DB) GetGenericServers(toolType string) ([]GenericServer, error) {
 		return nil, fmt.Errorf("unknown tool type: %s", toolType)
 	}
 
-	query := fmt.Sprintf("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, kubeconfig_path, kubeconfig_content, status, cpu_usage, cpu_cores, total_memory, free_memory, storage_used, storage_total, os_name, cpu_model, control_plane_status, resource_counts, network_topology FROM %s", table)
+	query := fmt.Sprintf("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, kubeconfig_path, kubeconfig_content, status, cpu_usage, cpu_cores, total_memory, free_memory, storage_used, storage_total, os_name, cpu_model, control_plane_status, resource_counts, network_topology, offline_since FROM %s", table)
 	rows, err := d.Conn.Query(query)
 	if err != nil {
 		return nil, err
@@ -1384,7 +1394,7 @@ func (d *DB) GetGenericServers(toolType string) ([]GenericServer, error) {
 	for rows.Next() {
 		var s GenericServer
 		var pwd sql.NullString
-		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.SSHKeyContent, &s.KubeconfigPath, &s.KubeconfigContent, &s.Status, &s.CPUUsage, &s.CPUCores, &s.TotalMemory, &s.FreeMemory, &s.StorageUsed, &s.StorageTotal, &s.OSName, &s.CPUModel, &s.ControlPlaneStatus, &s.ResourceCounts, &s.NetworkTopology); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.SSHKeyContent, &s.KubeconfigPath, &s.KubeconfigContent, &s.Status, &s.CPUUsage, &s.CPUCores, &s.TotalMemory, &s.FreeMemory, &s.StorageUsed, &s.StorageTotal, &s.OSName, &s.CPUModel, &s.ControlPlaneStatus, &s.ResourceCounts, &s.NetworkTopology, &s.OfflineSince); err != nil {
 			return nil, err
 		}
 		s.Password = pwd.String
@@ -1479,7 +1489,14 @@ func (d *DB) SetGenericServerStatus(toolType string, id int64, status string) er
 		return fmt.Errorf("unknown tool type: %s", toolType)
 	}
 
-	query := fmt.Sprintf("UPDATE %s SET status=$1 WHERE id=$2", table)
+	// When going offline, set offline_since to current time if not already set
+	// When coming online, clear offline_since
+	var query string
+	if status == "offline" {
+		query = fmt.Sprintf("UPDATE %s SET status=$1, offline_since = COALESCE(offline_since, NOW()) WHERE id=$2", table)
+	} else {
+		query = fmt.Sprintf("UPDATE %s SET status=$1, offline_since = NULL WHERE id=$2", table)
+	}
 	_, err := d.Conn.Exec(query, status, id)
 	return err
 }
