@@ -2890,7 +2890,7 @@ async function renderKubernetesServerDetails(serverId) {
                 if (!window.currentK8sMap) {
                     window.currentK8sMap = new KubernetesTopologyMap('k8s-topology-map');
                 }
-                window.currentK8sMap.renderFromData(clusterNodes, allPodsCache);
+                window.currentK8sMap.renderFromData(clusterNodes, allPodsCache, server.status);
             }
 
             return;
@@ -3269,7 +3269,7 @@ async function renderKubernetesServerDetails(serverId) {
                     if (!window.currentK8sMap) {
                         window.currentK8sMap = new KubernetesTopologyMap('k8s-topology-map');
                     }
-                    window.currentK8sMap.renderFromData(clusterNodes, allPodsCache);
+                    window.currentK8sMap.renderFromData(clusterNodes, allPodsCache, server.status);
                 }
             }
         }, 100);
@@ -6255,7 +6255,8 @@ class KubernetesTopologyMap {
         this.draw();
     }
 
-    renderFromData(nodesData, podsData) {
+    renderFromData(nodesData, podsData, clusterStatus = 'online') {
+        this.clusterStatus = clusterStatus;
         const container = document.getElementById(this.containerId);
         if (!container) return;
         this.width = container.clientWidth || 800;
@@ -6292,25 +6293,34 @@ class KubernetesTopologyMap {
         this.links = [];
 
         // 1. Root Node (Internet/Cluster)
+        const clusterColor = this.clusterStatus === 'online' ? '#f472b6' : '#ef4444';
         this.nodes.push({
             id: 'internet',
             name: 'Cluster API',
             type: 'internet',
-            status: 'active',
-            color: '#f472b6' // Pink for Cluster Root
+            status: this.clusterStatus === 'online' ? 'active' : 'stopped',
+            color: clusterColor
         });
 
         // 2. Nodes (as Services/Hosts layer)
         const nodeIds = new Set();
+        const isClusterOffline = this.clusterStatus !== 'online';
         nodesData.forEach(node => {
             const nodeId = 'node-' + node.id;
             nodeIds.add(node.id);
+
+            // If cluster is offline, nodes are red
+            let nodeColor = '#ef4444'; // Default red for offline
+            if (!isClusterOffline) {
+                nodeColor = (node.status && node.status.toLowerCase() === 'ready') ? '#818cf8' : '#ef4444';
+            }
+
             this.nodes.push({
                 id: nodeId,
                 name: node.hostname,
                 type: 'service', // Reusing 'service' style for K8s Nodes
                 status: (node.status && node.status.toLowerCase() === 'ready') ? 'active' : 'stopped',
-                color: (node.status && node.status.toLowerCase() === 'ready') ? '#818cf8' : '#ef4444', // Indigo for Ready nodes
+                color: nodeColor,
                 original: node
             });
 
@@ -6329,10 +6339,19 @@ class KubernetesTopologyMap {
 
             const podId = 'pod-' + pod.id;
             let podColor = '#94a3b8'; // Default grey
-            if (pod.state === 'Running') podColor = '#4ade80'; // Green
-            else if (pod.state === 'Pending') podColor = '#fbbf24'; // Yellow
-            else if (pod.state === 'Succeeded') podColor = '#60a5fa'; // Blue
-            else if (pod.state === 'Failed') podColor = '#ef4444'; // Red
+
+            // If cluster is offline, all pods are red
+            if (this.clusterStatus !== 'online') {
+                podColor = '#ef4444'; // Red for offline cluster
+            } else if (pod.state === 'Running') {
+                podColor = '#4ade80'; // Green
+            } else if (pod.state === 'Pending') {
+                podColor = '#fbbf24'; // Yellow
+            } else if (pod.state === 'Succeeded') {
+                podColor = '#60a5fa'; // Blue
+            } else if (pod.state === 'Failed') {
+                podColor = '#ef4444'; // Red
+            }
 
             this.nodes.push({
                 id: podId,
