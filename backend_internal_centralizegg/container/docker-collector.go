@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"strings"
 	"time"
 
@@ -34,26 +33,26 @@ func (dc *DockerCollector) Start(interval time.Duration) {
 }
 
 func (dc *DockerCollector) CollectAll() {
-	log.Printf("[DockerCollector] Starting collection cycle...")
+	// log.Printf("[DockerCollector] Starting collection cycle...")
 	servers, err := dc.DB.GetGenericServers("docker")
 	if err != nil {
-		log.Printf("[DockerCollector] Failed to get docker servers: %v", err)
+		// log.Printf("[DockerCollector] Failed to get docker servers: %v", err)
 		return
 	}
 
 	if len(servers) == 0 {
-		log.Printf("[DockerCollector] No docker servers configured.")
+		// log.Printf("[DockerCollector] No docker servers configured.")
 		return
 	}
 
 	for _, s := range servers {
-		log.Printf("[DockerCollector] Collecting from %s (%s)...", s.Name, s.IPAddress)
+		// log.Printf("[DockerCollector] Collecting from %s (%s)...", s.Name, s.IPAddress)
 		if err := dc.collectOne(s); err != nil {
-			log.Printf("[DockerCollector] Failed to collect from Docker %s (%s): %v", s.Name, s.IPAddress, err)
+			// log.Printf("[DockerCollector] Failed to collect from Docker %s (%s): %v", s.Name, s.IPAddress, err)
 			dc.DB.SetGenericServerStatus("docker", s.ID, "offline")
 			continue
 		}
-		log.Printf("[DockerCollector] Successfully collected from %s.", s.Name)
+		// log.Printf("[DockerCollector] Successfully collected from %s.", s.Name)
 		dc.DB.SetGenericServerStatus("docker", s.ID, "online")
 	}
 }
@@ -146,9 +145,9 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 	volumesJSON := "[]"
 	volsRaw, err := dc.runCommand(client, "docker system df -v | awk '/VOLUME NAME/{p=1;next} /Images space usage/{p=0} /Build cache usage/{p=0} p && $1!=\"\" {print $1,$3}'")
 	if err != nil {
-		log.Printf("[DockerCollector] 'docker system df' command failed: %v, volumes will not have size information", err)
+		// log.Printf("[DockerCollector] 'docker system df' command failed: %v, volumes will not have size information", err)
 	} else {
-		log.Printf("[DockerCollector] Successfully retrieved volume sizes using 'docker system df'")
+		// log.Printf("[DockerCollector] Successfully retrieved volume sizes using 'docker system df'")
 	}
 	volsLines := strings.Split(strings.TrimSpace(volsRaw), "\n")
 	type VolumeInfo struct {
@@ -370,7 +369,7 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 		}
 
 		if err := dc.DB.UpsertContainer(c); err != nil {
-			log.Printf("[DockerCollector] Failed to upsert container %s: %v", c.Name, err)
+			// log.Printf("[DockerCollector] Failed to upsert container %s: %v", c.Name, err)
 		}
 	}
 
