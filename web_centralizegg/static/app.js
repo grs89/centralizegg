@@ -5002,7 +5002,8 @@ function refreshAll() {
     }
 }
 
-setInterval(refreshAll, 2000);
+// Auto-refresh every 10 seconds. renderFromData already skips redraw if topology unchanged.
+setInterval(refreshAll, 10000);
 checkServerStatus(); // Run immediately
 
 
