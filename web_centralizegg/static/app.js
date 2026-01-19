@@ -502,7 +502,12 @@ function switchTool(toolKey) {
                     if (toolKey === 'pfsense') {
                         renderFirewallSummary();
                     } else if (toolKey === 'docker') {
-                        renderDockerSummary();
+                        // Restore previous selection if exists
+                        if (selectedDockerHostId) {
+                            renderDockerHostDetails(selectedDockerHostId);
+                        } else {
+                            renderDockerSummary();
+                        }
                     } else if (toolKey === 'kubernetes') {
                         // Restore previous selection if exists
                         if (selectedKubernetesServerId) {
@@ -511,11 +516,26 @@ function switchTool(toolKey) {
                             renderKubernetesSummary();
                         }
                     } else if (toolKey === 'podman') {
-                        renderPodmanSummary();
+                        // Restore previous selection if exists
+                        if (selectedPodmanHostId) {
+                            renderPodmanHostDetails(selectedPodmanHostId);
+                        } else {
+                            renderPodmanSummary();
+                        }
                     } else if (toolKey === 'proxmox') {
-                        renderProxmoxSummary();
+                        // Restore previous selection if exists
+                        if (selectedProxmoxHostId) {
+                            renderProxmoxHostDetails(selectedProxmoxHostId);
+                        } else {
+                            renderProxmoxSummary();
+                        }
                     } else if (toolKey === 'nas') {
-                        renderNasSummary();
+                        // Restore previous selection if exists
+                        if (selectedNasHostId) {
+                            renderNasHostDetails(selectedNasHostId);
+                        } else {
+                            renderNasSummary();
+                        }
                     } else {
                         placeholderHtml = `
                             <div style="font-size: 4rem; color: var(--accent-color); margin-bottom: 2rem; opacity: 0.5;">
