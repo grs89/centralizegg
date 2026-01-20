@@ -53,7 +53,7 @@
         - Gráficos de barra para uso de volúmenes montados.
         - Alertas de capacidad por volumen.
     - Red: Tráfico RX/TX con **Sparklines** en tiempo real.
-    - **Interfaces Bridge**: Monitoreo dedicado de estados y tráfico para puentes de red (`br0`, `virbr0`, etc.).
+    - **Interfaces Bridge**: Monitoreo dedicado de estados y tráfico para puentes de red (`br0`, `virbr0`, etc.) ubicado en la columna izquierda del layout de dos columnas.
     - Estado de VMs: Running, Blocked, Paused, Shutdown, Shutoff, Crashed, Suspended
 *   **Monitoreo de Contenedores**: Soporte avanzado para **Docker & Podman**. El icono de Podman se ha actualizado a una foca (`fa-otter`) en todo el UI, incluyendo el menú, Host Nodes y el listado de contenedores.
     - **Mapa de Topología**: Visualización interactiva animada de la red (Contenedores -> Redes -> Internet).

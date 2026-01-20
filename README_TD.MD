@@ -538,7 +538,7 @@ Nodos del cluster Proxmox.
 
 2. **Visualización de Hosts**
    - Tarjetas con métricas de CPU, memoria y disco
-   - **Layout Optimizado**: Información dividida en dos columnas:
+   - **Layout Optimizado**: Información dividida en dos columnas: **Sistema y Red** (OS, Uptime, Temperatura, IPs y Bridges) ubicado en la columna izquierda, y **Almacenamiento** (Gráficos de disco y alertas OOM) en la derecha.
        - **Sistema y Red**: OS, Uptime, Temperatura, IPs y Bridges.
        - **Almacenamiento**: Gráficos de disco (Donut Charts) y alertas OOM.
    - Indicadores de estado (online/offline)
