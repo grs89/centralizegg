@@ -226,6 +226,24 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 		// fmt.Printf("[GPU Debug] No nvidia-smi output from %s\n", s.Name)
 	}
 
+	// 10. Host Events (System Logs)
+	var hostEventsJSON = "[]"
+	logOut, err := dc.runCommand(client, "journalctl -n 10 --no-pager || tail -n 10 /var/log/syslog || tail -n 10 /var/log/messages || echo ''")
+	if err == nil {
+		output := strings.TrimSpace(logOut)
+		if output != "" {
+			events := strings.Split(output, "\n")
+			var filtered []string
+			for _, e := range events {
+				if strings.TrimSpace(e) != "" {
+					filtered = append(filtered, e)
+				}
+			}
+			b, _ := json.Marshal(filtered)
+			hostEventsJSON = string(b)
+		}
+	}
+
 	hostID, err := dc.DB.UpsertDockerHost(data_centralizegg.DockerHost{
 		ServerID:      s.ID,
 		Hostname:      hostname,
@@ -248,7 +266,11 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 		Networks:      networksJSON,
 		GPUInfo:       gpuJSON,
 		UpdateStatus:  "Up to Date",
+		HostEvents:    hostEventsJSON,
 	})
+	if err == nil {
+		dc.DB.UpdateGenericServerHostEvents("docker", s.ID, hostEventsJSON)
+	}
 	if err != nil {
 		return fmt.Errorf("upsert docker host: %w", err)
 	}

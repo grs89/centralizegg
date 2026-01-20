@@ -1458,6 +1458,9 @@ function renderDockerHostDetails(hostId) {
         const volumesListEl = document.getElementById('docker-volumes-list');
         if (volumesListEl) volumesListEl.innerHTML = renderVolumesList();
 
+        const eventsEl = document.getElementById('docker-host-events');
+        if (eventsEl) eventsEl.innerHTML = renderHostEvents(host.host_events, 'Docker');
+
         const gpuWrapperEl = document.getElementById('docker-gpu-wrapper');
         if (gpuWrapperEl) gpuWrapperEl.innerHTML = renderGPUCard();
 
@@ -1599,6 +1602,7 @@ function renderDockerHostDetails(hostId) {
                             ${renderAlertsList()}
                         </div>
                     </div>
+
                 </div>
             </div>
             <!-- Right Column: Containers -->
@@ -1618,6 +1622,18 @@ function renderDockerHostDetails(hostId) {
 
                 <div id="docker-containers-list" style="display: flex; flex-direction: column;">
                     ${renderContainerRows()}
+                </div>
+
+                <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; margin-top: 25px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; gap: 10px;">
+                    <i class="fa-solid fa-terminal" style="color: var(--accent-color); font-size: 1rem;"></i>
+                    Eventos del host
+                </div>
+
+                <!-- Host Events Card -->
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px; margin-top: 10px;">
+                    <div id="docker-host-events">
+                        ${renderHostEvents(host.host_events, 'Docker')}
+                    </div>
                 </div>
             </div>
         </div>
@@ -2055,6 +2071,20 @@ function renderVMs() {
         `).join('');
     };
 
+    const renderHostEventsUI = () => {
+        return `
+            <div class="glass-panel" style="padding: 20px; margin-top: 25px;">
+                <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); width: 100%; display: flex; align-items: center; gap: 10px;">
+                    <i class="fa-solid fa-terminal" style="color: var(--accent-color); font-size: 1rem;"></i>
+                    Eventos del host (KVM)
+                </div>
+                <div id="kvm-host-events">
+                    ${renderHostEvents(host.host_events, 'KVM')}
+                </div>
+            </div>
+        `;
+    };
+
     const gridCols = "2fr 1fr 1.5fr 1.5fr 2fr";
 
     const renderVMRows = () => {
@@ -2216,6 +2246,9 @@ function renderVMs() {
         const alertsEl = document.getElementById('kvm-host-alerts');
         if (alertsEl) alertsEl.innerHTML = renderKvmAlerts();
 
+        const eventsEl = document.getElementById('kvm-host-events');
+        if (eventsEl) eventsEl.innerHTML = renderHostEvents(host.host_events, 'KVM');
+
         const vmListEl = document.getElementById('kvm-vm-list-rows');
         if (vmListEl) vmListEl.innerHTML = renderVMRows();
 
@@ -2338,6 +2371,17 @@ function renderVMs() {
             </div>
             <div id="kvm-vm-list-rows" style="display: flex; flex-direction: column; gap: 4px;">
                 ${renderVMRows()}
+            </div>
+        </div>
+
+        <!-- Host Events Card -->
+        <div style="width: 100%; margin-top: 30px;">
+            <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); width: 100%; display: flex; align-items: center; gap: 10px;">
+                <i class="fa-solid fa-terminal" style="color: var(--accent-color); font-size: 1rem;"></i>
+                Eventos del host
+            </div>
+            <div id="kvm-host-events">
+                ${renderHostEventsUI()}
             </div>
         </div>
     `;
@@ -3864,6 +3908,9 @@ function renderPodmanHostDetails(hostId) {
         const volumesListEl = document.getElementById('podman-volumes-list');
         if (volumesListEl) volumesListEl.innerHTML = renderVolumesList();
 
+        const eventsEl = document.getElementById('podman-host-events');
+        if (eventsEl) eventsEl.innerHTML = renderHostEvents(host.host_events, 'Podman');
+
         const gpuWrapperEl = document.getElementById('podman-gpu-wrapper');
         if (gpuWrapperEl) gpuWrapperEl.innerHTML = renderGPUCard();
 
@@ -4003,6 +4050,7 @@ function renderPodmanHostDetails(hostId) {
                             ${renderAlertsList()}
                         </div>
                     </div>
+
                 </div>
             </div>
             <!-- Right Column: Containers -->
@@ -4022,6 +4070,18 @@ function renderPodmanHostDetails(hostId) {
 
                 <div id="podman-containers-list" style="display: flex; flex-direction: column;">
                     ${renderContainerRows()}
+                </div>
+
+                <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; margin-top: 25px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; gap: 10px;">
+                    <i class="fa-solid fa-terminal" style="color: var(--accent-color); font-size: 1rem;"></i>
+                    Eventos del host
+                </div>
+
+                <!-- Host Events Card -->
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px; margin-top: 10px;">
+                    <div id="podman-host-events">
+                        ${renderHostEvents(host.host_events, 'Podman')}
+                    </div>
                 </div>
             </div>
         </div>
@@ -5235,6 +5295,35 @@ checkServerStatus(); // Run immediately
 
 
 
+function renderHostEvents(host_events_json, type = 'host') {
+    let events = [];
+    try {
+        if (host_events_json) events = JSON.parse(host_events_json);
+    } catch (e) { console.error(`Error parsing ${type} host events`, e); }
+
+    if (events.length === 0) {
+        return `
+            <div style="display: flex; align-items: center; gap: 8px; color: var(--text-secondary); opacity: 0.6; font-size: 0.8rem; padding: 20px; background: rgba(255,255,255,0.02); border-radius: 12px; justify-content: center; border: 1px dashed var(--glass-border);">
+                <i class="fa-solid fa-circle-info" style="color: var(--accent-color);"></i>
+                <span>No hay eventos de ${type} registrados recientemente</span>
+            </div>`;
+    }
+    return `
+        <div class="host-events-log" style="background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); border-radius: 12px; padding: 15px; font-family: 'Fira Code', 'Cascadia Code', monospace; font-size: 0.75rem; max-height: 250px; overflow-y: auto; scrollbar-width: thin; -webkit-overflow-scrolling: touch;">
+            ${events.map(event => {
+        const isError = event.toLowerCase().includes('error') || event.toLowerCase().includes('fail') || event.toLowerCase().includes('warning') || event.toLowerCase().includes('critical');
+        const color = isError ? '#f87171' : '#cbd5e1';
+        return `
+                    <div style="color: ${color}; border-bottom: 1px solid rgba(255,255,255,0.03); padding: 6px 0; line-height: 1.5; display: flex; gap: 10px;">
+                        <span style="color: var(--accent-color); opacity: 0.5; font-weight: bold;">[LOG]</span>
+                        <span style="word-break: break-all;">${event}</span>
+                    </div>
+                `;
+    }).join('')}
+        </div>
+    `;
+}
+
 function formatBytes(bytes, decimals = 2) {
     if (bytes === undefined || bytes === null || isNaN(bytes)) return '0 Bytes';
     if (bytes === 0) return '0 Bytes';
@@ -5628,6 +5717,17 @@ function renderFirewallHostDetails(hostId) {
                     </div>
 
                 </div>
+            </div>
+        </div>
+
+        <!-- Host Events Card (pfSense) -->
+        <div class="glass-panel" style="padding: 20px; margin-top: 25px;">
+            <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); width: 100%; display: flex; align-items: center; gap: 10px;">
+                <i class="fa-solid fa-terminal" style="color: var(--accent-color); font-size: 1rem;"></i>
+                Eventos del host (pfSense)
+            </div>
+            <div id="pfsense-host-events">
+                ${renderHostEvents(host.host_events, 'pfSense')}
             </div>
         </div>
     `;

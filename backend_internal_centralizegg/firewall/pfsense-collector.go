@@ -346,7 +346,6 @@ func (mc *PfsenseCollector) collectOne(s data_centralizegg.PFSenseServer) error 
 		}
 	}
 
-	// 1h. Temperature (sysctl -n hw.sensors.cpu0.temp0 or dev.cpu.0.temperature)
 	// 1h. Temperature Check (Multiple OIDs)
 	temperature := 0
 	thermalOIDs := []string{
@@ -382,6 +381,25 @@ func (mc *PfsenseCollector) collectOne(s data_centralizegg.PFSenseServer) error 
 		}
 	}
 
+	// 1i. Host Events (pfSense logs)
+	// pfSense uses clog for circular logs. System log is usually /var/log/system.log
+	var hostEventsJSON = "[]"
+	logOut, err := runCommand(client, "clog /var/log/system.log | tail -n 10 || tail -n 10 /var/log/system.log || echo ''")
+	if err == nil {
+		output := strings.TrimSpace(logOut)
+		if output != "" {
+			events := strings.Split(output, "\n")
+			var filtered []string
+			for _, e := range events {
+				if strings.TrimSpace(e) != "" {
+					filtered = append(filtered, e)
+				}
+			}
+			b, _ := json.Marshal(filtered)
+			hostEventsJSON = string(b)
+		}
+	}
+
 	// Store Host Data first to get the correct HostID
 	hostID, err := mc.DB.UpsertFirewallHost(data_centralizegg.FirewallHost{
 		ServerID:          s.ID,
@@ -403,6 +421,7 @@ func (mc *PfsenseCollector) collectOne(s data_centralizegg.PFSenseServer) error 
 		Temperature:       temperature,
 		DNSServers:        dnsServers,
 		ActiveConnections: activeConnsJSON,
+		HostEvents:        hostEventsJSON,
 	})
 	if err != nil {
 		return fmt.Errorf("upsert host: %w", err)

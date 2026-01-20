@@ -56,6 +56,7 @@ type Host struct {
 	OSName           string  `json:"os_name"`
 	BridgeInterfaces string  `json:"bridge_interfaces"`
 	OOMEvents        string  `json:"oom_events"`
+	HostEvents       string  `json:"host_events"`
 }
 
 type DockerHost struct {
@@ -88,6 +89,7 @@ type DockerHost struct {
 	Volumes       string  `json:"docker_volumes"`
 	Networks      string  `json:"docker_networks"`
 	GPUInfo       string  `json:"gpu_info"`
+	HostEvents    string  `json:"host_events"`
 }
 
 type PodmanHost struct {
@@ -118,6 +120,7 @@ type PodmanHost struct {
 	Volumes        string  `json:"podman_volumes"`
 	PodmanNetworks string  `json:"podman_networks"`
 	GPUInfo        string  `json:"gpu_info"`
+	HostEvents     string  `json:"host_events"`
 }
 
 type Container struct {
@@ -330,6 +333,7 @@ func NewPostgresDB(connStr string) (*DB, error) {
 	_, _ = db.Exec("ALTER TABLE firewall.hosts ADD COLUMN IF NOT EXISTS state_table_size BIGINT DEFAULT 0")
 	_, _ = db.Exec("ALTER TABLE firewall.hosts ADD COLUMN IF NOT EXISTS state_table_limit BIGINT DEFAULT 0")
 	_, _ = db.Exec("ALTER TABLE firewall.hosts ADD COLUMN IF NOT EXISTS temperature INTEGER DEFAULT 0")
+	_, _ = db.Exec("ALTER TABLE firewall.hosts ADD COLUMN IF NOT EXISTS host_events TEXT DEFAULT '[]'")
 
 	// Migration: Generic servers kubeconfig & ssh key content support
 	genericTables := []string{
@@ -342,6 +346,13 @@ func NewPostgresDB(connStr string) (*DB, error) {
 		"kubernetes.kubernetes_servers",
 		"firewall.pfsense_servers",
 	}
+	for _, t := range genericTables {
+		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS host_events TEXT DEFAULT '[]'", t))
+	}
+
+	// Migration: Add host_events to Docker and Podman hosts
+	_, _ = db.Exec("ALTER TABLE containers.hosts ADD COLUMN IF NOT EXISTS host_events TEXT DEFAULT '[]'")
+	_, _ = db.Exec("ALTER TABLE containers.podman_hosts ADD COLUMN IF NOT EXISTS host_events TEXT DEFAULT '[]'")
 
 	// Migration: Add metrics columns to kubernetes.nodes
 	_, _ = db.Exec("ALTER TABLE kubernetes.nodes ADD COLUMN IF NOT EXISTS disk_total BIGINT DEFAULT 0")
@@ -605,6 +616,7 @@ func ensureSchema(db *sql.DB) {
 		"ALTER TABLE virtualization.hosts ADD COLUMN IF NOT EXISTS disks TEXT DEFAULT '[]'",
 		"ALTER TABLE virtualization.hosts ADD COLUMN IF NOT EXISTS bridge_interfaces TEXT DEFAULT '[]'",
 		"ALTER TABLE virtualization.hosts ADD COLUMN IF NOT EXISTS oom_events TEXT DEFAULT '[]'",
+		"ALTER TABLE virtualization.hosts ADD COLUMN IF NOT EXISTS host_events TEXT DEFAULT '[]'",
 		"ALTER TABLE containers.hosts ADD COLUMN IF NOT EXISTS docker_service_status VARCHAR(50) DEFAULT 'unknown'",
 		"ALTER TABLE containers.hosts ADD COLUMN IF NOT EXISTS docker_socket_status VARCHAR(50) DEFAULT 'unknown'",
 		"ALTER TABLE containers.hosts ADD COLUMN IF NOT EXISTS docker_api_latency INT DEFAULT 0",
@@ -974,12 +986,12 @@ func (d *DB) UpsertHost(h Host) (int64, error) {
 	err := d.Conn.QueryRow("SELECT id FROM virtualization.hosts WHERE server_id = $1", h.ServerID).Scan(&id)
 	if err == sql.ErrNoRows {
 		err = d.Conn.QueryRow(`
-			INSERT INTO virtualization.hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, public_ip, dns_servers, uptime, update_status, temperature, disks, bridge_interfaces, oom_events)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
-			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.PublicIP, h.DNSServers, h.Uptime, h.UpdateStatus, h.Temperature, h.Disks, h.BridgeInterfaces, h.OOMEvents).Scan(&id)
+			INSERT INTO virtualization.hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, public_ip, dns_servers, uptime, update_status, temperature, disks, bridge_interfaces, oom_events, host_events)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
+			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.PublicIP, h.DNSServers, h.Uptime, h.UpdateStatus, h.Temperature, h.Disks, h.BridgeInterfaces, h.OOMEvents, h.HostEvents).Scan(&id)
 	} else if err == nil {
-		_, err = d.Conn.Exec(`UPDATE virtualization.hosts SET hostname=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, public_ip=$8, dns_servers=$9, uptime=$10, update_status=$11, temperature=$12, disks=$13, bridge_interfaces=$14, oom_events=$15 WHERE id=$16`,
-			h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.PublicIP, h.DNSServers, h.Uptime, h.UpdateStatus, h.Temperature, h.Disks, h.BridgeInterfaces, h.OOMEvents, id)
+		_, err = d.Conn.Exec(`UPDATE virtualization.hosts SET hostname=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, public_ip=$8, dns_servers=$9, uptime=$10, update_status=$11, temperature=$12, disks=$13, bridge_interfaces=$14, oom_events=$15, host_events=$16 WHERE id=$17`,
+			h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.PublicIP, h.DNSServers, h.Uptime, h.UpdateStatus, h.Temperature, h.Disks, h.BridgeInterfaces, h.OOMEvents, h.HostEvents, id)
 	}
 	return id, err
 }
@@ -1096,7 +1108,7 @@ func (d *DB) DeleteServer(id int64) error {
 
 func (d *DB) GetHosts() ([]Host, error) {
 	rows, err := d.Conn.Query(`
-		SELECT h.id, h.server_id, h.hostname, s.name, s.ip_address, h.public_ip, h.dns_servers, h.uptime, h.update_status, h.temperature, h.disks, h.bridge_interfaces, h.oom_events, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name
+		SELECT h.id, h.server_id, h.hostname, s.name, s.ip_address, h.public_ip, h.dns_servers, h.uptime, h.update_status, h.temperature, h.disks, h.bridge_interfaces, h.oom_events, h.host_events, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name
 		FROM virtualization.hosts h
 		JOIN virtualization.kvm_servers s ON h.server_id = s.id`)
 	if err != nil {
@@ -1108,7 +1120,7 @@ func (d *DB) GetHosts() ([]Host, error) {
 	for rows.Next() {
 		var h Host
 		var osName sql.NullString
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.PublicIP, &h.DNSServers, &h.Uptime, &h.UpdateStatus, &h.Temperature, &h.Disks, &h.BridgeInterfaces, &h.OOMEvents, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &osName); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.PublicIP, &h.DNSServers, &h.Uptime, &h.UpdateStatus, &h.Temperature, &h.Disks, &h.BridgeInterfaces, &h.OOMEvents, &h.HostEvents, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &osName); err != nil {
 			return nil, err
 		}
 		h.OSName = osName.String
@@ -1153,6 +1165,7 @@ type FirewallHost struct {
 	Temperature       int                 `json:"temperature"`
 	DNSServers        string              `json:"dns_servers"`
 	ActiveConnections string              `json:"active_connections"`
+	HostEvents        string              `json:"host_events"`
 	Interfaces        []FirewallInterface `json:"interfaces"`
 	Gateways          []FirewallGateway   `json:"gateways"`
 }
@@ -1192,12 +1205,12 @@ func (d *DB) UpsertFirewallHost(h FirewallHost) (int64, error) {
 	err := d.Conn.QueryRow("SELECT id FROM firewall.hosts WHERE server_id = $1", h.ServerID).Scan(&id)
 	if err == sql.ErrNoRows {
 		err = d.Conn.QueryRow(`
-			INSERT INTO firewall.hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, net_rx_total, net_tx_total, net_rx_bytes_per_sec, net_tx_bytes_per_sec, uptime, update_status, dns_servers, active_connections, state_table_size, state_table_limit, temperature)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) RETURNING id`,
-			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.NetRXTotal, h.NetTXTotal, h.NetRXBytesPerSec, h.NetTXBytesPerSec, h.Uptime, h.UpdateStatus, h.DNSServers, h.ActiveConnections, h.StateTableSize, h.StateTableLimit, h.Temperature).Scan(&id)
+			INSERT INTO firewall.hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, net_rx_total, net_tx_total, net_rx_bytes_per_sec, net_tx_bytes_per_sec, uptime, update_status, dns_servers, active_connections, state_table_size, state_table_limit, temperature, host_events)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) RETURNING id`,
+			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.NetRXTotal, h.NetTXTotal, h.NetRXBytesPerSec, h.NetTXBytesPerSec, h.Uptime, h.UpdateStatus, h.DNSServers, h.ActiveConnections, h.StateTableSize, h.StateTableLimit, h.Temperature, h.HostEvents).Scan(&id)
 	} else if err == nil {
-		_, err = d.Conn.Exec(`UPDATE firewall.hosts SET hostname=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, net_rx_total=$8, net_tx_total=$9, net_rx_bytes_per_sec=$10, net_tx_bytes_per_sec=$11, uptime=$12, update_status=$13, dns_servers=$14, active_connections=$15, state_table_size=$16, state_table_limit=$17, temperature=$18 WHERE id=$19`,
-			h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.NetRXTotal, h.NetTXTotal, h.NetRXBytesPerSec, h.NetTXBytesPerSec, h.Uptime, h.UpdateStatus, h.DNSServers, h.ActiveConnections, h.StateTableSize, h.StateTableLimit, h.Temperature, id)
+		_, err = d.Conn.Exec(`UPDATE firewall.hosts SET hostname=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, net_rx_total=$8, net_tx_total=$9, net_rx_bytes_per_sec=$10, net_tx_bytes_per_sec=$11, uptime=$12, update_status=$13, dns_servers=$14, active_connections=$15, state_table_size=$16, state_table_limit=$17, temperature=$18, host_events=$19 WHERE id=$20`,
+			h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.NetRXTotal, h.NetTXTotal, h.NetRXBytesPerSec, h.NetTXBytesPerSec, h.Uptime, h.UpdateStatus, h.DNSServers, h.ActiveConnections, h.StateTableSize, h.StateTableLimit, h.Temperature, h.HostEvents, id)
 	}
 	return id, err
 }
@@ -1286,7 +1299,7 @@ func (d *DB) UpsertFirewallGateway(gw FirewallGateway) error {
 
 func (d *DB) GetFirewallHosts() ([]FirewallHost, error) { // Fetch Hosts
 	rows, err := d.Conn.Query(`
-		SELECT fh.id, fh.server_id, fh.hostname, s.name, s.ip_address, fh.cpu_model, fh.cpu_cores, fh.total_memory, fh.free_memory, fh.cpu_usage, fh.os_name, fh.net_rx_total, fh.net_tx_total, fh.net_rx_bytes_per_sec, fh.net_tx_bytes_per_sec, fh.uptime, fh.update_status, COALESCE(fh.dns_servers, ''), COALESCE(fh.active_connections, '[]'), COALESCE(fh.state_table_size, 0), COALESCE(fh.state_table_limit, 0), COALESCE(fh.temperature, 0)
+		SELECT fh.id, fh.server_id, fh.hostname, s.name, s.ip_address, fh.cpu_model, fh.cpu_cores, fh.total_memory, fh.free_memory, fh.cpu_usage, fh.os_name, fh.net_rx_total, fh.net_tx_total, fh.net_rx_bytes_per_sec, fh.net_tx_bytes_per_sec, fh.uptime, fh.update_status, COALESCE(fh.dns_servers, ''), COALESCE(fh.active_connections, '[]'), COALESCE(fh.state_table_size, 0), COALESCE(fh.state_table_limit, 0), COALESCE(fh.temperature, 0), COALESCE(fh.host_events, '[]')
 		FROM firewall.hosts fh
 		JOIN firewall.pfsense_servers s ON fh.server_id = s.id
 	`)
@@ -1298,7 +1311,7 @@ func (d *DB) GetFirewallHosts() ([]FirewallHost, error) { // Fetch Hosts
 	var hosts []FirewallHost
 	for rows.Next() {
 		var h FirewallHost
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.NetRXTotal, &h.NetTXTotal, &h.NetRXBytesPerSec, &h.NetTXBytesPerSec, &h.Uptime, &h.UpdateStatus, &h.DNSServers, &h.ActiveConnections, &h.StateTableSize, &h.StateTableLimit, &h.Temperature); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.NetRXTotal, &h.NetTXTotal, &h.NetRXBytesPerSec, &h.NetTXBytesPerSec, &h.Uptime, &h.UpdateStatus, &h.DNSServers, &h.ActiveConnections, &h.StateTableSize, &h.StateTableLimit, &h.Temperature, &h.HostEvents); err != nil {
 			return nil, err
 		}
 
@@ -1365,6 +1378,7 @@ type GenericServer struct {
 	ResourceCounts     string     `json:"resource_counts"`      // JSON string for Kubernetes resource counts
 	NetworkTopology    string     `json:"network_topology"`     // JSON string for Kubernetes network map
 	OfflineSince       *time.Time `json:"offline_since"`        // Timestamp when server went offline
+	HostEvents         string     `json:"host_events"`          // JSON string for host events/logs
 }
 
 // Table names for each server type
@@ -1383,7 +1397,7 @@ func (d *DB) GetGenericServers(toolType string) ([]GenericServer, error) {
 		return nil, fmt.Errorf("unknown tool type: %s", toolType)
 	}
 
-	query := fmt.Sprintf("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, kubeconfig_path, kubeconfig_content, status, cpu_usage, cpu_cores, total_memory, free_memory, storage_used, storage_total, os_name, cpu_model, control_plane_status, resource_counts, network_topology, offline_since FROM %s", table)
+	query := fmt.Sprintf("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, kubeconfig_path, kubeconfig_content, status, cpu_usage, cpu_cores, total_memory, free_memory, storage_used, storage_total, os_name, cpu_model, control_plane_status, resource_counts, network_topology, offline_since, host_events FROM %s", table)
 	rows, err := d.Conn.Query(query)
 	if err != nil {
 		return nil, err
@@ -1394,7 +1408,7 @@ func (d *DB) GetGenericServers(toolType string) ([]GenericServer, error) {
 	for rows.Next() {
 		var s GenericServer
 		var pwd sql.NullString
-		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.SSHKeyContent, &s.KubeconfigPath, &s.KubeconfigContent, &s.Status, &s.CPUUsage, &s.CPUCores, &s.TotalMemory, &s.FreeMemory, &s.StorageUsed, &s.StorageTotal, &s.OSName, &s.CPUModel, &s.ControlPlaneStatus, &s.ResourceCounts, &s.NetworkTopology, &s.OfflineSince); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.SSHKeyContent, &s.KubeconfigPath, &s.KubeconfigContent, &s.Status, &s.CPUUsage, &s.CPUCores, &s.TotalMemory, &s.FreeMemory, &s.StorageUsed, &s.StorageTotal, &s.OSName, &s.CPUModel, &s.ControlPlaneStatus, &s.ResourceCounts, &s.NetworkTopology, &s.OfflineSince, &s.HostEvents); err != nil {
 			return nil, err
 		}
 		s.Password = pwd.String
@@ -1430,6 +1444,16 @@ func (d *DB) UpdateNetworkTopology(toolType string, id int64, topologyJSON strin
 	}
 	query := fmt.Sprintf("UPDATE %s SET network_topology=$1 WHERE id=$2", table)
 	_, err := d.Conn.Exec(query, topologyJSON, id)
+	return err
+}
+
+func (d *DB) UpdateGenericServerHostEvents(toolType string, id int64, eventsJSON string) error {
+	table, ok := serverTableMap[toolType]
+	if !ok {
+		return fmt.Errorf("unknown tool type: %s", toolType)
+	}
+	query := fmt.Sprintf("UPDATE %s SET host_events=$1 WHERE id=$2", table)
+	_, err := d.Conn.Exec(query, eventsJSON, id)
 	return err
 }
 
@@ -1630,12 +1654,9 @@ func (d *DB) UpsertDockerHost(h DockerHost) (int64, error) {
 	err := d.Conn.QueryRow("SELECT id FROM containers.hosts WHERE server_id = $1", h.ServerID).Scan(&id)
 	if err == sql.ErrNoRows {
 		err = d.Conn.QueryRow(`
-			INSERT INTO containers.hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, public_ip, dns_servers, uptime, update_status, temperature, disks, docker_version, docker_service_status, docker_socket_status, docker_api_latency, docker_storage_used, docker_storage_total, docker_inodes_usage, docker_logs_size, docker_volumes, docker_networks, gpu_info)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25) RETURNING id`,
-			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.PublicIP, h.DNSServers, h.Uptime, h.UpdateStatus, h.Temperature, h.Disks, h.DockerVer, h.ServiceStatus, h.SocketStatus, h.APILatency, h.StorageUsed, h.StorageTotal, h.InodesUsage, h.LogsSize, h.Volumes, h.Networks, h.GPUInfo).Scan(&id)
-	} else if err == nil {
-		_, err = d.Conn.Exec(`UPDATE containers.hosts SET hostname=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, public_ip=$8, dns_servers=$9, uptime=$10, update_status=$11, temperature=$12, disks=$13, docker_version=$14, docker_service_status=$15, docker_socket_status=$16, docker_api_latency=$17, docker_storage_used=$18, docker_storage_total=$19, docker_inodes_usage=$20, docker_logs_size=$21, docker_volumes=$22, docker_networks=$23, gpu_info=$24 WHERE id=$25`,
-			h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.PublicIP, h.DNSServers, h.Uptime, h.UpdateStatus, h.Temperature, h.Disks, h.DockerVer, h.ServiceStatus, h.SocketStatus, h.APILatency, h.StorageUsed, h.StorageTotal, h.InodesUsage, h.LogsSize, h.Volumes, h.Networks, h.GPUInfo, id)
+			INSERT INTO containers.hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, public_ip, dns_servers, uptime, update_status, temperature, disks, docker_version, docker_service_status, docker_socket_status, docker_api_latency, docker_storage_used, docker_storage_total, docker_inodes_usage, docker_logs_size, docker_volumes, docker_networks, gpu_info, host_events)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26) RETURNING id`,
+			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.PublicIP, h.DNSServers, h.Uptime, h.UpdateStatus, h.Temperature, h.Disks, h.DockerVer, h.ServiceStatus, h.SocketStatus, h.APILatency, h.StorageUsed, h.StorageTotal, h.InodesUsage, h.LogsSize, h.Volumes, h.Networks, h.GPUInfo, h.HostEvents).Scan(&id)
 	}
 	return id, err
 }
@@ -1660,7 +1681,7 @@ func (d *DB) UpsertContainer(c Container) error {
 
 func (d *DB) GetDockerHosts() ([]DockerHost, error) {
 	rows, err := d.Conn.Query(`
-		SELECT h.id, h.server_id, h.hostname, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, h.public_ip, h.dns_servers, h.uptime, h.update_status, h.temperature, h.disks, h.docker_version, h.docker_service_status, h.docker_socket_status, h.docker_api_latency, h.docker_storage_used, h.docker_storage_total, h.docker_inodes_usage, h.docker_logs_size, h.docker_volumes, h.docker_networks, h.gpu_info, ds.name, ds.ip_address, ds.status
+		SELECT h.id, h.server_id, h.hostname, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, h.public_ip, h.dns_servers, h.uptime, h.update_status, h.temperature, h.disks, h.docker_version, h.docker_service_status, h.docker_socket_status, h.docker_api_latency, h.docker_storage_used, h.docker_storage_total, h.docker_inodes_usage, h.docker_logs_size, h.docker_volumes, h.docker_networks, h.gpu_info, ds.name, ds.ip_address, ds.status, COALESCE(h.host_events, '[]')
 		FROM containers.hosts h
 		JOIN containers.docker_servers ds ON h.server_id = ds.id`)
 	if err != nil {
@@ -1671,7 +1692,7 @@ func (d *DB) GetDockerHosts() ([]DockerHost, error) {
 	var hosts []DockerHost
 	for rows.Next() {
 		var h DockerHost
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.PublicIP, &h.DNSServers, &h.Uptime, &h.UpdateStatus, &h.Temperature, &h.Disks, &h.DockerVer, &h.ServiceStatus, &h.SocketStatus, &h.APILatency, &h.StorageUsed, &h.StorageTotal, &h.InodesUsage, &h.LogsSize, &h.Volumes, &h.Networks, &h.GPUInfo, &h.ServerName, &h.IPAddress, &h.Status); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.PublicIP, &h.DNSServers, &h.Uptime, &h.UpdateStatus, &h.Temperature, &h.Disks, &h.DockerVer, &h.ServiceStatus, &h.SocketStatus, &h.APILatency, &h.StorageUsed, &h.StorageTotal, &h.InodesUsage, &h.LogsSize, &h.Volumes, &h.Networks, &h.GPUInfo, &h.ServerName, &h.IPAddress, &h.Status, &h.HostEvents); err != nil {
 			return nil, err
 		}
 		hosts = append(hosts, h)
@@ -1777,14 +1798,14 @@ func (d *DB) UpsertPodmanHost(h PodmanHost) (int64, error) {
 
 	if err == sql.ErrNoRows {
 		err = d.Conn.QueryRow(`
-			INSERT INTO containers.podman_hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, uptime, podman_version, podman_service_status, podman_api_latency, podman_storage_used, podman_storage_total, podman_inodes_usage, podman_volumes, podman_networks, gpu_info)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING id`,
-			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.Uptime, h.PodmanVer, h.ServiceStatus, h.APILatency, h.StorageUsed, h.StorageTotal, h.InodesUsage, h.Volumes, h.PodmanNetworks, h.GPUInfo).Scan(&id)
+			INSERT INTO containers.podman_hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, uptime, podman_version, podman_service_status, podman_api_latency, podman_storage_used, podman_storage_total, podman_inodes_usage, podman_volumes, podman_networks, gpu_info, host_events)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) RETURNING id`,
+			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.Uptime, h.PodmanVer, h.ServiceStatus, h.APILatency, h.StorageUsed, h.StorageTotal, h.InodesUsage, h.Volumes, h.PodmanNetworks, h.GPUInfo, h.HostEvents).Scan(&id)
 	} else if err == nil {
 		_, err = d.Conn.Exec(`
-			UPDATE containers.podman_hosts SET cpu_model=$1, cpu_cores=$2, total_memory=$3, free_memory=$4, cpu_usage=$5, os_name=$6, uptime=$7, podman_version=$8, podman_service_status=$9, podman_api_latency=$10, podman_storage_used=$11, podman_storage_total=$12, podman_inodes_usage=$13, podman_volumes=$14, podman_networks=$15, gpu_info=$16
-			WHERE id=$17`,
-			h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.Uptime, h.PodmanVer, h.ServiceStatus, h.APILatency, h.StorageUsed, h.StorageTotal, h.InodesUsage, h.Volumes, h.PodmanNetworks, h.GPUInfo, id)
+			UPDATE containers.podman_hosts SET cpu_model=$1, cpu_cores=$2, total_memory=$3, free_memory=$4, cpu_usage=$5, os_name=$6, uptime=$7, podman_version=$8, podman_service_status=$9, podman_api_latency=$10, podman_storage_used=$11, podman_storage_total=$12, podman_inodes_usage=$13, podman_volumes=$14, podman_networks=$15, gpu_info=$16, host_events=$17
+			WHERE id=$18`,
+			h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.Uptime, h.PodmanVer, h.ServiceStatus, h.APILatency, h.StorageUsed, h.StorageTotal, h.InodesUsage, h.Volumes, h.PodmanNetworks, h.GPUInfo, h.HostEvents, id)
 	}
 
 	return id, err
@@ -1810,7 +1831,7 @@ func (d *DB) UpsertPodmanContainer(c Container) error {
 
 func (d *DB) GetPodmanHosts() ([]PodmanHost, error) {
 	rows, err := d.Conn.Query(`
-		SELECT h.id, h.server_id, h.hostname, ps.name, ps.ip_address, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, h.uptime, h.podman_version, h.podman_service_status, h.podman_api_latency, h.podman_storage_used, h.podman_storage_total, h.podman_inodes_usage, h.podman_volumes, h.podman_networks, h.gpu_info, ps.status
+		SELECT h.id, h.server_id, h.hostname, ps.name, ps.ip_address, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, h.uptime, h.podman_version, h.podman_service_status, h.podman_api_latency, h.podman_storage_used, h.podman_storage_total, h.podman_inodes_usage, h.podman_volumes, h.podman_networks, h.gpu_info, ps.status, COALESCE(h.host_events, '[]')
 		FROM containers.podman_hosts h
 		JOIN containers.podman_servers ps ON h.server_id = ps.id`)
 	if err != nil {
@@ -1821,7 +1842,7 @@ func (d *DB) GetPodmanHosts() ([]PodmanHost, error) {
 	var hosts []PodmanHost
 	for rows.Next() {
 		var h PodmanHost
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.Uptime, &h.PodmanVer, &h.ServiceStatus, &h.APILatency, &h.StorageUsed, &h.StorageTotal, &h.InodesUsage, &h.Volumes, &h.PodmanNetworks, &h.GPUInfo, &h.Status); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.Uptime, &h.PodmanVer, &h.ServiceStatus, &h.APILatency, &h.StorageUsed, &h.StorageTotal, &h.InodesUsage, &h.Volumes, &h.PodmanNetworks, &h.GPUInfo, &h.Status, &h.HostEvents); err != nil {
 			return nil, err
 		}
 		hosts = append(hosts, h)

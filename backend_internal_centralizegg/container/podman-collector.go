@@ -353,10 +353,7 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 
 					// Map container -> networks
 					for _, c := range containers {
-						cName := c.Name
-						if strings.HasPrefix(cName, "/") {
-							cName = cName[1:]
-						}
+						cName := strings.TrimPrefix(c.Name, "/")
 
 						for netName, netConf := range c.NetworkSettings.Networks {
 							// Find the network in our list
@@ -387,6 +384,24 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 		}
 	}
 
+	// 10. Host Events (System Logs)
+	var hostEventsJSON = "[]"
+	logOut, err := pc.runCommand(client, "journalctl -n 10 --no-pager || tail -n 10 /var/log/syslog || tail -n 10 /var/log/messages || echo ''")
+	if err == nil {
+		output := strings.TrimSpace(logOut)
+		if output != "" {
+			events := strings.Split(output, "\n")
+			var filtered []string
+			for _, e := range events {
+				if strings.TrimSpace(e) != "" {
+					filtered = append(filtered, e)
+				}
+			}
+			b, _ := json.Marshal(filtered)
+			hostEventsJSON = string(b)
+		}
+	}
+
 	hostID, err := pc.DB.UpsertPodmanHost(data_centralizegg.PodmanHost{
 		ServerID:       s.ID,
 		Hostname:       hostname,
@@ -406,7 +421,11 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 		Volumes:        string(volumesJSON),
 		GPUInfo:        gpuJSON,
 		PodmanNetworks: networksJSON,
+		HostEvents:     hostEventsJSON,
 	})
+	if err == nil {
+		pc.DB.UpdateGenericServerHostEvents("podman", s.ID, hostEventsJSON)
+	}
 	if err != nil {
 		return fmt.Errorf("upsert podman host: %w", err)
 	}

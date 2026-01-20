@@ -331,8 +331,8 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 	sessionOOM, err := sshClient.NewSession()
 	if err == nil {
 		defer sessionOOM.Close()
-		// Return only the last 3 events as a simple list of strings
-		cmd := `dmesg | grep -i "oom-killer" | tail -n 3 || echo ""`
+		// Return only the last 5 events as a simple list of strings
+		cmd := `dmesg | grep -i "oom-killer" | tail -n 5 || echo ""`
 		oomOutput, err := sessionOOM.Output(cmd)
 		if err == nil {
 			output := strings.TrimSpace(string(oomOutput))
@@ -340,6 +340,31 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 				events := strings.Split(output, "\n")
 				b, _ := json.Marshal(events)
 				oomJSON = string(b)
+			}
+		}
+	}
+
+	// New session for Host Events (libvirt/kvm logs)
+	var hostEventsJSON = "[]"
+	sessionEvents, err := sshClient.NewSession()
+	if err == nil {
+		defer sessionEvents.Close()
+		// Collect last 10 libvirt/qemu related logs from journal
+		cmd := `journalctl -u libvirtd -n 10 --no-pager || journalctl -t libvirt -n 10 --no-pager || echo ""`
+		eventsOutput, err := sessionEvents.Output(cmd)
+		if err == nil {
+			output := strings.TrimSpace(string(eventsOutput))
+			if output != "" {
+				events := strings.Split(output, "\n")
+				// Filter out empty lines
+				var filtered []string
+				for _, e := range events {
+					if strings.TrimSpace(e) != "" {
+						filtered = append(filtered, e)
+					}
+				}
+				b, _ := json.Marshal(filtered)
+				hostEventsJSON = string(b)
 			}
 		}
 	}
@@ -361,6 +386,7 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 		Disks:            disksJSON,
 		BridgeInterfaces: bridgesJSON,
 		OOMEvents:        oomJSON,
+		HostEvents:       hostEventsJSON,
 	}
 
 	hostID, err := mc.DB.UpsertHost(h)
