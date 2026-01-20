@@ -1,37 +1,16 @@
-const API_HOSTS = '/api/hosts';
-// app.js - v1.2.1
-const API_VMS = '/api/vms';
-const API_CONFIG_SERVERS = '/api/config/servers';
-const API_FIREWALL_HOSTS = '/api/firewall/hosts';
-const API_FIREWALL_SERVERS = '/api/firewall/servers';
-const API_CONTAINER_HOSTS = '/api/containers/hosts';
-const API_CONTAINER_CONTAINERS = '/api/containers/containers';
-const API_KUBERNETES_NODES = '/api/kubernetes/nodes';
-const API_KUBERNETES_PODS = '/api/kubernetes/pods';
-const API_KUBERNETES_PVS = '/api/kubernetes/pvs';
-const API_KUBERNETES_EVENTS = '/api/kubernetes/events';
-const API_PODMAN_HOSTS = '/api/podman/hosts';
-const API_PODMAN_CONTAINERS = '/api/podman/containers';
-const API_PROXMOX_HOSTS = '/api/proxmox/hosts';
-const API_PROXMOX_VMS = '/api/proxmox/vms';
-const API_NAS_HOSTS = '/api/nas/hosts';
-const API_NAS_VOLUMES = '/api/nas/volumes';
-const API_NAS_DISKS = '/api/nas/disks';
+import {
+    API_HOSTS, API_VMS, API_CONFIG_SERVERS, API_FIREWALL_HOSTS,
+    API_FIREWALL_SERVERS, API_CONTAINER_HOSTS, API_CONTAINER_CONTAINERS,
+    API_KUBERNETES_NODES, API_KUBERNETES_PODS, API_KUBERNETES_PVS,
+    API_KUBERNETES_EVENTS, API_PODMAN_HOSTS, API_PODMAN_CONTAINERS,
+    API_PROXMOX_HOSTS, API_PROXMOX_VMS, API_NAS_HOSTS,
+    API_NAS_VOLUMES, API_NAS_DISKS, getConfigAPIForTool
+} from './js/api.js';
 
-// Helper function to get config API endpoint for current tool
-function getConfigAPIForTool(toolKey) {
-    const apiMap = {
-        'kvm': API_CONFIG_SERVERS,
-        'pfsense': API_FIREWALL_SERVERS,
-        'proxmox': '/api/config/proxmox',
-        'nas': '/api/config/nas',
-        'ceph': '/api/config/ceph',
-        'docker': '/api/config/docker',
-        'podman': '/api/config/podman',
-        'kubernetes': '/api/config/kubernetes'
-    };
-    return apiMap[toolKey] || API_CONFIG_SERVERS;
-}
+import {
+    debounce, formatBytes, getStatusColor, getRelativeTime, playAlertSound
+} from './js/utils.js';
+
 
 // Global state
 let currentTool = 'virtualization'; // default
@@ -46,32 +25,6 @@ let lastNotificationCount = 0; // Track previous count for sound
 let lastReminderSoundTime = 0; // Track last time persistent alert sound was played
 
 // Sound Effect: Web Audio API Oscillator (Clean "Ping")
-const playAlertSound = () => {
-    try {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        if (!AudioContext) return;
-
-        const ctx = new AudioContext();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-
-        // Sound design: High pitch ping suitable for alerts
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(1200, ctx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.3);
-
-        gain.gain.setValueAtTime(0.1, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
-
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-
-        osc.start();
-        osc.stop(ctx.currentTime + 0.3);
-    } catch (e) {
-        console.warn("Audio play failed", e);
-    }
-};
 let selectedHostId = null;
 
 // Cache for search
@@ -780,9 +733,9 @@ if (searchBtn && searchInput) {
     });
 }
 
-searchInput?.addEventListener('input', (e) => {
+const debouncedSearch = debounce((e) => {
     searchQuery = e.target.value.toLowerCase().trim();
-    console.log('[DEBUG] Search Query:', searchQuery);
+    console.log('[DEBUG] Search Query (Debounced):', searchQuery);
 
     selectedSuggestionIndex = -1; // Reset selection
     updateSuggestions();
@@ -814,7 +767,9 @@ searchInput?.addEventListener('input', (e) => {
             }
         }
     }
-});
+}, 300);
+
+searchInput?.addEventListener('input', debouncedSearch);
 
 searchInput?.addEventListener('keydown', (e) => {
     const items = suggestionsContainer.querySelectorAll('.suggestion-item');
@@ -928,7 +883,7 @@ function updateSuggestions() {
     const limitedSuggestions = suggestions.slice(0, 8);
 
     suggestionsContainer.innerHTML = limitedSuggestions.map((s, idx) => `
-        <div class="suggestion-item" onclick="applySuggestion('${s.type}', '${s.id}', '${s.title.replace(/'/g, "\\'")}', '${s.tool}')">
+        <div class="suggestion-item ${idx === selectedSuggestionIndex ? 'selected' : ''}" onclick="applySuggestion('${s.type}', '${s.id}', '${s.title.replace(/'/g, "\\'")}', '${s.tool}')">
             <i class="${s.icon}"></i>
             <div class="suggestion-content">
                 <span class="suggestion-title">${s.title}</span>
@@ -1762,21 +1717,24 @@ function renderHostNodes(containerId = 'host-nodes-container', config = {}) {
 
     if (customFilter) {
         filteredHosts = hostsData.filter(customFilter);
-    } else {
-        filteredHosts = hostsData.filter(host => {
-            if (!searchQuery) return true;
+    } else if (searchQuery) {
+        // Pre-calculate which hosts have matching VMs to avoid O(N*M) check in filter loop
+        const hostsWithMatchingVMs = new Set();
+        if (currentTool === 'kvm') {
+            allVMsCache.forEach(vm => {
+                if (vm.name.toLowerCase().includes(searchQuery)) {
+                    hostsWithMatchingVMs.add(vm.host_id);
+                }
+            });
+        }
 
+        filteredHosts = hostsData.filter(host => {
             const matchesHost = host.server_name?.toLowerCase().includes(searchQuery) ||
                 host.hostname?.toLowerCase().includes(searchQuery) ||
                 host.ip_address?.toLowerCase().includes(searchQuery) ||
                 (host.os_name && host.os_name.toLowerCase().includes(searchQuery));
 
-            // Also show host if any of its VMs match (for KVM)
-            const hasMatchingVM = allVMsCache.some(vm =>
-                vm.host_id === host.id && vm.name.toLowerCase().includes(searchQuery)
-            );
-
-            return matchesHost || hasMatchingVM;
+            return matchesHost || hostsWithMatchingVMs.has(host.id);
         });
     }
 
@@ -2115,7 +2073,7 @@ function renderVMs() {
             const currentTx = net.tx.length > 0 ? net.tx[net.tx.length - 1] : 0;
 
             return `
-                <div class="vm-row state-${vm.state.toLowerCase()}" style="display: grid; grid-template-columns: ${gridCols}; gap: 15px; padding: 12px 10px; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); transition: all 0.2s ease;">
+                <div class="vm-row state-${vm.state.toLowerCase()}" style="grid-template-columns: ${gridCols};">
                     <!-- Name & OS / IP Unified -->
                     <div style="display: flex; align-items: center; gap: 12px; overflow: hidden;">
                         <i class="fa-solid fa-desktop" style="color: ${isRunning ? '#4ade80' : '#ef4444'}; font-size: 1.1rem; opacity: 0.8;"></i>
@@ -5226,6 +5184,7 @@ async function checkServerStatus() {
         lastNotificationCount = offlineServers.length;
 
         if (badge && list) {
+            const now = new Date();
             if (offlineServers.length > 0) {
                 badge.textContent = offlineServers.length;
                 badge.classList.remove('hidden');
@@ -5233,7 +5192,6 @@ async function checkServerStatus() {
                     let offlineTimeStr = '';
                     if (s.offline_since) {
                         const offlineDate = new Date(s.offline_since);
-                        const now = new Date();
                         const diffMs = now - offlineDate;
                         const diffMins = Math.floor(diffMs / 60000);
                         const diffHours = Math.floor(diffMins / 60);
@@ -5276,6 +5234,7 @@ async function checkServerStatus() {
 
 // Auto-refresh
 function refreshAll() {
+    if (document.hidden) return; // Skip background updates to save resources
     checkServerStatus();
     if (currentTool === 'kvm') {
         fetchHosts();
@@ -5291,6 +5250,7 @@ function refreshAll() {
 // Auto-refresh every 10 seconds. renderFromData already skips redraw if topology unchanged.
 setInterval(refreshAll, 10000);
 checkServerStatus(); // Run immediately
+
 
 
 
@@ -5324,29 +5284,6 @@ function renderHostEvents(host_events_json, type = 'host') {
     `;
 }
 
-function formatBytes(bytes, decimals = 2) {
-    if (bytes === undefined || bytes === null || isNaN(bytes)) return '0 Bytes';
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const dm = decimals < 0 ? 0 : decimals;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
-}
-
-function getRelativeTime(date) {
-    const now = new Date();
-    const diffMs = now - date;
-    const diffSec = Math.floor(diffMs / 1000);
-    const diffMin = Math.floor(diffSec / 60);
-    const diffHour = Math.floor(diffMin / 60);
-    const diffDay = Math.floor(diffHour / 24);
-
-    if (diffSec < 60) return `${diffSec}s`;
-    if (diffMin < 60) return `${diffMin}m`;
-    if (diffHour < 24) return `${diffHour}h`;
-    return `${diffDay}d`;
-}
 
 function getOSIcon(osName) {
     if (!osName) return 'fa-brands fa-linux';
@@ -6158,12 +6095,6 @@ window.selectFirewallHost = selectFirewallHost;
 window.renderFirewallHostDetails = renderFirewallHostDetails;
 
 // Restore Helper Functions
-function getStatusColor(percent) {
-    const val = parseFloat(percent);
-    if (val < 80) return '#4ade80'; // Success Green
-    if (val < 95) return '#fb923c'; // Warning Orange
-    return '#ef4444'; // Critical Red
-}
 
 // Documentation System
 function closeDocDrawer() {

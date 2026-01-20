@@ -365,6 +365,19 @@ header {
     box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
 }
 
+.glass-card-sm {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    padding: 12px;
+    transition: all 0.2s ease;
+}
+
+.glass-card-sm:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
 /* Host Section */
 .host-section {
     padding: 0;
@@ -486,6 +499,19 @@ header {
     flex-direction: column;
     gap: 0.75rem;
     margin-top: 1rem;
+}
+
+.vm-row {
+    display: grid;
+    gap: 15px;
+    padding: 12px 10px;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    transition: all 0.2s ease;
+}
+
+.vm-row:hover {
+    background: rgba(255, 255, 255, 0.02);
 }
 
 .vm-card {
@@ -828,6 +854,58 @@ header {
 
 .nala-btn:active {
     transform: translateY(0);
+}
+
+.suggestion-item {
+    padding: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    transition: background 0.2s;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.suggestion-item:last-child {
+    border-bottom: none;
+}
+
+.suggestion-item:hover,
+.suggestion-item.selected {
+    background: rgba(56, 189, 248, 0.1);
+}
+
+.suggestion-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    overflow: hidden;
+}
+
+.suggestion-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.suggestion-subtitle {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    opacity: 0.8;
+}
+
+.suggestion-category {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: var(--accent-color);
+    background: rgba(56, 189, 248, 0.1);
+    padding: 2px 6px;
+    border-radius: 4px;
+    text-transform: uppercase;
 }
 
 /* Popovers */
