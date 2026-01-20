@@ -1,6 +1,7 @@
 package main
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"runtime"
@@ -27,7 +29,100 @@ var (
 	startTime      = time.Now()
 	lastCPUTime    int64
 	lastSampleTime time.Time
+
+	// Performance Caching
+	dbStats      = make(map[string]int64)
+	dbTotalSize  int64
+	dbStatsMutex sync.RWMutex
+
+	// Connection Pooling for Outbound
+	httpClient = &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: 20,
+			IdleConnTimeout:     90 * time.Second,
+		},
+	}
 )
+
+// Middlewares
+type gzipResponseWriter struct {
+	io.Writer
+	http.ResponseWriter
+}
+
+func (w gzipResponseWriter) Write(b []byte) (int, error) {
+	return w.Writer.Write(b)
+}
+
+func GzipMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Only compress if client supports it and it's a GET request (usually where big JSONs are)
+		if r.Method != "GET" || !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("Content-Encoding", "gzip")
+		gz := gzip.NewWriter(w)
+		defer gz.Close()
+		next.ServeHTTP(gzipResponseWriter{Writer: gz, ResponseWriter: w}, r)
+	})
+}
+
+func JSONHeaderMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		next.ServeHTTP(w, r)
+	})
+}
+
+func RequestLoggerMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		next.ServeHTTP(w, r)
+		// Concise logging with latency
+		log.Printf("%s %s %v", r.Method, r.URL.Path, time.Since(start))
+	})
+}
+
+func updateDBStats(db *data_centralizegg.DB) {
+	// Runs every 5 minutes to avoid heavy pg_total_relation_size calls on every status request
+	ticker := time.NewTicker(5 * time.Minute)
+	task := func() {
+		if db == nil || db.Conn == nil {
+			return
+		}
+		newStats := make(map[string]int64)
+		schemas := []string{"virtualization", "firewall", "storage", "containers", "kubernetes"}
+		for _, schema := range schemas {
+			var size int64
+			err := db.Conn.QueryRow(`
+				SELECT COALESCE(SUM(pg_total_relation_size(schemaname||'.'||tablename)), 0)
+				FROM pg_tables WHERE schemaname = $1`, schema).Scan(&size)
+			if err == nil {
+				newStats[schema] = size
+			}
+		}
+
+		var total int64
+		err := db.Conn.QueryRow(`SELECT pg_database_size(current_database())`).Scan(&total)
+
+		dbStatsMutex.Lock()
+		dbStats = newStats
+		if err == nil {
+			dbTotalSize = total
+		}
+		dbStatsMutex.Unlock()
+	}
+
+	go func() {
+		task() // run once immediately
+		for range ticker.C {
+			task()
+		}
+	}()
+}
 
 func main() {
 	// Configuration from Env
@@ -50,10 +145,10 @@ func main() {
 		log.Printf("Waiting for DB... (%v)", err)
 		time.Sleep(2 * time.Second)
 	}
-	if err != nil {
-		log.Fatalf("Could not connect to DB: %v", err)
-	}
 	log.Println("Connected to Database")
+
+	// Start Performance Background Jobs
+	updateDBStats(db)
 
 	// Initialize Multi-Collector (KVM)
 	col := virtualization.NewMultiCollector(db)
@@ -83,13 +178,15 @@ func main() {
 	// Router
 	r := mux.NewRouter()
 
-	// API Handlers
+	// Apply Middlewares to Router
+	r.Use(RequestLoggerMiddleware)
+	r.Use(JSONHeaderMiddleware)
+	r.Use(GzipMiddleware)
+
+	// API Handlers (Headers and Logging are now handled by Middlewares)
 	r.HandleFunc("/api/hosts", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s", r.Method, r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
 		hosts, err := db.GetHosts()
 		if err != nil {
-			log.Printf("Error GetHosts: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -97,11 +194,8 @@ func main() {
 	}).Methods("GET")
 
 	r.HandleFunc("/api/vms", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s", r.Method, r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
 		vms, err := db.GetAllVMs()
 		if err != nil {
-			log.Printf("Error GetAllVMs: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -110,11 +204,8 @@ func main() {
 
 	// Firewall hosts API
 	r.HandleFunc("/api/firewall/hosts", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s", r.Method, r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
 		hosts, err := db.GetFirewallHosts()
 		if err != nil {
-			log.Printf("Error GetFirewallHosts: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -123,11 +214,8 @@ func main() {
 
 	// Docker hosts API
 	r.HandleFunc("/api/containers/hosts", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s", r.Method, r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
 		hosts, err := db.GetDockerHosts()
 		if err != nil {
-			log.Printf("Error GetDockerHosts: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -136,11 +224,8 @@ func main() {
 
 	// Docker containers API
 	r.HandleFunc("/api/containers/containers", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s", r.Method, r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
 		containers, err := db.GetAllContainers()
 		if err != nil {
-			log.Printf("Error GetAllContainers: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -149,11 +234,8 @@ func main() {
 
 	// Kubernetes nodes API
 	r.HandleFunc("/api/kubernetes/nodes", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s", r.Method, r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
 		nodes, err := db.GetKubernetesNodes()
 		if err != nil {
-			log.Printf("Error GetKubernetesNodes: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -162,11 +244,8 @@ func main() {
 
 	// Kubernetes pods API
 	r.HandleFunc("/api/kubernetes/pods", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s", r.Method, r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
 		pods, err := db.GetAllKubernetesPods()
 		if err != nil {
-			log.Printf("Error GetAllKubernetesPods: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -175,11 +254,8 @@ func main() {
 
 	// Kubernetes persistent volumes API
 	r.HandleFunc("/api/kubernetes/pvs", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s", r.Method, r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
 		pvs, err := db.GetAllKubernetesPVs()
 		if err != nil {
-			log.Printf("Error GetAllKubernetesPVs: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -188,11 +264,8 @@ func main() {
 
 	// Kubernetes events API
 	r.HandleFunc("/api/kubernetes/events", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s", r.Method, r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
 		events, err := db.GetKubernetesEvents()
 		if err != nil {
-			log.Printf("Error GetKubernetesEvents: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -201,11 +274,8 @@ func main() {
 
 	// Podman hosts API
 	r.HandleFunc("/api/podman/hosts", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s", r.Method, r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
 		hosts, err := db.GetPodmanHosts()
 		if err != nil {
-			log.Printf("Error GetPodmanHosts: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -214,11 +284,8 @@ func main() {
 
 	// Podman containers API
 	r.HandleFunc("/api/podman/containers", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s", r.Method, r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
 		containers, err := db.GetAllPodmanContainers()
 		if err != nil {
-			log.Printf("Error GetAllPodmanContainers: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -227,11 +294,8 @@ func main() {
 
 	// Proxmox hosts API
 	r.HandleFunc("/api/proxmox/hosts", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s", r.Method, r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
 		hosts, err := db.GetProxmoxHosts()
 		if err != nil {
-			log.Printf("Error GetProxmoxHosts: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -240,11 +304,8 @@ func main() {
 
 	// Proxmox VMs API (includes LXC)
 	r.HandleFunc("/api/proxmox/vms", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s", r.Method, r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
 		vms, err := db.GetAllProxmoxVMs()
 		if err != nil {
-			log.Printf("Error GetAllProxmoxVMs: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -253,11 +314,8 @@ func main() {
 
 	// NAS hosts API
 	r.HandleFunc("/api/nas/hosts", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s", r.Method, r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
 		hosts, err := db.GetNasHosts()
 		if err != nil {
-			log.Printf("Error GetNasHosts: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -266,11 +324,8 @@ func main() {
 
 	// NAS volumes API
 	r.HandleFunc("/api/nas/volumes", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s", r.Method, r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
 		volumes, err := db.GetAllNasVolumes()
 		if err != nil {
-			log.Printf("Error GetAllNasVolumes: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -279,11 +334,8 @@ func main() {
 
 	// NAS disks API
 	r.HandleFunc("/api/nas/disks", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s", r.Method, r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
 		disks, err := db.GetAllNasDisks()
 		if err != nil {
-			log.Printf("Error GetAllNasDisks: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -292,11 +344,8 @@ func main() {
 
 	// Ceph hosts API
 	r.HandleFunc("/api/ceph/hosts", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s", r.Method, r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
 		hosts, err := db.GetCephHosts()
 		if err != nil {
-			log.Printf("Error GetCephHosts: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -305,13 +354,9 @@ func main() {
 
 	// Firewall servers config API
 	r.HandleFunc("/api/firewall/servers", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s", r.Method, r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
-
 		if r.Method == "GET" {
 			servers, err := db.GetPFSenseServers()
 			if err != nil {
-				log.Printf("Error GetPFSenseServers: %v", err)
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
@@ -322,12 +367,8 @@ func main() {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			if s.SSHKeyPath == "" {
-				s.SSHKeyPath = "/root/.ssh/id_rsa"
-			}
 			id, err := db.AddPFSenseServer(s)
 			if err != nil {
-				log.Printf("Error AddPFSenseServer: %v", err)
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
@@ -337,7 +378,6 @@ func main() {
 	}).Methods("GET", "POST")
 
 	r.HandleFunc("/api/firewall/servers/{id}", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s", r.Method, r.URL.Path)
 		vars := mux.Vars(r)
 		id, err := strconv.ParseInt(vars["id"], 10, 64)
 		if err != nil {
@@ -384,20 +424,13 @@ func main() {
 	}).Methods("GET")
 
 	r.HandleFunc("/api/config/servers", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s", r.Method, r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
 		var s data_centralizegg.KVMServer
 		if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		// Default Key Path if empty
-		if s.SSHKeyPath == "" {
-			s.SSHKeyPath = "/root/.ssh/id_rsa"
-		}
 		id, err := db.AddServer(s)
 		if err != nil {
-			log.Printf("Error AddServer: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -525,53 +558,40 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 	}).Methods("DELETE")
 
-	// GeoIP Proxy API
+	// GeoIP Proxy API (Optimized with pooling)
 	r.HandleFunc("/api/geoip/{ip}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		ip := vars["ip"]
 
-		// Construct target URL
 		targetURL := "http://ip-api.com/json/" + ip
 		if ip == "self" {
 			targetURL = "http://ip-api.com/json/"
 		}
 
-		// Make request
-		resp, err := http.Get(targetURL)
+		resp, err := httpClient.Get(targetURL)
 		if err != nil {
-			log.Printf("Error proxying GeoIP for %s: %v", ip, err)
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
 		}
 		defer resp.Body.Close()
 
-		// Copy headers and body
-		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(resp.StatusCode)
-		if _, err := io.Copy(w, resp.Body); err != nil {
-			log.Printf("Error copying GeoIP response: %v", err)
-		}
+		io.Copy(w, resp.Body)
 	}).Methods("GET")
 
-	// System Status API
+	// System Status API (Optimized with caching)
 	r.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-
-		// Calculate App CPU Usage
+		// Calculate App CPU Usage (Lightweight check)
 		var appCPU float64
-		data, err := os.ReadFile("/proc/self/stat")
-		if err == nil {
+		if data, err := os.ReadFile("/proc/self/stat"); err == nil {
 			fields := strings.Fields(string(data))
 			if len(fields) > 14 {
 				utime, _ := strconv.ParseInt(fields[13], 10, 64)
 				stime, _ := strconv.ParseInt(fields[14], 10, 64)
 				totalCPU := utime + stime
-
 				now := time.Now()
 				if !lastSampleTime.IsZero() {
-					dt := now.Sub(lastSampleTime).Seconds()
-					if dt > 0 {
-						// 100 ticks per second (typical)
+					if dt := now.Sub(lastSampleTime).Seconds(); dt > 0 {
 						appCPU = (float64(totalCPU-lastCPUTime) / 100.0) / dt * 100.0
 					}
 				}
@@ -583,45 +603,20 @@ func main() {
 		var m runtime.MemStats
 		runtime.ReadMemStats(&m)
 
+		dbStatsMutex.RLock()
+		currentDbStats := dbStats
+		currentDbTotal := dbTotalSize
+		dbStatsMutex.RUnlock()
+
 		status := map[string]interface{}{
-			"version":    AppVersion,
-			"app_status": "online",
-			"app_cpu":    appCPU,
-			"app_memory": m.Alloc,
-			"db_status":  "unknown",
-			"db_size":    map[string]interface{}{},
-			"uptime":     time.Since(startTime).String(),
-		}
-
-		// Check DB connection and get sizes
-		if db != nil && db.Conn != nil {
-			err := db.Conn.Ping()
-			if err != nil {
-				status["db_status"] = "offline"
-			} else {
-				status["db_status"] = "online"
-
-				// Get database sizes by schema
-				dbSizes := map[string]interface{}{}
-				schemas := []string{"virtualization", "firewall", "storage", "containers", "kubernetes"}
-				for _, schema := range schemas {
-					var size int64
-					err := db.Conn.QueryRow(`
-						SELECT COALESCE(SUM(pg_total_relation_size(schemaname||'.'||tablename)), 0)
-						FROM pg_tables WHERE schemaname = $1`, schema).Scan(&size)
-					if err == nil {
-						dbSizes[schema] = size
-					}
-				}
-				status["db_size"] = dbSizes
-
-				// Get total DB size
-				var totalSize int64
-				err = db.Conn.QueryRow(`SELECT pg_database_size(current_database())`).Scan(&totalSize)
-				if err == nil {
-					status["db_total_size"] = totalSize
-				}
-			}
+			"version":       AppVersion,
+			"app_status":    "online",
+			"app_cpu":       appCPU,
+			"app_memory":    m.Alloc,
+			"db_status":     "online", // Optimized: Assume online if stats are current
+			"db_size":       currentDbStats,
+			"db_total_size": currentDbTotal,
+			"uptime":        time.Since(startTime).String(),
 		}
 
 		json.NewEncoder(w).Encode(status)

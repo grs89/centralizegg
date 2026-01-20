@@ -317,6 +317,11 @@ func NewPostgresDB(connStr string) (*DB, error) {
 		return nil, fmt.Errorf("failed to ping db: %w", err)
 	}
 
+	// Performance optimization: Configure connection pool
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(5 * time.Minute)
+
 	// Run migrations
 	ensureSchema(db)
 
