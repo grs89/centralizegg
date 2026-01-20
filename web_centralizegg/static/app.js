@@ -4485,7 +4485,15 @@ function renderSettingsSidebar() {
             <i class="${config.icon}"></i>
             <span>${config.name}</span>
         </div>
-        `).join('');
+        `).join('') + `
+        <div style="flex: 1;"></div>
+        <div style="border-top: 1px solid var(--glass-border); margin-top: 15px; padding-top: 15px;">
+            <div class="settings-menu-item ${settingsCurrentCategory === 'status' ? 'active' : ''}" data-category="status">
+                <i class="fa-solid fa-circle-info"></i>
+                <span>Status</span>
+            </div>
+        </div>
+    `;
 
     // Re-attach listeners to new items
     const menuItems = sidebar.querySelectorAll('.settings-menu-item');
@@ -4493,7 +4501,12 @@ function renderSettingsSidebar() {
         item.addEventListener('click', () => {
             menuItems.forEach(i => i.classList.remove('active'));
             item.classList.add('active');
-            loadSettingsCategory(item.dataset.category);
+            const category = item.dataset.category;
+            if (category === 'status') {
+                showStatusPanel();
+            } else {
+                loadSettingsCategory(category);
+            }
         });
     });
 }
@@ -4623,6 +4636,14 @@ async function loadSettingsCategory(category) {
         title.innerText = config.title;
     }
 
+    // Restore description paragraph if hidden
+    const descEl = title?.parentElement?.querySelector('p');
+    if (descEl) descEl.style.display = '';
+
+    // Restore managed servers section if hidden
+    const managedServers = document.querySelector('.settings-managed-servers');
+    if (managedServers) managedServers.style.display = '';
+
     resetSettingsForm();
     renderSettingsServerList();
 }
@@ -4668,6 +4689,162 @@ async function renderSettingsServerList() {
         }).join('');
     } catch (e) {
         listContainer.innerHTML = '<div style="grid-column: 1/-1; color: var(--danger); text-align: center;">Error al cargar servidores.</div>';
+    }
+}
+
+// Show Status Panel
+async function showStatusPanel() {
+    settingsCurrentCategory = 'status';
+    const contentWrapper = document.querySelector('.settings-content-wrapper');
+    if (!contentWrapper) return;
+
+    // Update title
+    const titleEl = document.getElementById('settings-category-title');
+    if (titleEl) {
+        titleEl.innerHTML = '<i class="fa-solid fa-circle-info"></i> Estado del Sistema';
+    }
+
+    // Hide description paragraph
+    const descEl = titleEl?.parentElement?.querySelector('p');
+    if (descEl) descEl.style.display = 'none';
+
+    // Hide the form and managed servers section
+    const formContainer = document.querySelector('.settings-form-container');
+    const managedServers = document.querySelector('.settings-managed-servers');
+
+    if (formContainer) {
+        formContainer.innerHTML = `
+            <div style="text-align: center; padding: 60px;">
+                <i class="fa-solid fa-spinner fa-spin" style="font-size: 2rem; color: var(--accent-color);"></i>
+                <p style="margin-top: 15px; color: var(--text-secondary);">Cargando información del sistema...</p>
+            </div>
+        `;
+    }
+
+    if (managedServers) managedServers.style.display = 'none';
+
+    try {
+        const response = await fetch('/api/status');
+        const status = await response.json();
+
+        const formatBytes = (bytes) => {
+            if (!bytes || bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        };
+
+        const dbSizes = status.db_size || {};
+        const maxDbSize = Math.max(...Object.values(dbSizes), 1);
+        const schemaRows = Object.entries(dbSizes).map(([schema, size]) => {
+            const percentage = Math.max((size / maxDbSize) * 100, 2); // min 2% for visibility
+            return `
+                <div style="margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9rem;">
+                        <span style="text-transform: capitalize; font-weight: 600; color: var(--text-primary);">${schema}</span>
+                        <span style="color: var(--accent-color); font-weight: 700;">${formatBytes(size)}</span>
+                    </div>
+                    <div style="height: 10px; background: rgba(255,255,255,0.05); border-radius: 5px; overflow: hidden; position: relative;">
+                        <div style="position: absolute; left: 0; top: 0; width: ${percentage}%; height: 100%; background: linear-gradient(90deg, var(--accent-color), #8b5cf6); box-shadow: 0 0 15px rgba(56, 189, 248, 0.4); border-radius: 5px; transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);"></div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        formContainer.innerHTML = `
+            <div style="display: flex; flex-direction: column; gap: 24px; max-width: 800px; margin: 0 auto;">
+                
+                <!-- Main Status Banner -->
+                <div style="background: linear-gradient(135deg, rgba(56, 189, 248, 0.1), rgba(139, 92, 246, 0.1)); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 20px; padding: 30px; display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; align-items: center; gap: 20px;">
+                        <div style="width: 64px; height: 64px; background: var(--accent-color); border-radius: 16px; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 16px rgba(56, 189, 248, 0.3);">
+                            <i class="fa-solid fa-server" style="font-size: 2rem; color: white;"></i>
+                        </div>
+                        <div>
+                            <h3 style="margin: 0; font-size: 1.4rem; color: var(--text-primary);">CentralizeGG Engine</h3>
+                            <p style="margin: 5px 0 0 0; color: var(--text-secondary);">Versión ${status.version || '1.2.0'} • Activo desde hace ${status.uptime ? status.uptime.split('.')[0] : 'n/a'}</p>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 12px;">
+                         <div style="padding: 10px 20px; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 12px; display: flex; align-items: center; gap: 8px;">
+                            <i class="fa-solid fa-circle" style="font-size: 0.6rem; color: var(--success);"></i>
+                            <span style="color: var(--success); font-weight: 700; text-transform: uppercase; font-size: 0.8rem;">APP ${status.app_status}</span>
+                         </div>
+                         <div style="padding: 10px 20px; background: rgba(${status.db_status === 'online' ? '34, 197, 94' : '239, 68, 68'}, 0.1); border: 1px solid rgba(${status.db_status === 'online' ? '34, 197, 94' : '239, 68, 68'}, 0.3); border-radius: 12px; display: flex; align-items: center; gap: 8px;">
+                            <i class="fa-solid fa-database" style="color: ${status.db_status === 'online' ? 'var(--success)' : 'var(--danger)'};"></i>
+                            <span style="color: ${status.db_status === 'online' ? 'var(--success)' : 'var(--danger)'}; font-weight: 700; text-transform: uppercase; font-size: 0.8rem;">DB ${status.db_status}</span>
+                         </div>
+                    </div>
+                </div>
+
+                <!-- Metrics Grid -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <!-- CPU Usage -->
+                    <div style="background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 20px; padding: 25px; display: flex; align-items: center; gap: 25px;">
+                        <div style="position: relative; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center;">
+                            <svg viewBox="0 0 36 36" style="width: 100%; height: 100%; transform: rotate(-90deg);">
+                                <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="3" />
+                                <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="var(--accent-color)" stroke-width="3" stroke-dasharray="${status.app_cpu || 0}, 100" />
+                            </svg>
+                            <span style="position: absolute; font-size: 1.2rem; font-weight: 700; color: var(--text-primary);">${(status.app_cpu || 0).toFixed(1)}%</span>
+                        </div>
+                        <div>
+                            <h4 style="margin: 0; color: var(--text-secondary); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px;">Carga CPU</h4>
+                            <p style="margin: 5px 0 0 0; font-size: 0.85rem; color: var(--text-secondary);">Recursos consumidos por el motor</p>
+                        </div>
+                    </div>
+
+                    <!-- Memory Usage -->
+                    <div style="background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 20px; padding: 25px; display: flex; align-items: center; gap: 25px;">
+                        <div style="width: 80px; height: 80px; background: rgba(139, 92, 246, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid rgba(139, 92, 246, 0.3);">
+                            <i class="fa-solid fa-memory" style="font-size: 1.8rem; color: #a78bfa;"></i>
+                        </div>
+                        <div>
+                            <h4 style="margin: 0; color: var(--text-secondary); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px;">Memoria RAM</h4>
+                            <p style="margin: 5px 0 0 0; font-size: 1.2rem; font-weight: 700; color: var(--text-primary);">${formatBytes(status.app_memory)}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Comparative DB Sizes -->
+                <div style="background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 20px; padding: 30px;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px;">
+                        <div>
+                            <h3 style="margin: 0; font-size: 1.2rem; color: var(--text-primary);"><i class="fa-solid fa-chart-bar" style="margin-right: 12px; color: var(--accent-color);"></i>Distribución de Datos</h3>
+                            <p style="margin: 5px 0 0 0; color: var(--text-secondary); font-size: 0.9rem;">Comparativa de tamaño por módulo de infraestructura</p>
+                        </div>
+                        <div style="text-align: right;">
+                            <span style="display: block; font-size: 1.4rem; font-weight: 700; color: var(--accent-color);">${formatBytes(status.db_total_size)}</span>
+                            <span style="font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase;">Tamaño Total</span>
+                        </div>
+                    </div>
+                    
+                    <div style="padding: 10px 0;">
+                        ${schemaRows || '<p style="color: var(--text-secondary); text-align: center;">Sin datos disponibles</p>'}
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div style="text-align: center; border-top: 1px solid var(--glass-border); padding-top: 20px; margin-top: 10px;">
+                    <p style="color: var(--text-secondary); font-size: 0.8rem; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                        <i class="fa-solid fa-shield-halved" style="color: var(--accent-color);"></i>
+                        Sistema de monitoreo interno activo v${status.version || '1.0.0'}
+                        <span style="opacity: 0.3;">|</span>
+                        <i class="fa-solid fa-clock"></i>
+                        Actualizado: ${new Date().toLocaleTimeString('es-ES')}
+                    </p>
+                </div>
+            </div>
+        `;
+    } catch (e) {
+        console.error('[Status] Error:', e);
+        formContainer.innerHTML = `
+            <div style="text-align: center; padding: 60px; color: var(--danger);">
+                <i class="fa-solid fa-exclamation-triangle" style="font-size: 2rem; margin-bottom: 15px;"></i>
+                <p>Error al obtener el estado del sistema</p>
+            </div>
+        `;
     }
 }
 

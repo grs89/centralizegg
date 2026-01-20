@@ -10,12 +10,23 @@ import (
 	"strconv"
 	"time"
 
+	"runtime"
+	"strings"
+
 	"github.com/gorilla/mux"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/container"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/data_centralizegg"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/firewall"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/storage"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/virtualization"
+)
+
+const AppVersion = "1.0.0"
+
+var (
+	startTime      = time.Now()
+	lastCPUTime    int64
+	lastSampleTime time.Time
 )
 
 func main() {
@@ -540,6 +551,80 @@ func main() {
 		if _, err := io.Copy(w, resp.Body); err != nil {
 			log.Printf("Error copying GeoIP response: %v", err)
 		}
+	}).Methods("GET")
+
+	// System Status API
+	r.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		// Calculate App CPU Usage
+		var appCPU float64
+		data, err := os.ReadFile("/proc/self/stat")
+		if err == nil {
+			fields := strings.Fields(string(data))
+			if len(fields) > 14 {
+				utime, _ := strconv.ParseInt(fields[13], 10, 64)
+				stime, _ := strconv.ParseInt(fields[14], 10, 64)
+				totalCPU := utime + stime
+
+				now := time.Now()
+				if !lastSampleTime.IsZero() {
+					dt := now.Sub(lastSampleTime).Seconds()
+					if dt > 0 {
+						// 100 ticks per second (typical)
+						appCPU = (float64(totalCPU-lastCPUTime) / 100.0) / dt * 100.0
+					}
+				}
+				lastCPUTime = totalCPU
+				lastSampleTime = now
+			}
+		}
+
+		var m runtime.MemStats
+		runtime.ReadMemStats(&m)
+
+		status := map[string]interface{}{
+			"version":    AppVersion,
+			"app_status": "online",
+			"app_cpu":    appCPU,
+			"app_memory": m.Alloc,
+			"db_status":  "unknown",
+			"db_size":    map[string]interface{}{},
+			"uptime":     time.Since(startTime).String(),
+		}
+
+		// Check DB connection and get sizes
+		if db != nil && db.Conn != nil {
+			err := db.Conn.Ping()
+			if err != nil {
+				status["db_status"] = "offline"
+			} else {
+				status["db_status"] = "online"
+
+				// Get database sizes by schema
+				dbSizes := map[string]interface{}{}
+				schemas := []string{"virtualization", "firewall", "storage", "containers", "kubernetes"}
+				for _, schema := range schemas {
+					var size int64
+					err := db.Conn.QueryRow(`
+						SELECT COALESCE(SUM(pg_total_relation_size(schemaname||'.'||tablename)), 0)
+						FROM pg_tables WHERE schemaname = $1`, schema).Scan(&size)
+					if err == nil {
+						dbSizes[schema] = size
+					}
+				}
+				status["db_size"] = dbSizes
+
+				// Get total DB size
+				var totalSize int64
+				err = db.Conn.QueryRow(`SELECT pg_database_size(current_database())`).Scan(&totalSize)
+				if err == nil {
+					status["db_total_size"] = totalSize
+				}
+			}
+		}
+
+		json.NewEncoder(w).Encode(status)
 	}).Methods("GET")
 
 	// Static Files
