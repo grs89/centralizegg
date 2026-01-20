@@ -56,8 +56,14 @@ let allContainersCache = [];
 let allPodsCache = [];
 let allPodmanContainersCache = [];
 let allProxmoxVMsCache = [];
-let allNasVolumesCache = [];
 let allNasDisksCache = [];
+let allDockerHostsCache = [];
+let allPodmanHostsCache = [];
+let allKubernetesHostsCache = [];
+let allFirewallHostsCache = [];
+let allNasHostsCache = [];
+let allProxmoxHostsCache = [];
+let allKVMHostsCache = [];
 
 function updateNetworkHistory(vms) {
     const now = Date.now();
@@ -717,6 +723,26 @@ function showCPUPopover(e, id) {
 window.showCPUPopover = showCPUPopover;
 
 console.log('[DEBUG] Application core initialized.');
+let preloadingAll = false;
+async function preloadAllCaches() {
+    if (preloadingAll) return;
+    preloadingAll = true;
+    console.log('[DEBUG] Preloading all caches for global search...');
+
+    // Fetch critical data for all tools to populate search index
+    const promises = [
+        fetchHosts(),
+        fetchVMs(),
+        checkAndFetchHostsForTool('docker'),
+        checkAndFetchHostsForTool('podman'),
+        checkAndFetchHostsForTool('nas'),
+        checkAndFetchHostsForTool('pfsense'),
+        checkAndFetchHostsForTool('kubernetes'),
+        checkAndFetchHostsForTool('proxmox')
+    ];
+
+    await Promise.allSettled(promises);
+}
 
 // Search Input Listener
 const searchInput = document.getElementById('global-search');
@@ -726,16 +752,28 @@ const searchBtn = document.getElementById('search-btn');
 if (searchBtn && searchInput) {
     searchBtn.addEventListener('click', () => {
         searchInput.focus();
-        // Optional: Trigger a search update if value exists (refresh)
+        preloadAllCaches(); // Preload when user interacts with search
         if (searchInput.value.trim() !== "") {
             searchInput.dispatchEvent(new Event('input'));
         }
     });
 }
 
+searchInput?.addEventListener('focus', () => {
+    preloadAllCaches(); // Preload as soon as user clicks the search box
+});
+
 const debouncedSearch = debounce((e) => {
     searchQuery = e.target.value.toLowerCase().trim();
     console.log('[DEBUG] Search Query (Debounced):', searchQuery);
+
+    // If on welcome screen and user starts searching, switch to a tool view (kvm)
+    const welcomeScreen = document.getElementById('welcome-screen');
+    if (searchQuery.length > 0 && welcomeScreen && !welcomeScreen.classList.contains('hidden') && welcomeScreen.style.display !== 'none') {
+        switchTool('kvm');
+        // Restore the search query after switchTool (which might reset some state)
+        searchInput.value = e.target.value;
+    }
 
     selectedSuggestionIndex = -1; // Reset selection
     updateSuggestions();
@@ -819,7 +857,7 @@ function updateSuggestions() {
     const suggestions = [];
 
     // Match KVM Hosts
-    allHostsCache.forEach(host => {
+    allKVMHostsCache.forEach(host => {
         if (host.server_name.toLowerCase().includes(searchQuery) ||
             host.hostname.toLowerCase().includes(searchQuery) ||
             host.ip_address.toLowerCase().includes(searchQuery)) {
@@ -827,49 +865,72 @@ function updateSuggestions() {
         }
     });
 
+    // Match Docker Hosts
+    allDockerHostsCache.forEach(host => {
+        if (host.server_name.toLowerCase().includes(searchQuery) ||
+            host.hostname.toLowerCase().includes(searchQuery) ||
+            host.ip_address.toLowerCase().includes(searchQuery)) {
+            suggestions.push({ type: 'host', id: host.id, title: host.server_name, subtitle: `Docker: ${host.hostname}`, icon: 'fa-brands fa-docker', tool: 'docker' });
+        }
+    });
+
+    // Match Podman Hosts
+    allPodmanHostsCache.forEach(host => {
+        if (host.server_name.toLowerCase().includes(searchQuery) ||
+            host.hostname.toLowerCase().includes(searchQuery) ||
+            host.ip_address.toLowerCase().includes(searchQuery)) {
+            suggestions.push({ type: 'host', id: host.id, title: host.server_name, subtitle: `Podman: ${host.hostname}`, icon: 'fa-solid fa-layer-group', tool: 'podman' });
+        }
+    });
+
+    // Match Kubernetes Servers
+    allKubernetesHostsCache.forEach(host => {
+        const name = host.server_name || host.name || 'K8s Cluster';
+        if (name.toLowerCase().includes(searchQuery) || (host.ip_address && host.ip_address.toLowerCase().includes(searchQuery))) {
+            suggestions.push({ type: 'host', id: host.id, title: name, subtitle: `K8s: ${host.ip_address || 'Cluster'}`, icon: 'fa-solid fa-network-wired', tool: 'kubernetes' });
+        }
+    });
+
+    // Match firewall/pfsense Hosts
+    allFirewallHostsCache.forEach(host => {
+        if (host.server_name.toLowerCase().includes(searchQuery) ||
+            host.hostname.toLowerCase().includes(searchQuery) ||
+            host.ip_address.toLowerCase().includes(searchQuery)) {
+            suggestions.push({ type: 'host', id: host.id, title: host.server_name, subtitle: `pfSense: ${host.ip_address}`, icon: 'fa-solid fa-shield-halved', tool: 'pfsense' });
+        }
+    });
+
+    // Match NAS Hosts
+    allNasHostsCache.forEach(host => {
+        if (host.server_name.toLowerCase().includes(searchQuery) ||
+            host.hostname.toLowerCase().includes(searchQuery) ||
+            host.ip_address.toLowerCase().includes(searchQuery)) {
+            suggestions.push({ type: 'host', id: host.id, title: host.server_name, subtitle: `NAS: ${host.ip_address}`, icon: 'fa-solid fa-hdd', tool: 'nas' });
+        }
+    });
+
+    // Match Proxmox Hosts
+    allProxmoxHostsCache.forEach(host => {
+        if (host.server_name.toLowerCase().includes(searchQuery) ||
+            host.hostname.toLowerCase().includes(searchQuery) ||
+            host.ip_address.toLowerCase().includes(searchQuery)) {
+            suggestions.push({ type: 'host', id: host.id, title: host.server_name, subtitle: `Proxmox: ${host.ip_address}`, icon: 'fa-solid fa-microchip', tool: 'proxmox' });
+        }
+    });
+
     // Match KVM VMs
     allVMsCache.forEach(vm => {
         if (vm.name.toLowerCase().includes(searchQuery)) {
-            const host = allHostsCache.find(h => h.id === vm.host_id);
+            const host = allKVMHostsCache.find(h => h.id === vm.host_id);
             suggestions.push({ type: 'vm', id: vm.host_id, title: vm.name, subtitle: host ? `KVM Host: ${host.server_name}` : 'Virtual Machine', icon: 'fa-solid fa-desktop', tool: 'kvm' });
         }
     });
 
-    // Match Docker Hosts
-    // Assuming cached in allHostsCache using generic loader, but dedicated cache might be better. 
-    // Currently using lazy loading, so we search currently loaded "allHostsCache" which only holds CURRENT tool hosts.
-    // IMPROVEMENT: Search across specific caches if available or assume lazy loading limits search to active tool?
-    // User wants "Search Everything". We need to iterate known caches.
-    // NOTE: Caches are populated only when tool is visited. We might need to fetchAll or live with visited-only.
-    // For now, let's search specifically defined global caches.
-
-    // Docker Containers
+    // Match Docker Containers
     allContainersCache.forEach(c => {
         const name = c.Names ? c.Names[0].replace('/', '') : c.Id.substring(0, 12);
         if (name.toLowerCase().includes(searchQuery) || c.Image.toLowerCase().includes(searchQuery)) {
-            suggestions.push({ type: 'container', id: null, title: name, subtitle: `Docker Image: ${c.Image}`, icon: 'fa-brands fa-docker', tool: 'docker', contextId: selectedDockerHostId });
-        }
-    });
-
-    // NAS Volumes
-    allNasVolumesCache.forEach(v => {
-        if (v.name.toLowerCase().includes(searchQuery) || v.mount_point.toLowerCase().includes(searchQuery)) {
-            suggestions.push({ type: 'volume', id: v.host_id, title: v.name, subtitle: `NAS Vol: ${v.mount_point}`, icon: 'fa-solid fa-hdd', tool: 'nas' });
-        }
-    });
-
-    // NAS Disks
-    allNasDisksCache.forEach(d => {
-        if (d.name.toLowerCase().includes(searchQuery) || d.model.toLowerCase().includes(searchQuery)) {
-            suggestions.push({ type: 'disk', id: d.host_id, title: d.name, subtitle: `NAS Disk: ${d.model}`, icon: 'fa-regular fa-hard-drive', tool: 'nas' });
-        }
-    });
-
-    // Podman Containers
-    allPodmanContainersCache.forEach(c => {
-        const name = c.Names ? c.Names[0].replace('/', '') : c.Id.substring(0, 12);
-        if (name.toLowerCase().includes(searchQuery) || c.Image.toLowerCase().includes(searchQuery)) {
-            suggestions.push({ type: 'container', id: null, title: name, subtitle: `Podman Image: ${c.Image}`, icon: 'fa-solid fa-layer-group', tool: 'podman', contextId: selectedPodmanHostId });
+            suggestions.push({ type: 'container', id: null, title: name, subtitle: `Docker Image: ${c.Image}`, icon: 'fa-brands fa-docker', tool: 'docker' });
         }
     });
 
@@ -905,23 +966,23 @@ window.applySuggestion = (type, hostId, title, tool) => {
         switchTool(tool);
     }
 
-    // Handling specific tool selections
-    if (tool === 'kvm') {
-        if (hostId && hostId !== 'null') selectHost(parseInt(hostId));
-    } else if (tool === 'nas') {
-        if (hostId && hostId !== 'null') selectNasHost(parseInt(hostId));
-    } else if (tool === 'docker') {
-        // Docker host selection logic might be needed if hostId is available
-        // currently contextId is used in generation but not passed fully, usually docker is single host or needs selectDockerHost
+    if (type === 'host' && hostId && hostId !== 'null') {
+        const id = parseInt(hostId);
+        if (tool === 'kvm') selectHost(id);
+        else if (tool === 'nas') selectNasHost(id);
+        else if (tool === 'docker') selectDockerHost(id);
+        else if (tool === 'podman') selectPodmanHost(id);
+        else if (tool === 'kubernetes') selectKubernetesServer(id);
+        else if (tool === 'proxmox') selectProxmoxHost(id);
+        else if (tool === 'pfsense') selectFirewallHost(id);
+    } else if (type === 'vm' && hostId && hostId !== 'null') {
+        selectHost(parseInt(hostId));
     }
-    // Add other tool handlers as needed
 
     // Trigger re-render to highlight/filter
     if (tool === 'kvm') {
         renderHosts();
         renderVMs();
-    } else if (tool === 'nas') {
-        renderNasSummary(); // or similar
     }
 };
 
@@ -945,8 +1006,15 @@ async function checkAndFetchHostsForTool(toolKey) {
     const apiEndpoint = getHostsAPIForTool(toolKey);
     if (apiEndpoint) {
         try {
+            console.log(`[DEBUG] Fetching for ${toolKey}: ${apiEndpoint}`);
             const response = await fetch(apiEndpoint);
             if (response.ok) {
+                const contentType = response.headers.get("content-type");
+                if (contentType && contentType.indexOf("application/json") === -1) {
+                    const text = await response.text();
+                    console.error(`[ERROR] Expected JSON from ${apiEndpoint} but got ${contentType}:`, text.substring(0, 100));
+                    return;
+                }
                 const hosts = await response.json();
                 if (hosts && hosts.length > 0) {
                     // Enrich with tool type
@@ -961,6 +1029,7 @@ async function checkAndFetchHostsForTool(toolKey) {
 
                     // Update cache and render
                     if (toolKey === 'pfsense') {
+                        allFirewallHostsCache = hosts;
                         allHostsCache = hosts || [];
                         renderHostNodes('host-nodes-container-generic', {
                             icon: tools[toolKey].icon,
@@ -972,6 +1041,7 @@ async function checkAndFetchHostsForTool(toolKey) {
                             renderFirewallHostDetails(selectedFirewallHostId);
                         }
                     } else if (toolKey === 'docker') {
+                        allDockerHostsCache = hosts;
                         allHostsCache = hosts || [];
                         renderHostNodes('host-nodes-container-generic', {
                             icon: tools[toolKey].icon,
@@ -986,6 +1056,7 @@ async function checkAndFetchHostsForTool(toolKey) {
                         }
                         fetchContainers();
                     } else if (toolKey === 'kubernetes') {
+                        allKubernetesHostsCache = hosts;
                         allHostsCache = hosts || [];
                         renderHostNodes('host-nodes-container-generic', {
                             icon: tools[toolKey].icon,
@@ -1005,6 +1076,7 @@ async function checkAndFetchHostsForTool(toolKey) {
                         // Optionally fetch pods/nodes for cache
                         fetchPods();
                     } else if (toolKey === 'podman') {
+                        allPodmanHostsCache = hosts;
                         allHostsCache = hosts || [];
                         renderHostNodes('host-nodes-container-generic', {
                             icon: tools[toolKey].icon,
@@ -1019,6 +1091,7 @@ async function checkAndFetchHostsForTool(toolKey) {
                         }
                         fetchPodmanContainers();
                     } else if (toolKey === 'proxmox') {
+                        allProxmoxHostsCache = hosts;
                         allHostsCache = hosts || [];
                         renderHostNodes('host-nodes-container-generic', {
                             icon: tools[toolKey].icon,
@@ -1033,6 +1106,7 @@ async function checkAndFetchHostsForTool(toolKey) {
                         }
                         fetchProxmoxVMs();
                     } else if (toolKey === 'nas') {
+                        allNasHostsCache = hosts;
                         allHostsCache = hosts || [];
                         renderHostNodes('host-nodes-container-generic', {
                             icon: tools[toolKey].icon,
@@ -1075,7 +1149,16 @@ async function checkAndFetchHostsForTool(toolKey) {
 
 async function fetchContainers() {
     try {
+        console.log(`[DEBUG] Fetching containers: ${API_CONTAINER_CONTAINERS}`);
         const response = await fetch(API_CONTAINER_CONTAINERS);
+        if (response.ok) {
+            const contentType = response.headers.get("content-type");
+            if (contentType && contentType.indexOf("application/json") === -1) {
+                const text = await response.text();
+                console.error(`[ERROR] Expected JSON from ${API_CONTAINER_CONTAINERS} but got ${contentType}:`, text.substring(0, 100));
+                return;
+            }
+        }
         if (!response.ok) throw new Error('Failed to fetch containers');
         allContainersCache = await response.json();
         updateContainerHistory(allContainersCache);
@@ -1616,7 +1699,16 @@ async function updateConfigButtonVisibility(toolKey) {
 // Fetch firewall hosts
 async function fetchFirewallHosts() {
     try {
+        console.log(`[DEBUG] Fetching firewall hosts: ${API_FIREWALL_HOSTS}`);
         const response = await fetch(API_FIREWALL_HOSTS);
+        if (response.ok) {
+            const contentType = response.headers.get("content-type");
+            if (contentType && contentType.indexOf("application/json") === -1) {
+                const text = await response.text();
+                console.error(`[ERROR] Expected JSON from ${API_FIREWALL_HOSTS} but got ${contentType}:`, text.substring(0, 100));
+                return;
+            }
+        }
         if (!response.ok) throw new Error('Failed to fetch firewall hosts');
         const hosts = await response.json();
 
@@ -1625,6 +1717,7 @@ async function fetchFirewallHosts() {
             hosts.sort((a, b) => (a.server_name || '').localeCompare(b.server_name || ''));
         }
 
+        allFirewallHostsCache = hosts || [];
         allHostsCache = hosts || [];
         updateFirewallHistory(allHostsCache);
 
@@ -1654,7 +1747,16 @@ async function fetchFirewallHosts() {
 
 async function fetchHosts() {
     try {
+        console.log(`[DEBUG] Fetching hosts: ${API_HOSTS}`);
         const response = await fetch(API_HOSTS);
+        if (response.ok) {
+            const contentType = response.headers.get("content-type");
+            if (contentType && contentType.indexOf("application/json") === -1) {
+                const text = await response.text();
+                console.error(`[ERROR] Expected JSON from ${API_HOSTS} but got ${contentType}:`, text.substring(0, 100));
+                return;
+            }
+        }
         if (!response.ok) throw new Error('Failed to fetch hosts');
         const hosts = await response.json();
 
@@ -1663,6 +1765,7 @@ async function fetchHosts() {
             hosts.sort((a, b) => a.server_name.localeCompare(b.server_name));
         }
 
+        allKVMHostsCache = hosts || [];
         allHostsCache = hosts || [];
         if (allHostsCache.length > 0) {
             updateBridgeHistory(allHostsCache);
@@ -1879,7 +1982,16 @@ function renderHosts() {
 
 async function fetchVMs() {
     try {
+        console.log(`[DEBUG] Fetching VMs: ${API_VMS}`);
         const response = await fetch(API_VMS);
+        if (response.ok) {
+            const contentType = response.headers.get("content-type");
+            if (contentType && contentType.indexOf("application/json") === -1) {
+                const text = await response.text();
+                console.error(`[ERROR] Expected JSON from ${API_VMS} but got ${contentType}:`, text.substring(0, 100));
+                return;
+            }
+        }
         if (!response.ok) throw new Error('Failed to fetch VMs');
         const vms = await response.json();
 
@@ -2385,7 +2497,16 @@ function renderFirewallSummary() {
 
 async function fetchPods() {
     try {
+        console.log(`[DEBUG] Fetching pods: ${API_KUBERNETES_PODS}`);
         const response = await fetch(API_KUBERNETES_PODS);
+        if (response.ok) {
+            const contentType = response.headers.get("content-type");
+            if (contentType && contentType.indexOf("application/json") === -1) {
+                const text = await response.text();
+                console.error(`[ERROR] Expected JSON from ${API_KUBERNETES_PODS} but got ${contentType}:`, text.substring(0, 100));
+                return;
+            }
+        }
         if (!response.ok) throw new Error('Failed to fetch pods');
         allPodsCache = await response.json();
         if (currentTool === 'kubernetes') {
@@ -3489,7 +3610,16 @@ function renderKubernetesSummary() {
 
 async function fetchPodmanContainers() {
     try {
+        console.log(`[DEBUG] Fetching podman containers: ${API_PODMAN_CONTAINERS}`);
         const response = await fetch(API_PODMAN_CONTAINERS);
+        if (response.ok) {
+            const contentType = response.headers.get("content-type");
+            if (contentType && contentType.indexOf("application/json") === -1) {
+                const text = await response.text();
+                console.error(`[ERROR] Expected JSON from ${API_PODMAN_CONTAINERS} but got ${contentType}:`, text.substring(0, 100));
+                return;
+            }
+        }
         if (!response.ok) throw new Error('Failed to fetch podman containers');
         allPodmanContainersCache = await response.json();
         // Update history for sparklines
@@ -4078,7 +4208,16 @@ function renderPodmanSummary() {
 
 async function fetchProxmoxVMs() {
     try {
+        console.log(`[DEBUG] Fetching proxmox vms: ${API_PROXMOX_VMS}`);
         const response = await fetch(API_PROXMOX_VMS);
+        if (response.ok) {
+            const contentType = response.headers.get("content-type");
+            if (contentType && contentType.indexOf("application/json") === -1) {
+                const text = await response.text();
+                console.error(`[ERROR] Expected JSON from ${API_PROXMOX_VMS} but got ${contentType}:`, text.substring(0, 100));
+                return;
+            }
+        }
         if (!response.ok) throw new Error('Failed to fetch proxmox vms');
         allProxmoxVMsCache = await response.json();
         if (currentTool === 'proxmox') {
@@ -4226,8 +4365,24 @@ async function fetchNasData() {
             fetch(API_NAS_VOLUMES),
             fetch(API_NAS_DISKS)
         ]);
-        if (volumesResp.ok) allNasVolumesCache = await volumesResp.json();
-        if (disksResp.ok) allNasDisksCache = await disksResp.json();
+
+        if (volumesResp.ok) {
+            const ct = volumesResp.headers.get("content-type");
+            if (ct && ct.indexOf("application/json") === -1) {
+                console.error(`[ERROR] Expected JSON from ${API_NAS_VOLUMES} but got ${ct}`);
+            } else {
+                allNasVolumesCache = await volumesResp.json();
+            }
+        }
+
+        if (disksResp.ok) {
+            const ct = disksResp.headers.get("content-type");
+            if (ct && ct.indexOf("application/json") === -1) {
+                console.error(`[ERROR] Expected JSON from ${API_NAS_DISKS} but got ${ct}`);
+            } else {
+                allNasDisksCache = await disksResp.json();
+            }
+        }
 
         if (currentTool === 'nas') {
             if (selectedNasHostId) {
