@@ -2052,11 +2052,155 @@ header {
 }
 
 @media (max-width: 768px) {
-    .summary-grid {
-        grid-template-columns: 1fr !important;
-    }
-
     .section-header h1 {
         font-size: 1.8rem !important;
     }
+}
+
+/* History Tool Styling */
+.history-section {
+    animation: fadeIn 0.4s ease-out;
+}
+
+.timeline {
+    position: relative;
+    padding: 10px 0;
+}
+
+.timeline::before {
+    content: '';
+    position: absolute;
+    left: 19px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--glass-border);
+}
+
+.timeline-item {
+    position: relative;
+    padding-left: 50px;
+    margin-bottom: 25px;
+}
+
+.timeline-icon {
+    position: absolute;
+    left: 0;
+    top: 5px;
+    width: 40px;
+    height: 40px;
+    background: var(--glass-bg);
+    border: 2px solid var(--glass-border);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+    color: var(--accent-color);
+    transition: all 0.3s ease;
+}
+
+.timeline-item.critical .timeline-icon {
+    color: var(--danger);
+    border-color: rgba(239, 68, 68, 0.4);
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.2);
+}
+
+.timeline-item.warning .timeline-icon {
+    color: var(--warning);
+    border-color: rgba(234, 179, 8, 0.4);
+}
+
+.timeline-content {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 15px;
+    transition: all 0.3s ease;
+}
+
+.timeline-content:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--accent-color);
+    transform: translateX(5px);
+}
+
+.timeline-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 0.85rem;
+}
+
+.timeline-source {
+    font-weight: 700;
+    color: var(--text-primary);
+    text-transform: capitalize;
+}
+
+.timeline-time {
+    color: var(--text-secondary);
+}
+
+.timeline-message {
+    font-size: 0.95rem;
+    line-height: 1.5;
+    margin-bottom: 10px;
+}
+
+.timeline-footer {
+    display: flex;
+    gap: 8px;
+}
+
+.badge {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.badge.info {
+    background: rgba(56, 189, 248, 0.1);
+    color: #38bdf8;
+}
+
+.badge.critical {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+}
+
+.badge.warning {
+    background: rgba(234, 179, 8, 0.1);
+    color: #eab308;
+}
+
+.badge.docker {
+    background: rgba(36, 150, 237, 0.1);
+    color: #2496ed;
+}
+
+.badge.podman {
+    background: rgba(139, 92, 246, 0.1);
+    color: #8b5cf6;
+}
+
+.badge.kubernetes {
+    background: rgba(50, 108, 230, 0.1);
+    color: #326ce6;
+}
+
+.badge.proxmox {
+    background: rgba(233, 114, 46, 0.1);
+    color: #e9722e;
+}
+
+.badge.nas {
+    background: rgba(16, 185, 129, 0.1);
+    color: #10b981;
+}
+
+#history-map .leaflet-container {
+    background: var(--bg-color) !important;
 }

@@ -49,13 +49,16 @@ func (pc *PodmanCollector) CollectAll() {
 
 	for _, s := range servers {
 		log.Printf("[PodmanCollector] Collecting from %s (%s)...", s.Name, s.IPAddress)
+		metaMap := map[string]string{"ip": s.IPAddress, "name": s.Name}
+		metaBytes, _ := json.Marshal(metaMap)
+		metadata := string(metaBytes)
 		if err := pc.collectOne(s); err != nil {
 			log.Printf("[PodmanCollector] Failed to collect from Podman %s (%s): %v", s.Name, s.IPAddress, err)
-			pc.DB.SetGenericServerStatus("podman", s.ID, "offline")
+			pc.DB.SetGenericServerStatus("podman", s.ID, "offline", metadata)
 			continue
 		}
 		log.Printf("[PodmanCollector] Successfully collected from %s.", s.Name)
-		pc.DB.SetGenericServerStatus("podman", s.ID, "online")
+		pc.DB.SetGenericServerStatus("podman", s.ID, "online", metadata)
 	}
 }
 

@@ -44,13 +44,17 @@ func (mc *PfsenseCollector) CollectAll() {
 	}
 
 	for _, s := range servers {
+		metaMap := map[string]string{"ip": s.IPAddress, "name": s.Name}
+		metaBytes, _ := json.Marshal(metaMap)
+		metadata := string(metaBytes)
+
 		if err := mc.collectOne(s); err != nil {
 			log.Printf("Failed to collect from pfSense %s (%s): %v", s.Name, s.IPAddress, err)
-			mc.DB.SetPFSenseServerStatus(s.ID, "offline")
+			mc.DB.SetPFSenseServerStatus(s.ID, "offline", metadata)
 			continue
 		}
 		log.Printf("[PFSenseCollector] Successfully collected from %s.", s.Name)
-		mc.DB.SetPFSenseServerStatus(s.ID, "online")
+		mc.DB.SetPFSenseServerStatus(s.ID, "online", metadata)
 	}
 }
 

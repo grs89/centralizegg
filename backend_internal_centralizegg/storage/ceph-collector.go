@@ -43,12 +43,16 @@ func (cc *CephCollector) CollectAll() {
 	}
 
 	for _, s := range servers {
+		metaMap := map[string]string{"ip": s.IPAddress, "name": s.Name}
+		metaBytes, _ := json.Marshal(metaMap)
+		metadata := string(metaBytes)
+
 		if err := cc.collectOne(s); err != nil {
 			log.Printf("[CephCollector] Failed to collect from Ceph node %s (%s): %v", s.Name, s.IPAddress, err)
-			cc.DB.SetGenericServerStatus("ceph", s.ID, "offline")
+			cc.DB.SetGenericServerStatus("ceph", s.ID, "offline", metadata)
 			continue
 		}
-		cc.DB.SetGenericServerStatus("ceph", s.ID, "online")
+		cc.DB.SetGenericServerStatus("ceph", s.ID, "online", metadata)
 	}
 }
 

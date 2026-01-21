@@ -75,6 +75,10 @@
                     title="Panel General de Salud">
                     <i class="fa-solid fa-gauge-high"></i>
                 </button>
+                <button class="dropbtn nav-control-btn" data-tool="history" id="history-btn"
+                    title="Historial Global y Mapa">
+                    <i class="fa-solid fa-clock-rotate-left"></i>
+                </button>
                 <!-- Virtualización Dropdown -->
                 <div class="dropdown">
                     <button class="dropbtn" id="virtualization-btn">
@@ -248,6 +252,36 @@
                 </section>
             </div>
 
+
+            <!-- Global History Tool -->
+            <div id="history-tool" class="hidden">
+                <section class="history-section">
+                    <div class="section-header" style="margin-bottom: 2rem;">
+                        <h1 style="font-size: 2.2rem; margin-bottom: 0.5rem; color: var(--text-primary);">
+                            <i class="fa-solid fa-clock-rotate-left"
+                                style="color: var(--accent-color); margin-right: 15px;"></i>
+                            Historial Global
+                        </h1>
+                        <p style="color: var(--text-secondary); font-size: 1.1rem;">Línea de tiempo de eventos y mapa de
+                            incidentes.</p>
+                    </div>
+
+                    <div class="glass-panel"
+                        style="padding: 0; overflow: hidden; height: 400px; margin-bottom: 30px; border-radius: 16px; border: 1px solid var(--glass-border);">
+                        <div id="history-map" style="width: 100%; height: 100%; z-index: 1;"></div>
+                    </div>
+
+                    <div class="glass-panel" style="padding: 30px; border-radius: 20px;">
+                        <h3 style="font-size: 1.3rem; margin-bottom: 25px;"><i class="fa-solid fa-list-ul"></i> Eventos
+                            Recientes</h3>
+                        <div id="history-timeline">
+                            <div style="text-align: center; padding: 40px; opacity: 0.5;">
+                                <i class="fa-solid fa-circle-notch fa-spin"></i> Cargando historial...
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
 
             <!-- Settings Tool (Unified Config) -->
             <div id="settings-tool" class="hidden">

@@ -42,12 +42,16 @@ func (pc *ProxmoxCollector) CollectAll() {
 	}
 
 	for _, s := range servers {
+		metaMap := map[string]string{"ip": s.IPAddress, "name": s.Name}
+		metaBytes, _ := json.Marshal(metaMap)
+		metadata := string(metaBytes)
+
 		if err := pc.collectOne(s); err != nil {
 			log.Printf("[ProxmoxCollector] Failed to collect from Proxmox %s (%s): %v", s.Name, s.IPAddress, err)
-			pc.DB.SetGenericServerStatus("proxmox", s.ID, "offline")
+			pc.DB.SetGenericServerStatus("proxmox", s.ID, "offline", metadata)
 			continue
 		}
-		pc.DB.SetGenericServerStatus("proxmox", s.ID, "online")
+		pc.DB.SetGenericServerStatus("proxmox", s.ID, "online", metadata)
 	}
 }
 

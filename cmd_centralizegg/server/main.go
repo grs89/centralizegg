@@ -195,6 +195,16 @@ func main() {
 		json.NewEncoder(w).Encode(data)
 	}).Methods("GET")
 
+	r.HandleFunc("/api/history", func(w http.ResponseWriter, r *http.Request) {
+		limit := 50
+		events, err := db.GetHistory(limit)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(events)
+	}).Methods("GET")
+
 	r.HandleFunc("/api/hosts", func(w http.ResponseWriter, r *http.Request) {
 		hosts, err := db.GetHosts()
 		if err != nil {

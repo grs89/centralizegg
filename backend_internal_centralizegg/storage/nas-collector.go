@@ -43,12 +43,16 @@ func (nc *NasCollector) CollectAll() {
 	}
 
 	for _, s := range servers {
+		metaMap := map[string]string{"ip": s.IPAddress, "name": s.Name}
+		metaBytes, _ := json.Marshal(metaMap)
+		metadata := string(metaBytes)
+
 		if err := nc.collectOne(s); err != nil {
 			log.Printf("[NasCollector] Failed to collect from NAS %s (%s): %v", s.Name, s.IPAddress, err)
-			nc.DB.SetGenericServerStatus("nas", s.ID, "offline")
+			nc.DB.SetGenericServerStatus("nas", s.ID, "offline", metadata)
 			continue
 		}
-		nc.DB.SetGenericServerStatus("nas", s.ID, "online")
+		nc.DB.SetGenericServerStatus("nas", s.ID, "online", metadata)
 	}
 }
 

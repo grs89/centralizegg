@@ -83,15 +83,19 @@ func (kc *KubernetesCollector) CollectAll() {
 
 	for _, s := range servers {
 		log.Printf("[KubernetesCollector] Collecting from %s (%s)...", s.Name, s.IPAddress)
+		metaMap := map[string]string{"ip": s.IPAddress, "name": s.Name}
+		metaBytes, _ := json.Marshal(metaMap)
+		metadata := string(metaBytes)
+
 		if err := kc.collectOne(s); err != nil {
 			log.Printf("[KubernetesCollector] Failed to collect from Kubernetes %s (%s): %v", s.Name, s.IPAddress, err)
-			kc.DB.SetGenericServerStatus("kubernetes", s.ID, "offline")
+			kc.DB.SetGenericServerStatus("kubernetes", s.ID, "offline", metadata)
 			kc.DB.UpdateControlPlaneStatus("kubernetes", s.ID, "{}")
 			kc.DB.ClearKubernetesNodesStatus(s.ID)
 			continue
 		}
 		log.Printf("[KubernetesCollector] Successfully collected from %s.", s.Name)
-		kc.DB.SetGenericServerStatus("kubernetes", s.ID, "online")
+		kc.DB.SetGenericServerStatus("kubernetes", s.ID, "online", metadata)
 	}
 }
 

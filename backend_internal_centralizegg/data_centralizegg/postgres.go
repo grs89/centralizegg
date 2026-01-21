@@ -321,6 +321,17 @@ type InfrastructureAlert struct {
 	Time     time.Time `json:"time"`
 }
 
+type InfrastructureHistoryEvent struct {
+	ID        int64     `json:"id"`
+	Timestamp time.Time `json:"timestamp"`
+	Category  string    `json:"category"`
+	Source    string    `json:"source"`
+	EventType string    `json:"event_type"` // e.g., "status_change", "alert", "connection_fail"
+	Severity  string    `json:"severity"`   // "info", "warning", "critical"
+	Message   string    `json:"message"`
+	Metadata  string    `json:"metadata"` // JSON field
+}
+
 type GlobalHealthData struct {
 	OverallHealth []HealthSummary       `json:"overall_health"`
 	RecentAlerts  []InfrastructureAlert `json:"recent_alerts"`
@@ -995,6 +1006,16 @@ func ensureSchema(db *sql.DB) {
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE(host_id, name)
 		)`,
+		`CREATE TABLE IF NOT EXISTS global_history (
+			id SERIAL PRIMARY KEY,
+			timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			category VARCHAR(100) NOT NULL,
+			source VARCHAR(255) NOT NULL,
+			event_type VARCHAR(100) NOT NULL,
+			severity VARCHAR(50) DEFAULT 'info',
+			message TEXT NOT NULL,
+			metadata JSONB DEFAULT '{}'
+		)`,
 	}
 
 	for _, q := range queries {
@@ -1299,10 +1320,7 @@ func (d *DB) DeletePFSenseServer(id int64) error {
 	return err
 }
 
-func (d *DB) SetPFSenseServerStatus(id int64, status string) error {
-	_, err := d.Conn.Exec("UPDATE firewall.pfsense_servers SET status=$1 WHERE id=$2", status, id)
-	return err
-}
+// SetPFSenseServerStatus is replaced by the version at 1555
 
 func (d *DB) UpsertFirewallGateway(gw FirewallGateway) error {
 	var id int64
@@ -1531,23 +1549,90 @@ func (d *DB) DeleteGenericServer(toolType string, id int64) error {
 	return err
 }
 
-func (d *DB) SetGenericServerStatus(toolType string, id int64, status string) error {
+func (d *DB) SetPFSenseServerStatus(id int64, status string, metadata string) error {
+	var currentStatus string
+	err := d.Conn.QueryRow("SELECT status FROM firewall.pfsense_servers WHERE id=$1", id).Scan(&currentStatus)
+	if err != nil {
+		return err
+	}
+
+	if currentStatus == status {
+		return nil
+	}
+
+	var query string
+	if status == "offline" {
+		query = "UPDATE firewall.pfsense_servers SET status=$1, offline_since = COALESCE(offline_since, NOW()) WHERE id=$2"
+	} else {
+		query = "UPDATE firewall.pfsense_servers SET status=$1, offline_since = NULL WHERE id=$2"
+	}
+	_, err = d.Conn.Exec(query, status, id)
+	if err != nil {
+		return err
+	}
+
+	// Log event for status change
+	severity := "info"
+	if status == "offline" {
+		severity = "critical"
+	}
+	if err := d.LogEvent(InfrastructureHistoryEvent{
+		Category:  "pfsense",
+		Source:    "firewall.pfsense_servers",
+		EventType: "status_change",
+		Severity:  severity,
+		Message:   fmt.Sprintf("Servidor pfSense (ID %d) cambió a estado %s", id, status),
+		Metadata:  metadata,
+	}); err != nil {
+		log.Printf("[DB] LogEvent failed: %v", err)
+	}
+
+	return nil
+}
+
+func (d *DB) SetGenericServerStatus(toolType string, id int64, status string, metadata string) error {
 	table, ok := serverTableMap[toolType]
 	if !ok {
 		return fmt.Errorf("unknown tool type: %s", toolType)
 	}
 
+	var currentStatus string
+	query := fmt.Sprintf("SELECT status FROM %s WHERE id=$1", table)
+	err := d.Conn.QueryRow(query, id).Scan(&currentStatus)
+	if err != nil {
+		return err
+	}
+
+	if currentStatus == status {
+		return nil
+	}
+
 	// When going offline, set offline_since to current time if not already set
 	// When coming online, clear offline_since
-	var query string
 	if status == "offline" {
 		query = fmt.Sprintf("UPDATE %s SET status=$1, offline_since = COALESCE(offline_since, NOW()) WHERE id=$2", table)
 	} else {
 		query = fmt.Sprintf("UPDATE %s SET status=$1, offline_since = NULL WHERE id=$2", table)
 	}
-	_, err := d.Conn.Exec(query, status, id)
+	_, err = d.Conn.Exec(query, status, id)
 	if err != nil {
 		return err
+	}
+
+	// Log event for status change
+	severity := "info"
+	if status == "offline" {
+		severity = "critical"
+	}
+	if err := d.LogEvent(InfrastructureHistoryEvent{
+		Category:  toolType,
+		Source:    table, // Simple source
+		EventType: "status_change",
+		Severity:  severity,
+		Message:   fmt.Sprintf("Servidor %s (ID %d) cambió a estado %s", toolType, id, status),
+		Metadata:  metadata,
+	}); err != nil {
+		log.Printf("[DB] LogEvent failed: %v", err)
 	}
 
 	// Propagate offline status to child host tables if the server just went offline
@@ -1569,6 +1654,38 @@ func (d *DB) SetGenericServerStatus(toolType string, id int64, status string) er
 	}
 
 	return nil
+}
+
+func (d *DB) LogEvent(event InfrastructureHistoryEvent) error {
+	query := `INSERT INTO global_history (category, source, event_type, severity, message, metadata) 
+	          VALUES ($1, $2, $3, $4, $5, $6)`
+	metadata := event.Metadata
+	if metadata == "" {
+		metadata = "{}"
+	}
+	_, err := d.Conn.Exec(query, event.Category, event.Source, event.EventType, event.Severity, event.Message, metadata)
+	return err
+}
+
+func (d *DB) GetHistory(limit int) ([]InfrastructureHistoryEvent, error) {
+	query := `SELECT id, timestamp, category, source, event_type, severity, message, metadata 
+	          FROM global_history 
+	          ORDER BY timestamp DESC LIMIT $1`
+	rows, err := d.Conn.Query(query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []InfrastructureHistoryEvent
+	for rows.Next() {
+		var e InfrastructureHistoryEvent
+		if err := rows.Scan(&e.ID, &e.Timestamp, &e.Category, &e.Source, &e.EventType, &e.Severity, &e.Message, &e.Metadata); err != nil {
+			return nil, err
+		}
+		events = append(events, e)
+	}
+	return events, nil
 }
 
 func (d *DB) UpdateGenericServerStats(toolType string, id int64, cpuUsage float64, cpuCores int, totalMem, freeMem, storageUsed, storageTotal uint64, osName, cpuModel string) error {

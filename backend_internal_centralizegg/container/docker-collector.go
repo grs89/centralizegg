@@ -47,13 +47,17 @@ func (dc *DockerCollector) CollectAll() {
 
 	for _, s := range servers {
 		// log.Printf("[DockerCollector] Collecting from %s (%s)...", s.Name, s.IPAddress)
+		metaMap := map[string]string{"ip": s.IPAddress, "name": s.Name}
+		metaBytes, _ := json.Marshal(metaMap)
+		metadata := string(metaBytes)
+
 		if err := dc.collectOne(s); err != nil {
 			// log.Printf("[DockerCollector] Failed to collect from Docker %s (%s): %v", s.Name, s.IPAddress, err)
-			dc.DB.SetGenericServerStatus("docker", s.ID, "offline")
+			dc.DB.SetGenericServerStatus("docker", s.ID, "offline", metadata)
 			continue
 		}
 		// log.Printf("[DockerCollector] Successfully collected from %s.", s.Name)
-		dc.DB.SetGenericServerStatus("docker", s.ID, "online")
+		dc.DB.SetGenericServerStatus("docker", s.ID, "online", metadata)
 	}
 }
 

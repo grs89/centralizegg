@@ -297,6 +297,13 @@ const tools = {
         categoryBtnId: 'dashboard-btn',
         categoryName: 'Dashboard'
     },
+    'history': {
+        name: 'Historial',
+        icon: 'fa-solid fa-clock-rotate-left',
+        elementId: 'history-tool',
+        categoryBtnId: 'history-btn',
+        categoryName: 'Historial'
+    },
     'kvm': {
         name: 'KVM',
         icon: 'fa-solid fa-microchip',
@@ -419,6 +426,7 @@ function switchTool(toolKey) {
     const containerTool = document.getElementById('container-scanner-tool');
     const settingsTool = document.getElementById('settings-tool');
     const logsTool = document.getElementById('logs-tool');
+    const historyTool = document.getElementById('history-tool');
 
     if (virtTool) {
         if (toolKey === 'kvm') {
@@ -476,8 +484,21 @@ function switchTool(toolKey) {
         }
     }
 
+    if (historyTool) {
+        if (toolKey === 'history') {
+            historyTool.classList.remove('hidden');
+            const historyBtn = document.getElementById('history-btn');
+            if (historyBtn) historyBtn.classList.add('active');
+            renderHistory();
+        } else {
+            historyTool.classList.add('hidden');
+            const historyBtn = document.getElementById('history-btn');
+            if (historyBtn) historyBtn.classList.remove('active');
+        }
+    }
+
     if (containerTool) {
-        if (['kvm', 'settings', 'logs', 'summary', 'welcome'].includes(toolKey)) {
+        if (['kvm', 'settings', 'logs', 'summary', 'welcome', 'history'].includes(toolKey)) {
             containerTool.classList.add('hidden');
         } else {
             containerTool.classList.remove('hidden');
@@ -7062,3 +7083,85 @@ window.toggleDockerMapDebug = function () {
 window.toggleK8sMapDebug = function () {
     console.log('[K8sMap] Debug mode toggled');
 };
+
+let historyToolMap = null;
+
+async function renderHistory() {
+    const timelineContainer = document.getElementById('history-timeline');
+    if (!timelineContainer) return;
+
+    try {
+        const response = await fetch('/api/history');
+        if (!response.ok) throw new Error('Failed to fetch history');
+        const history = await response.json();
+
+        if (!history || history.length === 0) {
+            timelineContainer.innerHTML = `
+                <div class="empty-state" style="padding: 40px; text-align: center; opacity: 0.5;">
+                    <i class="fa-solid fa-clock-rotate-left" style="font-size: 3rem; margin-bottom: 1rem;"></i>
+                    <p>No hay eventos registrados en el historial.</p>
+                </div>
+            `;
+            return;
+        }
+
+        let html = '<div class="timeline">';
+        history.forEach(event => {
+            const time = new Date(event.timestamp).toLocaleString();
+            const relTime = getRelativeTime(event.timestamp);
+            const severityClass = event.severity.toLowerCase();
+            const icon = event.event_type === 'status_change' ? 'fa-shuffle' : 'fa-circle-exclamation';
+
+            html += `
+                <div class="timeline-item ${severityClass}">
+                    <div class="timeline-icon"><i class="fa-solid ${icon}"></i></div>
+                    <div class="timeline-content">
+                        <div class="timeline-header">
+                            <span class="timeline-source">${event.source}</span>
+                            <span class="timeline-time" title="${time}">${relTime}</span>
+                        </div>
+                        <div class="timeline-message">${event.message}</div>
+                        <div class="timeline-footer">
+                            <span class="badge ${event.category}">${event.category}</span>
+                            <span class="badge ${severityClass}">${event.severity}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        html += '</div>';
+        timelineContainer.innerHTML = html;
+
+        // Update Map
+        if (!historyToolMap) {
+            historyToolMap = new NetworkMap('history-map');
+        }
+
+        // Extract IPs from metadata or message for the map
+        const geoEvents = history.filter(e => {
+            try {
+                const meta = JSON.parse(e.metadata || '{}');
+                return meta.ip || meta.remote_ip;
+            } catch (ex) { return false; }
+        }).map(e => {
+            const meta = JSON.parse(e.metadata);
+            return {
+                remote_ip: meta.ip || meta.remote_ip,
+                message: e.message
+            };
+        });
+
+        if (geoEvents.length > 0) {
+            historyToolMap.render(JSON.stringify(geoEvents));
+        } else {
+            // Default render to show the map
+            historyToolMap.render('[]');
+        }
+
+    } catch (error) {
+        console.error('[History] Error rendering history:', error);
+        timelineContainer.innerHTML = `<div class="error-msg">Error cargando historial: ${error.message}</div>`;
+    }
+}
+
+window.renderHistory = renderHistory;
