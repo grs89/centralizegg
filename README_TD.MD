@@ -663,6 +663,18 @@ Si el mapa no muestra líneas de tráfico:
    - **GeoReady**: Debe ser "Yes".
    - **HomeIP**: Debe mostrar tu IP pública.
 
+## ⚙️ Optimización del Backend
+
+Hemos implementado varias optimizaciones en el backend para mejorar el rendimiento y la eficiencia:
+
+* **Conexiones SSH persistentes**: Reutilización de conexiones SSH para reducir la sobrecarga de establecimiento de conexión.
+* **Pool de goroutines**: Gestión eficiente de tareas concurrentes para evitar la creación excesiva de goroutines.
+* **Manejo de errores mejorado**: Captura y registro más detallado de errores para facilitar la depuración.
+* **Optimización de consultas SQL**: Ajustes en las consultas a la base de datos para una recuperación de datos más rápida.
+* **Ajustes de pool de conexiones DB**: `SetMaxOpenConns(25)` y `SetMaxIdleConns(25)` para reducir latencia.
+* **Timeouts del servidor HTTP**: `ReadTimeout`, `WriteTimeout` y `IdleTimeout` configurados a 15s/15s/60s.
+* **Compresión GZIP**: Uso de `gzip.BestSpeed` para minimizar sobrecarga de CPU en respuestas API.
+
 ---
 
 

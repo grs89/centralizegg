@@ -374,20 +374,23 @@ Los servidores KVM se configuran a través del dashboard web:
 - Verifica configuración de Libvirt en el servidor remoto
 - Revisa políticas de acceso en `/etc/libvirt/libvirt.conf`
 
-### Servidores Aparecen como Offline
+## ⚡ Backend
 
-1. Verifica conectividad de red
-2. Revisa logs del colector: `docker-compose logs app | grep "Failed to collect"`
-3. Verifica credenciales SSH en la configuración
-4. Asegúrate de que Libvirt esté accesible vía SSH
+Hemos implementado varias optimizaciones en el backend para mejorar el rendimiento y la eficiencia:
 
-### Frontend No Muestra Datos
+## ⚙️ Optimización del Backend
 
-1. Abre la consola del navegador (F12) y revisa errores
-2. Verifica que la API esté respondiendo: `curl http://localhost:8080/api/hosts`
-3. Revisa logs del backend: `docker-compose logs app`
-4. Verifica CORS si accedes desde otro dominio
+Hemos implementado varias optimizaciones en el backend para mejorar el rendimiento y la eficiencia:
 
+* **Conexiones SSH persistentes**: Reutilización de conexiones SSH para reducir la sobrecarga de establecimiento de conexión.
+* **Pool de goroutines**: Gestión eficiente de tareas concurrentes para evitar la creación excesiva de goroutines.
+* **Manejo de errores mejorado**: Captura y registro más detallado de errores para facilitar la depuración.
+* **Optimización de consultas SQL**: Ajustes en las consultas a la base de datos para una recuperación de datos más rápida.
+* **Ajustes de pool de conexiones DB**: `SetMaxOpenConns(25)` y `SetMaxIdleConns(25)` para reducir latencia.
+* **Timeouts del servidor HTTP**: `ReadTimeout`, `WriteTimeout` y `IdleTimeout` configurados a 15 s/15 s/60 s.
+* **Compresión GZIP**: Uso de `gzip.BestSpeed` para minimizar la sobrecarga de CPU en respuestas API.
+
+---
 
 ---
 

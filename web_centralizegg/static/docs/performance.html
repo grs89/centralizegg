@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Backend Performance Optimizations</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 2rem;
+            line-height: 1.6;
+        }
+
+        h1 {
+            color: #2c3e50;
+        }
+
+        ul {
+            margin-left: 1.5rem;
+        }
+
+        code {
+            background: #f5f5f5;
+            padding: 2px 4px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Backend Performance Optimizations</h1>
+    <p>This page summarizes the recent performance improvements applied to the Centralizegg backend.</p>
+    <ul>
+        <li><strong>Database connection pool</strong>: <code>SetMaxOpenConns(25)</code> and
+            <code>SetMaxIdleConns(25)</code> to reduce connection latency.</li>
+        <li><strong>HTTP server timeouts</strong>: <code>ReadTimeout</code>, <code>WriteTimeout</code> set to 15 seconds
+            and <code>IdleTimeout</code> set to 60 seconds for better resilience under load.</li>
+        <li><strong>GZIP compression</strong>: Using <code>gzip.BestSpeed</code> to minimize CPU overhead while
+            compressing API responses.</li>
+        <li><strong>Persistent SSH connections</strong>: Reusing SSH sessions for collector tasks to avoid repeated
+            handshakes.</li>
+        <li><strong>Goroutine pool</strong>: Controlled concurrency for background collectors to prevent excessive
+            goroutine creation.</li>
+        <li><strong>SQL query optimizations</strong>: Refactored queries for faster data retrieval.</li>
+    </ul>
+    <p>These changes are reflected in the source code (<code>main.go</code>, <code>postgres.go</code>) and documented in
+        the project README files.</p>
+</body>
+
+</html>
