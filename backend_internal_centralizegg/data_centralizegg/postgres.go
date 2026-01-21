@@ -1546,7 +1546,29 @@ func (d *DB) SetGenericServerStatus(toolType string, id int64, status string) er
 		query = fmt.Sprintf("UPDATE %s SET status=$1, offline_since = NULL WHERE id=$2", table)
 	}
 	_, err := d.Conn.Exec(query, status, id)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Propagate offline status to child host tables if the server just went offline
+	if status == "offline" {
+		switch toolType {
+		case "docker":
+			d.Conn.Exec("UPDATE containers.hosts SET docker_service_status = 'offline' WHERE server_id = $1", id)
+		case "podman":
+			d.Conn.Exec("UPDATE containers.podman_hosts SET podman_service_status = 'offline' WHERE server_id = $1", id)
+		case "proxmox":
+			d.Conn.Exec("UPDATE virtualization.proxmox_hosts SET status = 'offline' WHERE server_id = $1", id)
+		case "kubernetes":
+			d.Conn.Exec("UPDATE kubernetes.nodes SET status = 'offline' WHERE server_id = $1", id)
+		case "nas":
+			d.Conn.Exec("UPDATE storage.nas_hosts SET status = 'offline' WHERE server_id = $1", id)
+		case "ceph":
+			d.Conn.Exec("UPDATE storage.ceph_hosts SET status = 'offline' WHERE server_id = $1", id)
+		}
+	}
+
+	return nil
 }
 
 func (d *DB) UpdateGenericServerStats(toolType string, id int64, cpuUsage float64, cpuCores int, totalMem, freeMem, storageUsed, storageTotal uint64, osName, cpuModel string) error {
