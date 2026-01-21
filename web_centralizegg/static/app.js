@@ -7319,20 +7319,30 @@ function updateCharts(metrics) {
         }
     };
 
-    // Helper to create chart
-    const createChart = (id, type, label, data, color, fill = true) => {
+    // Helper to create or update chart
+    const createOrUpdateChart = (instance, id, type, label, data, color, fill = true, labelsOverride = null) => {
         const canvas = document.getElementById(id);
         if (!canvas) return null;
+
+        // Update existing
+        if (instance) {
+            instance.data.labels = labelsOverride || labels;
+            instance.data.datasets[0].data = data;
+            instance.update('none'); // 'none' mode prevents full re-animation flickering
+            return instance;
+        }
+
+        // Create new
         const ctx = canvas.getContext('2d');
         return new Chart(ctx, {
             type: type,
             data: {
-                labels: labels, // Use full labels for standard charts
+                labels: labelsOverride || labels,
                 datasets: [{
                     label: label,
                     data: data,
                     borderColor: color,
-                    backgroundColor: color + '33', // 20% opacity using hex
+                    backgroundColor: color + '33',
                     fill: fill,
                     tension: 0.4
                 }]
@@ -7341,42 +7351,45 @@ function updateCharts(metrics) {
         });
     };
 
-    if (cpuChart) cpuChart.destroy();
-    cpuChart = createChart('cpuChart', 'line', 'CPU Usage (%)', sortedCpu, '#38bdf8');
+    cpuChart = createOrUpdateChart(cpuChart, 'cpuChart', 'line', 'CPU Usage (%)', sortedCpu, '#38bdf8');
+    ramChart = createOrUpdateChart(ramChart, 'ramChart', 'line', 'RAM Usage (GB)', sortedRam, '#a855f7');
 
-    if (ramChart) ramChart.destroy();
-    ramChart = createChart('ramChart', 'line', 'RAM Usage (GB)', sortedRam, '#a855f7');
-
-    if (netChart) netChart.destroy();
-    // Special handling for net chart multiple datasets
+    // Special handling for net chart multiple datasets (Network)
     const canvasNet = document.getElementById('netChart');
     if (canvasNet) {
-        const ctxNet = canvasNet.getContext('2d');
-        netChart = new Chart(ctxNet, {
-            type: 'line',
-            data: {
-                labels: netLabels,
-                datasets: [
-                    {
-                        label: 'RX (Mbps)',
-                        data: ratesRx,
-                        borderColor: '#22c55e',
-                        backgroundColor: '#22c55e33',
-                        fill: true,
-                        tension: 0.4
-                    },
-                    {
-                        label: 'TX (Mbps)',
-                        data: ratesTx,
-                        borderColor: '#f97316',
-                        backgroundColor: '#f9731633',
-                        fill: true,
-                        tension: 0.4
-                    }
-                ]
-            },
-            options: chartOptions
-        });
+        if (netChart) {
+            netChart.data.labels = netLabels;
+            netChart.data.datasets[0].data = ratesRx;
+            netChart.data.datasets[1].data = ratesTx;
+            netChart.update('none');
+        } else {
+            const ctxNet = canvasNet.getContext('2d');
+            netChart = new Chart(ctxNet, {
+                type: 'line',
+                data: {
+                    labels: netLabels,
+                    datasets: [
+                        {
+                            label: 'RX (Mbps)',
+                            data: ratesRx,
+                            borderColor: '#22c55e',
+                            backgroundColor: '#22c55e33',
+                            fill: true,
+                            tension: 0.4
+                        },
+                        {
+                            label: 'TX (Mbps)',
+                            data: ratesTx,
+                            borderColor: '#f97316',
+                            backgroundColor: '#f9731633',
+                            fill: true,
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: chartOptions
+            });
+        }
     }
 }
 

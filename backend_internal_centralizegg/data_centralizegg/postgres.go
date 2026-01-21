@@ -362,7 +362,7 @@ func NewPostgresDB(connStr string) (*DB, error) {
 
 	// Performance optimization: Configure connection pool
 	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(5)
+	db.SetMaxIdleConns(25)
 	db.SetConnMaxLifetime(5 * time.Minute)
 
 	// Run migrations

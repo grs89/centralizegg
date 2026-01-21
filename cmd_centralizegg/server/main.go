@@ -64,7 +64,11 @@ func GzipMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		w.Header().Set("Content-Encoding", "gzip")
-		gz := gzip.NewWriter(w)
+		gz, err := gzip.NewWriterLevel(w, gzip.BestSpeed)
+		if err != nil {
+			next.ServeHTTP(w, r)
+			return
+		}
 		defer gz.Close()
 		next.ServeHTTP(gzipResponseWriter{Writer: gz, ResponseWriter: w}, r)
 	})
@@ -668,7 +672,15 @@ func main() {
 	// Static Files
 	r.PathPrefix("/").Handler(http.FileServer(http.Dir("./web_centralizegg/static/")))
 
-	// Start Server
+	// Start Server with Timeouts
+	srv := &http.Server{
+		Addr:         ":8080",
+		Handler:      r,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
 	log.Println("Server running on :8080")
-	log.Fatal(http.ListenAndServe(":8080", r))
+	log.Fatal(srv.ListenAndServe())
 }
