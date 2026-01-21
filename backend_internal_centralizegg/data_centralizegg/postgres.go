@@ -13,6 +13,19 @@ type DB struct {
 	Conn *sql.DB
 }
 
+type ServerMetric struct {
+	ID          int64     `json:"id"`
+	ServerID    int64     `json:"server_id"`
+	Category    string    `json:"category"`
+	Timestamp   time.Time `json:"timestamp"`
+	CPUUsage    float64   `json:"cpu_usage"`
+	MemoryUsage uint64    `json:"memory_usage"`
+	NetRX       uint64    `json:"net_rx"`
+	NetTX       uint64    `json:"net_tx"`
+	DiskRead    uint64    `json:"disk_read"`
+	DiskWrite   uint64    `json:"disk_write"`
+}
+
 type VM struct {
 	ID             int64     `json:"id"`
 	Name           string    `json:"name"`
@@ -1006,6 +1019,25 @@ func ensureSchema(db *sql.DB) {
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE(host_id, name)
 		)`,
+		// Ceph Tables
+		`CREATE TABLE IF NOT EXISTS storage.ceph_hosts (
+			id SERIAL PRIMARY KEY,
+			server_id INT REFERENCES storage.ceph_servers(id) ON DELETE CASCADE,
+			hostname VARCHAR(255) NOT NULL,
+			status VARCHAR(50) DEFAULT 'unknown',
+			cpu_model VARCHAR(255),
+			cpu_cores INT,
+			total_memory BIGINT,
+			free_memory BIGINT DEFAULT 0,
+			cpu_usage DOUBLE PRECISION DEFAULT 0,
+			os_name VARCHAR(255),
+			kernel_version VARCHAR(255),
+			uptime VARCHAR(255),
+			cluster_status TEXT,
+			cluster_health VARCHAR(50),
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(server_id, hostname)
+		)`,
 		`CREATE TABLE IF NOT EXISTS global_history (
 			id SERIAL PRIMARY KEY,
 			timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1015,6 +1047,18 @@ func ensureSchema(db *sql.DB) {
 			severity VARCHAR(50) DEFAULT 'info',
 			message TEXT NOT NULL,
 			metadata JSONB DEFAULT '{}'
+		)`,
+		`CREATE TABLE IF NOT EXISTS server_metrics_history (
+			id SERIAL PRIMARY KEY,
+			server_id INT NOT NULL,
+			category VARCHAR(50) NOT NULL,
+			timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			cpu_usage DOUBLE PRECISION DEFAULT 0,
+			memory_usage BIGINT DEFAULT 0,
+			net_rx BIGINT DEFAULT 0,
+			net_tx BIGINT DEFAULT 0,
+			disk_read BIGINT DEFAULT 0,
+			disk_write BIGINT DEFAULT 0
 		)`,
 	}
 
@@ -2392,4 +2436,54 @@ func (d *DB) GetInfrastructureHealth() (*GlobalHealthData, error) {
 	}
 
 	return data, nil
+}
+
+func (d *DB) InsertServerMetrics(m ServerMetric) error {
+	_, err := d.Conn.Exec(`
+		INSERT INTO server_metrics_history (server_id, category, timestamp, cpu_usage, memory_usage, net_rx, net_tx, disk_read, disk_write)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		m.ServerID, m.Category, m.Timestamp, m.CPUUsage, m.MemoryUsage, m.NetRX, m.NetTX, m.DiskRead, m.DiskWrite)
+	return err
+}
+
+func (d *DB) GetServerHistory(serverID int64, category string, duration string) ([]ServerMetric, error) {
+	var interval string
+	switch duration {
+	case "1h":
+		interval = "1 hour"
+	case "6h":
+		interval = "6 hours"
+	case "12h":
+		interval = "12 hours"
+	case "24h":
+		interval = "24 hours"
+	case "7d":
+		interval = "7 days"
+	case "30d":
+		interval = "30 days"
+	default:
+		interval = "24 hours"
+	}
+
+	query := fmt.Sprintf(`
+		SELECT id, server_id, category, timestamp, cpu_usage, memory_usage, net_rx, net_tx, disk_read, disk_write
+		FROM server_metrics_history
+		WHERE server_id = $1 AND category = $2 AND timestamp > NOW() - INTERVAL '%s'
+		ORDER BY timestamp ASC`, interval)
+
+	rows, err := d.Conn.Query(query, serverID, category)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var metrics []ServerMetric
+	for rows.Next() {
+		var m ServerMetric
+		if err := rows.Scan(&m.ID, &m.ServerID, &m.Category, &m.Timestamp, &m.CPUUsage, &m.MemoryUsage, &m.NetRX, &m.NetTX, &m.DiskRead, &m.DiskWrite); err != nil {
+			return nil, err
+		}
+		metrics = append(metrics, m)
+	}
+	return metrics, nil
 }

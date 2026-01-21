@@ -7087,6 +7087,17 @@ window.toggleK8sMapDebug = function () {
 let historyToolMap = null;
 
 async function renderHistory() {
+    // Ensure data is loaded
+    if ((!allKVMHostsCache || allKVMHostsCache.length === 0) &&
+        (!allProxmoxHostsCache || allProxmoxHostsCache.length === 0) &&
+        (!allDockerHostsCache || allDockerHostsCache.length === 0)) {
+        await preloadAllCaches();
+    }
+
+    // Initialize Metrics UI
+    initHistoryMetrics();
+    populateHistoryServers();
+
     const timelineContainer = document.getElementById('history-timeline');
     if (!timelineContainer) return;
 
@@ -7164,4 +7175,208 @@ async function renderHistory() {
     }
 }
 
+
 window.renderHistory = renderHistory;
+
+// History Metrics Logic
+let historyMetricsInitialized = false;
+let cpuChart = null;
+let ramChart = null;
+let netChart = null;
+
+function initHistoryMetrics() {
+    if (historyMetricsInitialized) return;
+
+    const serverSelect = document.getElementById('history-server-select');
+    const timeRange = document.getElementById('history-time-range');
+    const loadBtn = document.getElementById('load-history-btn');
+
+    if (loadBtn) {
+        loadBtn.addEventListener('click', loadHistoryMetrics);
+    }
+
+    if (serverSelect) {
+        serverSelect.addEventListener('change', loadHistoryMetrics);
+    }
+    if (timeRange) {
+        timeRange.addEventListener('change', loadHistoryMetrics);
+    }
+
+    historyMetricsInitialized = true;
+}
+
+async function populateHistoryServers() {
+    const select = document.getElementById('history-server-select');
+    if (!select) return;
+
+    // Preserve selection
+    const currentVal = select.value;
+
+    let options = '<option value="" disabled selected>Seleccionar Servidor</option>';
+
+    const addOpts = (hosts, category, label_prefix) => {
+        if (!hosts) return;
+        hosts.forEach(h => {
+            // For KVM hosts, the API returns 'id' which is the unique host ID.
+            const name = h.name || h.hostname || `Server ${h.id}`;
+            options += `<option value="${category}:${h.id}">${label_prefix} - ${name}</option>`;
+        });
+    };
+
+    // Use global caches
+    if (typeof allKVMHostsCache !== 'undefined') addOpts(allKVMHostsCache, 'kvm', 'KVM');
+    // Add generic servers if available (need to check if variable names match)
+    // allProxmoxHostsCache is defined in app.js
+    if (typeof allProxmoxHostsCache !== 'undefined') addOpts(allProxmoxHostsCache, 'proxmox', 'Proxmox');
+    if (typeof allDockerHostsCache !== 'undefined') addOpts(allDockerHostsCache, 'docker', 'Docker');
+
+    select.innerHTML = options;
+
+    // Restore selection if valid
+    if (currentVal && select.querySelector(`option[value="${currentVal}"]`)) {
+        select.value = currentVal;
+    }
+}
+
+async function loadHistoryMetrics() {
+    const select = document.getElementById('history-server-select');
+    const timeRange = document.getElementById('history-time-range');
+    if (!select || !select.value) return;
+
+    const [category, id] = select.value.split(':');
+    const duration = timeRange.value;
+
+    // Show loading state?
+
+    try {
+        const res = await fetch(`/api/metrics/${category}/${id}?duration=${duration}`);
+        if (!res.ok) throw new Error('Failed to fetch metrics');
+        const metrics = await res.json();
+
+        updateCharts(metrics);
+    } catch (e) {
+        console.error("Error loading metrics", e);
+    }
+}
+
+function updateCharts(metrics) {
+    if (!metrics) metrics = [];
+
+    // Sort by timestamp
+    metrics.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+    const labels = metrics.map(m => new Date(m.timestamp).toLocaleString());
+    const sortedCpu = metrics.map(m => m.cpu_usage);
+    const sortedRam = metrics.map(m => m.memory_usage / (1024 * 1024 * 1024));
+
+    const sortedNetRx = metrics.map(m => m.net_rx);
+    const sortedNetTx = metrics.map(m => m.net_tx);
+
+    const ratesRx = [];
+    const ratesTx = [];
+    const netLabels = [];
+
+    // Calculate network rates
+    for (let i = 1; i < metrics.length; i++) {
+        const t1 = new Date(metrics[i - 1].timestamp).getTime();
+        const t2 = new Date(metrics[i].timestamp).getTime();
+        const sec = (t2 - t1) / 1000;
+
+        // Push label corresponding to the end of the interval
+        netLabels.push(new Date(metrics[i].timestamp).toLocaleString());
+
+        if (sec > 0) {
+            let dRx = sortedNetRx[i] - sortedNetRx[i - 1];
+            let dTx = sortedNetTx[i] - sortedNetTx[i - 1];
+            if (dRx < 0) dRx = 0; // restart
+            if (dTx < 0) dTx = 0;
+            ratesRx.push((dRx / sec) * 8 / (1000 * 1000)); // Mbps
+            ratesTx.push((dTx / sec) * 8 / (1000 * 1000)); // Mbps
+        } else {
+            ratesRx.push(0);
+            ratesTx.push(0);
+        }
+    }
+
+    const chartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                labels: { color: '#ccc' }
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: true,
+                grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                ticks: { color: '#ccc' }
+            },
+            x: {
+                grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                ticks: { color: '#ccc' }
+            }
+        }
+    };
+
+    // Helper to create chart
+    const createChart = (id, type, label, data, color, fill = true) => {
+        const canvas = document.getElementById(id);
+        if (!canvas) return null;
+        const ctx = canvas.getContext('2d');
+        return new Chart(ctx, {
+            type: type,
+            data: {
+                labels: labels, // Use full labels for standard charts
+                datasets: [{
+                    label: label,
+                    data: data,
+                    borderColor: color,
+                    backgroundColor: color + '33', // 20% opacity using hex
+                    fill: fill,
+                    tension: 0.4
+                }]
+            },
+            options: chartOptions
+        });
+    };
+
+    if (cpuChart) cpuChart.destroy();
+    cpuChart = createChart('cpuChart', 'line', 'CPU Usage (%)', sortedCpu, '#38bdf8');
+
+    if (ramChart) ramChart.destroy();
+    ramChart = createChart('ramChart', 'line', 'RAM Usage (GB)', sortedRam, '#a855f7');
+
+    if (netChart) netChart.destroy();
+    // Special handling for net chart multiple datasets
+    const canvasNet = document.getElementById('netChart');
+    if (canvasNet) {
+        const ctxNet = canvasNet.getContext('2d');
+        netChart = new Chart(ctxNet, {
+            type: 'line',
+            data: {
+                labels: netLabels,
+                datasets: [
+                    {
+                        label: 'RX (Mbps)',
+                        data: ratesRx,
+                        borderColor: '#22c55e',
+                        backgroundColor: '#22c55e33',
+                        fill: true,
+                        tension: 0.4
+                    },
+                    {
+                        label: 'TX (Mbps)',
+                        data: ratesTx,
+                        borderColor: '#f97316',
+                        backgroundColor: '#f9731633',
+                        fill: true,
+                        tension: 0.4
+                    }
+                ]
+            },
+            options: chartOptions
+        });
+    }
+}
+

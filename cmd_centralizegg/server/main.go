@@ -205,6 +205,28 @@ func main() {
 		json.NewEncoder(w).Encode(events)
 	}).Methods("GET")
 
+	r.HandleFunc("/api/metrics/{category}/{id}", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		category := vars["category"]
+		id, err := strconv.ParseInt(vars["id"], 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid ID", http.StatusBadRequest)
+			return
+		}
+
+		duration := r.URL.Query().Get("duration")
+		if duration == "" {
+			duration = "24h"
+		}
+
+		metrics, err := db.GetServerHistory(id, category, duration)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(metrics)
+	}).Methods("GET")
+
 	r.HandleFunc("/api/hosts", func(w http.ResponseWriter, r *http.Request) {
 		hosts, err := db.GetHosts()
 		if err != nil {

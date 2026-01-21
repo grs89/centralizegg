@@ -296,6 +296,7 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 
 	// New session for Bridge Interfaces
 	var bridgesJSON = "[]"
+	var totalNetRX, totalNetTX uint64
 	sessionBridges, err := sshClient.NewSession()
 	if err == nil {
 		defer sessionBridges.Close()
@@ -319,6 +320,8 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 						NetRX:  rx,
 						NetTX:  tx,
 					})
+					totalNetRX += rx
+					totalNetTX += tx
 				}
 			}
 			b, _ := json.Marshal(bridges)
@@ -392,6 +395,20 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 	hostID, err := mc.DB.UpsertHost(h)
 	if err != nil {
 		return fmt.Errorf("upsert host: %w", err)
+	}
+
+	// Insert Historical Metrics
+	metric := data_centralizegg.ServerMetric{
+		ServerID:    hostID,
+		Category:    "kvm",
+		Timestamp:   time.Now(),
+		CPUUsage:    cpuUsage,
+		MemoryUsage: (uint64(memory) * 1024) - freeMem,
+		NetRX:       totalNetRX,
+		NetTX:       totalNetTX,
+	}
+	if err := mc.DB.InsertServerMetrics(metric); err != nil {
+		log.Printf("Failed to insert server metrics for %s: %v", s.Name, err)
 	}
 
 	flags := libvirt.ConnectListDomainsActive | libvirt.ConnectListDomainsInactive
