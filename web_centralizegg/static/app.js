@@ -10,10 +10,11 @@ import {
 import {
     debounce, formatBytes, getStatusColor, getRelativeTime, playAlertSound
 } from './js/utils.js';
+import { initSummaryDashboard } from './js/summary-dashboard.js';
 
 
 // Global state
-let currentTool = 'virtualization'; // default
+let currentTool = 'welcome'; // default landing tool
 let currentServers = [];
 let currentFirewallServers = [];
 let currentDockerServers = []; // Global for Docker
@@ -282,6 +283,20 @@ function renderSparkline(data, color, width = 100, height = 30) {
 
 
 const tools = {
+    'welcome': {
+        name: 'Inicio',
+        icon: 'fa-solid fa-rocket',
+        elementId: 'welcome-screen',
+        categoryBtnId: null,
+        categoryName: 'Inicio'
+    },
+    'summary': {
+        name: 'Dashboard',
+        icon: 'fa-solid fa-gauge-high',
+        elementId: 'summary-tool',
+        categoryBtnId: 'dashboard-btn',
+        categoryName: 'Dashboard'
+    },
     'kvm': {
         name: 'KVM',
         icon: 'fa-solid fa-microchip',
@@ -389,7 +404,7 @@ function switchTool(toolKey) {
     // Update Category Button Identity (Skip for config-btn to avoid layout break)
     try {
         const categoryBtn = document.getElementById(tool.categoryBtnId);
-        if (categoryBtn && tool.categoryBtnId !== 'config-btn' && tool.categoryBtnId !== 'log-btn') {
+        if (categoryBtn && tool.categoryBtnId !== 'config-btn' && tool.categoryBtnId !== 'log-btn' && tool.categoryBtnId !== 'dashboard-btn') {
             categoryBtn.innerHTML = `
                 <i class="${tool.icon}"></i> ${tool.name} <i class="fa-solid fa-chevron-down" style="font-size: 0.8rem; margin-left: 5px;"></i>
             `;
@@ -400,13 +415,10 @@ function switchTool(toolKey) {
     }
 
     // Comprehensive visibility management
-    const welcomeScreen = document.getElementById('welcome-screen');
     const virtTool = document.getElementById('virtualization-tool');
     const containerTool = document.getElementById('container-scanner-tool');
     const settingsTool = document.getElementById('settings-tool');
     const logsTool = document.getElementById('logs-tool');
-
-    if (welcomeScreen) welcomeScreen.style.display = 'none';
 
     if (virtTool) {
         if (toolKey === 'kvm') {
@@ -440,8 +452,32 @@ function switchTool(toolKey) {
         }
     }
 
+    const summaryTool = document.getElementById('summary-tool');
+    const welcomeScreen = document.getElementById('welcome-screen');
+
+    if (welcomeScreen) {
+        if (toolKey === 'welcome') {
+            welcomeScreen.style.display = 'flex';
+        } else {
+            welcomeScreen.style.display = 'none';
+        }
+    }
+
+    if (summaryTool) {
+        if (toolKey === 'summary') {
+            summaryTool.style.display = 'block';
+            const dashboardBtn = document.getElementById('dashboard-btn');
+            if (dashboardBtn) dashboardBtn.classList.add('active');
+            initSummaryDashboard();
+        } else {
+            summaryTool.style.display = 'none';
+            const dashboardBtn = document.getElementById('dashboard-btn');
+            if (dashboardBtn) dashboardBtn.classList.remove('active');
+        }
+    }
+
     if (containerTool) {
-        if (['kvm', 'settings', 'logs'].includes(toolKey)) {
+        if (['kvm', 'settings', 'logs', 'summary', 'welcome'].includes(toolKey)) {
             containerTool.classList.add('hidden');
         } else {
             containerTool.classList.remove('hidden');
@@ -544,29 +580,10 @@ document.addEventListener('click', (e) => {
         console.log('[DEBUG] Valid tool click detected:', toolKey);
         switchTool(toolKey);
     }
-}); // Navigation to home (welcome screen)
+}); // Navigation to home (Global Health Dashboard)
 function goHome() {
     console.log('[DEBUG] Navigating to home screen');
-    currentTool = null;
-    selectedHostId = null; // Reset selection
-    selectedFirewallHostId = null; // Reset firewall selection
-    selectedKubernetesServerId = null;
-    selectedKubernetesNodeId = null;
-
-    // Reset visibility
-
-    const welcomeScreen = document.getElementById('welcome-screen');
-    const virtTool = document.getElementById('virtualization-tool');
-    const containerTool = document.getElementById('container-scanner-tool');
-
-    if (welcomeScreen) welcomeScreen.style.display = 'block';
-    if (virtTool) virtTool.classList.add('hidden');
-    if (containerTool) containerTool.classList.add('hidden');
-
-    const settingsTool = document.getElementById('settings-tool');
-    const configBtn = document.getElementById('config-btn');
-    if (settingsTool) settingsTool.classList.add('hidden');
-    if (configBtn) configBtn.classList.remove('active');
+    switchTool('welcome');
 }
 
 window.goHome = goHome;
@@ -767,9 +784,9 @@ const debouncedSearch = debounce((e) => {
     searchQuery = e.target.value.toLowerCase().trim();
     console.log('[DEBUG] Search Query (Debounced):', searchQuery);
 
-    // If on welcome screen and user starts searching, switch to a tool view (kvm)
-    const welcomeScreen = document.getElementById('welcome-screen');
-    if (searchQuery.length > 0 && welcomeScreen && !welcomeScreen.classList.contains('hidden') && welcomeScreen.style.display !== 'none') {
+    // If on summary dashboard and user starts searching, switch to a tool view (kvm)
+    const summaryTool = document.getElementById('summary-tool');
+    if (searchQuery.length > 0 && summaryTool && !summaryTool.classList.contains('hidden')) {
         switchTool('kvm');
         // Restore the search query after switchTool (which might reset some state)
         searchInput.value = e.target.value;
@@ -1798,6 +1815,13 @@ async function fetchHosts() {
 }
 
 // Generic function to render host nodes for any tool
+// Status Helpers
+function isStatusOnline(status) {
+    if (!status) return false;
+    const s = status.toString().toLowerCase();
+    return ['online', 'running', 'up', 'ready', 'active', 'open'].includes(s);
+}
+
 function renderHostNodes(containerId = 'host-nodes-container', config = {}) {
     const container = document.getElementById(containerId);
     if (!container) return;
@@ -1868,9 +1892,16 @@ function renderHostNodes(containerId = 'host-nodes-container', config = {}) {
         let serverCache = currentServers;
         if (currentTool === 'pfsense') serverCache = currentFirewallServers;
         else if (currentTool === 'docker') serverCache = currentDockerServers;
+        else if (currentTool === 'podman') serverCache = currentPodmanServers;
+        else if (currentTool === 'kubernetes') serverCache = currentKubernetesServers;
+        else if (currentTool === 'proxmox') serverCache = currentProxmoxServers;
+        else if (currentTool === 'nas') serverCache = currentNasServers;
 
         const serverConfig = serverCache.find(s => s.id === host.server_id);
-        const isOnline = host.status ? host.status === 'online' : (serverConfig ? serverConfig.status === 'online' : true);
+
+        // Unify status check: check specialized status fields first
+        const rawStatus = host.status || host.service_status || host.docker_service_status || host.podman_service_status || (serverConfig ? serverConfig.status : null);
+        const isOnline = isStatusOnline(rawStatus);
 
         // Handle onclick - use the provided function name or default to selectHost
         const onClickHandler = onHostClick || 'selectHost';
@@ -5405,6 +5436,9 @@ function refreshAll() {
 // Auto-refresh every 10 seconds. renderFromData already skips redraw if topology unchanged.
 setInterval(refreshAll, 10000);
 checkServerStatus(); // Run immediately
+
+// Initial tool view
+switchTool(currentTool);
 
 
 

@@ -307,6 +307,25 @@ type KVMServer struct {
 	Status        string `json:"status"` // online, offline, unknown
 }
 
+type HealthSummary struct {
+	Category string `json:"category"`
+	Total    int    `json:"total"`
+	Online   int    `json:"online"`
+	Offline  int    `json:"offline"`
+}
+
+type InfrastructureAlert struct {
+	Severity string    `json:"severity"`
+	Source   string    `json:"source"`
+	Message  string    `json:"message"`
+	Time     time.Time `json:"time"`
+}
+
+type GlobalHealthData struct {
+	OverallHealth []HealthSummary       `json:"overall_health"`
+	RecentAlerts  []InfrastructureAlert `json:"recent_alerts"`
+}
+
 func NewPostgresDB(connStr string) (*DB, error) {
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
@@ -1662,6 +1681,24 @@ func (d *DB) UpsertDockerHost(h DockerHost) (int64, error) {
 			INSERT INTO containers.hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, public_ip, dns_servers, uptime, update_status, temperature, disks, docker_version, docker_service_status, docker_socket_status, docker_api_latency, docker_storage_used, docker_storage_total, docker_inodes_usage, docker_logs_size, docker_volumes, docker_networks, gpu_info, host_events)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26) RETURNING id`,
 			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.PublicIP, h.DNSServers, h.Uptime, h.UpdateStatus, h.Temperature, h.Disks, h.DockerVer, h.ServiceStatus, h.SocketStatus, h.APILatency, h.StorageUsed, h.StorageTotal, h.InodesUsage, h.LogsSize, h.Volumes, h.Networks, h.GPUInfo, h.HostEvents).Scan(&id)
+	} else if err == nil {
+		_, err = d.Conn.Exec(`
+			UPDATE containers.hosts SET 
+				hostname=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, 
+				cpu_usage=$6, os_name=$7, public_ip=$8, dns_servers=$9, uptime=$10, 
+				update_status=$11, temperature=$12, disks=$13, docker_version=$14, 
+				docker_service_status=$15, docker_socket_status=$16, docker_api_latency=$17, 
+				docker_storage_used=$18, docker_storage_total=$19, docker_inodes_usage=$20, 
+				docker_logs_size=$21, docker_volumes=$22, docker_networks=$23, gpu_info=$24, 
+				host_events=$25 
+			WHERE id=$26`,
+			h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory,
+			h.CPUUsage, h.OSName, h.PublicIP, h.DNSServers, h.Uptime,
+			h.UpdateStatus, h.Temperature, h.Disks, h.DockerVer,
+			h.ServiceStatus, h.SocketStatus, h.APILatency,
+			h.StorageUsed, h.StorageTotal, h.InodesUsage,
+			h.LogsSize, h.Volumes, h.Networks, h.GPUInfo,
+			h.HostEvents, id)
 	}
 	return id, err
 }
@@ -1774,7 +1811,6 @@ func (d *DB) GetKubernetesNodes() ([]KubernetesNode, error) {
 		}
 		nodes = append(nodes, n)
 	}
-	return nodes, nil
 	return nodes, nil
 }
 
@@ -2138,4 +2174,83 @@ func (d *DB) DeleteStaleKubernetesPods(serverID int64, activePodKeys []string) e
 	`
 	_, err := d.Conn.Exec(query, serverID, pq.Array(activePodKeys))
 	return err
+}
+
+func (d *DB) GetInfrastructureHealth() (*GlobalHealthData, error) {
+	data := &GlobalHealthData{
+		OverallHealth: []HealthSummary{},
+		RecentAlerts:  []InfrastructureAlert{},
+	}
+
+	// 1. Gather status counts from various host/server tables
+	queries := []struct {
+		Category  string
+		Table     string
+		StatusCol string
+	}{
+		{"Virtualización (KVM)", "virtualization.kvm_servers", "status"},
+		{"Virtualización (Proxmox)", "virtualization.proxmox_hosts", "status"},
+		{"Contenedores (Docker)", "containers.hosts", "docker_service_status"},
+		{"Contenedores (Podman)", "containers.podman_hosts", "podman_service_status"},
+		{"Kubernetes (Nodos)", "kubernetes.nodes", "status"},
+		{"Almacenamiento (NAS)", "storage.nas_hosts", "status"},
+		{"Almacenamiento (Ceph)", "storage.ceph_hosts", "status"},
+		{"Red (pfSense)", "firewall.pfsense_servers", "status"},
+	}
+
+	for _, q := range queries {
+		var total, online, offline int
+		query := fmt.Sprintf(`
+			SELECT 
+				COUNT(*), 
+				COUNT(*) FILTER (WHERE %s ILIKE 'online' OR %s ILIKE 'running' OR %s ILIKE 'up' OR %s ILIKE 'Ready' OR %s ILIKE 'active')
+			FROM %s`, q.StatusCol, q.StatusCol, q.StatusCol, q.StatusCol, q.StatusCol, q.Table)
+
+		err := d.Conn.QueryRow(query).Scan(&total, &online)
+		offline = total - online
+		if err != nil {
+			// If status column is missing, try a simpler count
+			d.Conn.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", q.Table)).Scan(&total)
+			online = total // Fallback
+			offline = 0
+		}
+
+		data.OverallHealth = append(data.OverallHealth, HealthSummary{
+			Category: q.Category,
+			Total:    total,
+			Online:   online,
+			Offline:  offline,
+		})
+	}
+
+	// 2. Fetch Recent Kubernetes Events as alerts
+	eventRows, err := d.Conn.Query(`
+		SELECT type, reason || ': ' || message, last_seen 
+		FROM kubernetes.events 
+		WHERE type != 'Normal'
+		ORDER BY last_seen DESC LIMIT 10`)
+	if err == nil {
+		defer eventRows.Close()
+		for eventRows.Next() {
+			var alert InfrastructureAlert
+			alert.Source = "Kubernetes"
+			if err := eventRows.Scan(&alert.Severity, &alert.Message, &alert.Time); err == nil {
+				data.RecentAlerts = append(data.RecentAlerts, alert)
+			}
+		}
+	}
+
+	// 3. Add alerts for offline categories
+	for _, h := range data.OverallHealth {
+		if h.Offline > 0 {
+			data.RecentAlerts = append(data.RecentAlerts, InfrastructureAlert{
+				Severity: "Warning",
+				Source:   h.Category,
+				Message:  fmt.Sprintf("%d hosts están fuera de línea o con problemas", h.Offline),
+				Time:     time.Now(),
+			})
+		}
+	}
+
+	return data, nil
 }

@@ -186,6 +186,15 @@ func main() {
 	r.Use(GzipMiddleware)
 
 	// API Handlers (Headers and Logging are now handled by Middlewares)
+	r.HandleFunc("/api/health/summary", func(w http.ResponseWriter, r *http.Request) {
+		data, err := db.GetInfrastructureHealth()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(data)
+	}).Methods("GET")
+
 	r.HandleFunc("/api/hosts", func(w http.ResponseWriter, r *http.Request) {
 		hosts, err := db.GetHosts()
 		if err != nil {

@@ -71,6 +71,10 @@
         <nav class="tool-navigation">
             <!-- Tool Switcher Dropdowns -->
             <div class="tool-switcher" style="display:flex; gap:10px; margin-bottom: 2rem;">
+                <button class="dropbtn nav-control-btn active" data-tool="summary" id="dashboard-btn"
+                    title="Panel General de Salud">
+                    <i class="fa-solid fa-gauge-high"></i>
+                </button>
                 <!-- Virtualización Dropdown -->
                 <div class="dropdown">
                     <button class="dropbtn" id="virtualization-btn">
@@ -175,7 +179,7 @@
 
         <main>
             <!-- Welcome Screen (Visible by default) -->
-            <div id="welcome-screen">
+            <div id="welcome-screen" class="tool-content">
                 <section class="welcome-section">
                     <div class="glass-panel welcome-card">
                         <div class="welcome-icon">
@@ -187,18 +191,63 @@
                         <div class="welcome-badges">
                             <span class="badge" data-doc="virtualization" style="cursor: pointer;"><i
                                     class="fa-solid fa-microchip"></i> Virtualización</span>
+                            <span class="badge" data-doc="storage" style="cursor: pointer;"><i
+                                    class="fa-solid fa-hdd"></i> Almacenamiento</span>
                             <span class="badge" data-doc="containers" style="cursor: pointer;"><i
-                                    class="fa-solid fa-box"></i> Contenedores</span>
+                                    class="fa-brands fa-docker"></i> Contenedores</span>
                             <span class="badge" data-doc="firewall" style="cursor: pointer;"><i
                                     class="fa-solid fa-shield-halved"></i> Firewall</span>
-                            <span class="badge" data-doc="storage" style="cursor: pointer;"><i
-                                    class="fa-solid fa-server"></i> Almacenamiento</span>
-                            <span class="badge" style="cursor: default; opacity:0.8;"><i
-                                    class="fa-solid fa-file-lines"></i> Logs</span>
                         </div>
                     </div>
                 </section>
             </div>
+
+            <!-- Global Health Dashboard -->
+            <div id="summary-tool">
+                <section class="summary-section">
+                    <div class="section-header" style="margin-bottom: 2rem;">
+                        <h1 style="font-size: 2.2rem; margin-bottom: 0.5rem; color: var(--text-primary);">
+                            <i class="fa-solid fa-gauge-high"
+                                style="color: var(--accent-color); margin-right: 15px;"></i>
+                            Infraestructura Global
+                        </h1>
+                        <p style="color: var(--text-secondary); font-size: 1.1rem;">Estado actual del ecosistema y
+                            alertas operativas.</p>
+                    </div>
+
+                    <div class="summary-grid" id="summary-health-grid"
+                        style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;">
+                        <!-- Health cards injected via JS -->
+                        <div style="grid-column: 1 / -1; text-align: center; padding: 100px; opacity: 0.5;">
+                            <i class="fa-solid fa-circle-notch fa-spin"
+                                style="font-size: 3rem; color: var(--accent-color); margin-bottom: 20px; display: block;"></i>
+                            Cargando estado de salud...
+                        </div>
+                    </div>
+
+                    <div class="alerts-section glass-panel"
+                        style="margin-top: 40px; padding: 30px; border-radius: 20px;">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
+                            <h3 style="font-size: 1.3rem; font-weight: 700;">
+                                <i class="fa-solid fa-triangle-exclamation"
+                                    style="color: #f59e0b; margin-right: 10px;"></i>
+                                Feed de Alertas & Eventos
+                            </h3>
+                            <span class="badge"
+                                style="background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border);">Últimas
+                                24h</span>
+                        </div>
+                        <div id="summary-alerts-list" class="alerts-list">
+                            <!-- Alerts injected via JS -->
+                            <div style="text-align: center; padding: 40px; opacity: 0.4;">
+                                No hay alertas críticas pendientes.
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
 
             <!-- Settings Tool (Unified Config) -->
             <div id="settings-tool" class="hidden">
