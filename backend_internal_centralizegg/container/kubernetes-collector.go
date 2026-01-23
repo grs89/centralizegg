@@ -166,7 +166,8 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 	var nodeListView struct {
 		Items []struct {
 			Metadata struct {
-				Name string `json:"name"`
+				Name   string            `json:"name"`
+				Labels map[string]string `json:"labels"`
 			} `json:"metadata"`
 			Status struct {
 				Capacity struct {
@@ -227,6 +228,8 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 
 	nodeIDMap := make(map[string]int64)
 	allPodNetStats := make(map[string]NetStats)
+	cpCount := 0
+	workerCount := 0
 
 	for _, item := range nodeListView.Items {
 		name := item.Metadata.Name
@@ -350,6 +353,20 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 			continue
 		}
 		nodeIDMap[name] = nodeID
+
+		// Count roles
+		isCP := false
+		for k := range item.Metadata.Labels {
+			if k == "node-role.kubernetes.io/control-plane" || k == "node-role.kubernetes.io/master" {
+				isCP = true
+				break
+			}
+		}
+		if isCP {
+			cpCount++
+		} else {
+			workerCount++
+		}
 	}
 
 	// 2. Get Pods
@@ -700,7 +717,10 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 		"replicasets":            0,
 		"replicationcontrollers": 0,
 		"jobs":                   0,
-		"cronjobs":               0,
+
+		"cronjobs":      0,
+		"workers":       workerCount,
+		"control_plane": cpCount,
 	}
 
 	// Count each resource type

@@ -3170,6 +3170,9 @@ async function renderKubernetesServerDetails(serverId) {
                                         <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
                                             <i class="fa-solid fa-server" style="font-size: 0.8rem; opacity: 0.7;"></i> 
                                             <span>Nodes: <span id="k8s-stat-nodes" style="color: var(--text-primary); font-weight: 500;">${totalNodes}</span></span>
+                                            <span style="font-size: 0.65rem; color: #94a3b8; font-weight: 500;">
+                                                (W: ${(JSON.parse(server.resource_counts || '{}').workers || 0)}, CP: ${(JSON.parse(server.resource_counts || '{}').control_plane || 0)})
+                                            </span>
                                         </div>
                                         <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
                                             <i class="fa-solid fa-microchip" style="font-size: 0.8rem; opacity: 0.7;"></i> 
