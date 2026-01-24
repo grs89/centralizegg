@@ -1168,8 +1168,32 @@ func (d *DB) GetServers() ([]KVMServer, error) {
 }
 
 func (d *DB) SetServerStatus(id int64, status string) error {
+	var currentStatus string
+	d.Conn.QueryRow("SELECT status FROM virtualization.kvm_servers WHERE id=$1", id).Scan(&currentStatus)
+
+	if currentStatus == status {
+		return nil
+	}
+
 	_, err := d.Conn.Exec("UPDATE virtualization.kvm_servers SET status=$1 WHERE id=$2", status, id)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Log event
+	severity := "info"
+	if status == "offline" {
+		severity = "critical"
+	}
+	d.LogEvent(InfrastructureHistoryEvent{
+		Category:  "kvm",
+		Source:    "virtualization.kvm_servers",
+		EventType: "status_change",
+		Severity:  severity,
+		Message:   fmt.Sprintf("Servidor KVM (ID %d) cambió a estado %s", id, status),
+		Metadata:  "{}",
+	})
+	return nil
 }
 
 func (d *DB) UpdateServer(s KVMServer) error {

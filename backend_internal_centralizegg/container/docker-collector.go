@@ -248,6 +248,27 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 		}
 	}
 
+	// Host Network Topology
+	var totalNetRX, totalNetTX uint64
+	netRaw, err := dc.runCommand(client, "awk 'NR>2 {print $1, $2, $10}' /proc/net/dev")
+	if err == nil {
+		lines := strings.Split(strings.TrimSpace(netRaw), "\n")
+		for _, line := range lines {
+			parts := strings.Fields(line)
+			if len(parts) >= 3 {
+				// Filter loopback or specific interfaces if needed? For now aggregate all.
+				if strings.HasPrefix(parts[0], "lo:") {
+					continue
+				}
+				var rx, tx uint64
+				fmt.Sscanf(parts[1], "%d", &rx)
+				fmt.Sscanf(parts[2], "%d", &tx)
+				totalNetRX += rx
+				totalNetTX += tx
+			}
+		}
+	}
+
 	hostID, err := dc.DB.UpsertDockerHost(data_centralizegg.DockerHost{
 		ServerID:      s.ID,
 		Hostname:      hostname,
@@ -274,6 +295,20 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 	})
 	if err == nil {
 		dc.DB.UpdateGenericServerHostEvents("docker", s.ID, hostEventsJSON)
+
+		// Insert Historical Metrics
+		metric := data_centralizegg.ServerMetric{
+			ServerID:    hostID,
+			Category:    "docker",
+			Timestamp:   time.Now(),
+			CPUUsage:    cpuUsage,
+			MemoryUsage: memTotal - memFree,
+			NetRX:       totalNetRX,
+			NetTX:       totalNetTX,
+		}
+		if err := dc.DB.InsertServerMetrics(metric); err != nil {
+			// log.Printf("[DockerCollector] Failed to insert metrics: %v", err)
+		}
 	}
 	if err != nil {
 		return fmt.Errorf("upsert docker host: %w", err)

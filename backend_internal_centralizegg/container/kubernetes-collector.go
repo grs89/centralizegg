@@ -583,6 +583,7 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 	var clusterTotalMemory uint64
 	var clusterFreeMemory uint64
 	var totalCores int
+	var totalNetRX, totalNetTX uint64
 	nodeCount := len(nodeListView.Items)
 
 	for _, item := range nodeListView.Items {
@@ -591,6 +592,20 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 		totalCPUUsage += m.CPUUsage
 		clusterTotalMemory += kc.parseK8sQuantity(item.Status.Capacity.Memory)
 		clusterFreeMemory += (kc.parseK8sQuantity(item.Status.Capacity.Memory) - m.MemUsage)
+
+		// Aggregate Network Stats (using previously collected prevNetStats or similar logic?)
+		// We have UpsertKubernetesNode which had access to netRX/netTX.
+		// But here we are iterating nodeListView.Items again.
+		// We should probably rely on what we just collected.
+		// Let's use the prevNetStats map which we updated in the previous loop?
+		// Actually, we did the update in a loop over nodeListView.Items (lines 235-371).
+		// That loop was separate? No, that loop was "1. Get Nodes".
+		// This loop (lines 588+) is "4. Aggregate cluster stats".
+		// We can just re-access prevNetStats for the current values
+		if stats, ok := kc.prevNetStats[name]; ok {
+			totalNetRX += stats.RxBytes
+			totalNetTX += stats.TxBytes
+		}
 
 		cpuStr := item.Status.Capacity.CPU
 		if strings.HasSuffix(cpuStr, "m") {
@@ -611,8 +626,25 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 		log.Printf("[KubernetesCollector] Failed to update cluster stats: %v", err)
 	}
 
+	// Insert Historical Metrics
+	metric := data_centralizegg.ServerMetric{
+		ServerID:    s.ID,
+		Category:    "kubernetes",
+		Timestamp:   time.Now(),
+		CPUUsage:    avgCPUUsage,
+		MemoryUsage: clusterTotalMemory - clusterFreeMemory,
+		NetRX:       totalNetRX,
+		NetTX:       totalNetTX,
+	}
+	if err := kc.DB.InsertServerMetrics(metric); err != nil {
+		// log.Printf("[KubernetesCollector] Failed to insert metrics: %v", err)
+	}
+
 	// 5. Check Certificate Expiration
 	kc.checkCertExpiration(s)
+
+	// Check and Log Resource Alerts
+	kc.checkAndLogAlerts(s, avgCPUUsage, clusterTotalMemory, clusterFreeMemory)
 
 	// 6. Collect Control Plane Status (from kube-system pods, since ComponentStatus API was removed)
 	var cpPodsJSON string
@@ -1054,4 +1086,34 @@ func (kc *KubernetesCollector) extractServerURL(kubeconfig string) string {
 		}
 	}
 	return ""
+}
+
+func (kc *KubernetesCollector) checkAndLogAlerts(s data_centralizegg.GenericServer, cpuUsage float64, totalMem, freeMem uint64) {
+	// CPU Alert
+	if cpuUsage > 90 {
+		kc.DB.LogEvent(data_centralizegg.InfrastructureHistoryEvent{
+			Category:  "kubernetes",
+			Source:    "kubernetes.kubernetes_servers",
+			EventType: "resource_alert",
+			Severity:  "warning",
+			Message:   fmt.Sprintf("High CPU Usage on Cluster %s: %.2f%%", s.Name, cpuUsage),
+			Metadata:  fmt.Sprintf(`{"cpu_usage": %.2f}`, cpuUsage),
+		})
+	}
+
+	// Memory Alert
+	if totalMem > 0 {
+		usedMem := totalMem - freeMem
+		memUsage := (float64(usedMem) / float64(totalMem)) * 100
+		if memUsage > 90 {
+			kc.DB.LogEvent(data_centralizegg.InfrastructureHistoryEvent{
+				Category:  "kubernetes",
+				Source:    "kubernetes.kubernetes_servers",
+				EventType: "resource_alert",
+				Severity:  "warning",
+				Message:   fmt.Sprintf("High Memory Usage on Cluster %s: %.2f%%", s.Name, memUsage),
+				Metadata:  fmt.Sprintf(`{"memory_usage": %.2f}`, memUsage),
+			})
+		}
+	}
 }

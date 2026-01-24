@@ -432,8 +432,23 @@ func (mc *PfsenseCollector) collectOne(s data_centralizegg.PFSenseServer) error 
 	}
 
 	// Now store interfaces using the correct hostID
+	var netRXTotal, netTXTotal uint64
 	if netStats != "" {
-		parseAndStoreInterfaces(mc.DB, hostID, netStats, interfaceIPs, interfaceMACs)
+		netRXTotal, netTXTotal = parseAndStoreInterfaces(mc.DB, hostID, netStats, interfaceIPs, interfaceMACs)
+	}
+
+	// Insert Historical Metrics
+	metric := data_centralizegg.ServerMetric{
+		ServerID:    hostID,
+		Category:    "pfsense", // Using 'pfsense' as category
+		Timestamp:   time.Now(),
+		CPUUsage:    cpuUsage,
+		MemoryUsage: memTotal - memFree,
+		NetRX:       netRXTotal,
+		NetTX:       netTXTotal,
+	}
+	if err := mc.DB.InsertServerMetrics(metric); err != nil {
+		// log.Printf("[PFSenseCollector] Failed to insert metrics: %v", err)
 	}
 
 	// 4. Gateway Status
@@ -626,12 +641,14 @@ func parseIfconfigIPs(output string) (map[string]string, map[string]string) {
 	return ips, macs
 }
 
-func parseAndStoreInterfaces(db *data_centralizegg.DB, hostID int64, output string, ipMap map[string]string, macMap map[string]string) {
+func parseAndStoreInterfaces(db *data_centralizegg.DB, hostID int64, output string, ipMap map[string]string, macMap map[string]string) (uint64, uint64) {
 	// Header: Name  Mtu   Network       Address            Ipkts Ierrs Idrop    Opkts Oerrs  Coll
 	// em0   1500  <Link#1>      00:50:56:a6:31:3e  3685412     0     0  2835252     0     0
 
 	lines := strings.Split(output, "\n")
 	start := false
+	var totalRX, totalTX uint64
+
 	for _, line := range lines {
 		if strings.HasPrefix(line, "Name") {
 			start = true
@@ -647,86 +664,55 @@ func parseAndStoreInterfaces(db *data_centralizegg.DB, hostID int64, output stri
 		}
 
 		rawName := fields[0]
-		// Skip if name is "Name" (just in case) or empty
 		if rawName == "Name" || rawName == "" {
 			continue
 		}
 
-		// In netstat for pfSense, multiple lines appear per interface (Link, IPv4, IPv6).
-		// accurate traffic stats (Ibytes/Obytes) typically appear on the <Link#...> line.
-		// Example: em0 1500 <Link#1> ...
-		// IPv4/IPv6 lines (e.g. em0 - 192.168...) often have different counters.
-		// So we should only parse bytes if the line contains "<Link" or has the expected byte columns.
-
-		// Let's filter: only update stats if it looks like a Link line.
-		// Heuristic: Link lines usually have "Link#" in the 3rd column (index 2).
 		isLinkLine := false
 		if len(fields) >= 3 && strings.Contains(fields[2], "Link#") {
 			isLinkLine = true
 		}
 
 		if !isLinkLine {
-			// If not a link line, we skip this line entirely for STATS purposes.
-			// This avoids the issue where the IPv4 line overwrites the byte counts with something else or partial data.
 			continue
 		}
 
 		finalName := rawName
-
-		// Try to resolve full name using MAC address if available
-		// Address is usually at index 3 for Link lines
 		if len(fields) >= 4 {
 			potentialMac := strings.ToLower(fields[3])
-			// Simple check if it looks like a mac (contains :)
 			if strings.Contains(potentialMac, ":") {
 				if resolvedName, ok := macMap[potentialMac]; ok {
 					finalName = resolvedName
 				}
 			}
 		}
-		// Fallback: If name seems truncated (e.g. mvnet) and we didn't find MAC,
-		// we might double check if "Address" column is actually the full name (e.g. pflog0)
 		if finalName == rawName && len(fields) >= 4 {
 			potentialName := fields[3]
-			// If potentialName is a valid interface in our IP map (meaning it existed in ifconfig), use it?
-			// This helps for virutal interfaces like pflog0 where netstat shows "pflog" but Address column has "pflog0"
 			if _, exists := ipMap[potentialName]; exists {
-				// Only if it looks like an extension of rawName?
 				if strings.HasPrefix(potentialName, rawName) {
 					finalName = potentialName
 				}
 			}
-			// Also check if potentialName is a key in any map we have?
-			// We don't have a map of ALL interface names, just those with IPs or MACs.
-			// But ipMap contains names only if they have IPs.
 		}
 
 		cleanName := strings.TrimSuffix(finalName, "*")
 
-		// We want to capture Errors and Drops too.
-		// Layout: Name(0) Mtu(1) Network(2) Address(3) Ipkts(4) Ierrs(5) Idrop(6) Ibytes(7) Opkts(8) Oerrs(9) Obytes(10) Coll(11)
-
 		var rxBytes, txBytes, rxErrors, txErrors, rxDropped, txDropped uint64
 
 		if len(fields) >= 11 {
-			// Ibytes is at index 7
 			if rb, err := strconv.ParseUint(fields[7], 10, 64); err == nil {
 				rxBytes = rb
 			}
-			// Ierrs is at index 5
 			if re, err := strconv.ParseUint(fields[5], 10, 64); err == nil {
 				rxErrors = re
 			}
-			// Idrop is at index 6
 			if rd, err := strconv.ParseUint(fields[6], 10, 64); err == nil {
 				rxDropped = rd
 			}
-			// Oerrs is at index 9
 			if oe, err := strconv.ParseUint(fields[9], 10, 64); err == nil {
 				txErrors = oe
 			}
 
-			// Obytes is at index 10 (usually) or 2nd to last if Coll is last
 			targetIdx := 10
 			if len(fields) == 12 {
 				targetIdx = 10
@@ -737,6 +723,10 @@ func parseAndStoreInterfaces(db *data_centralizegg.DB, hostID int64, output stri
 				}
 			}
 		}
+
+		// Accumulate Totals
+		totalRX += rxBytes
+		totalTX += txBytes
 
 		_ = db.UpsertFirewallInterface(data_centralizegg.FirewallInterface{
 			HostID:        hostID,
@@ -752,6 +742,7 @@ func parseAndStoreInterfaces(db *data_centralizegg.DB, hostID int64, output stri
 			IPAddress:     ipMap[cleanName],
 		})
 	}
+	return totalRX, totalTX
 }
 
 func parseAndStoreGateways(db *data_centralizegg.DB, hostID int64, output string) {
