@@ -289,7 +289,7 @@
                         </div>
 
                         <div class="charts-grid"
-                            style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
+                            style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px;">
                             <!-- CPU Chart -->
                             <div class="chart-container glass-panel"
                                 style="display: flex; flex-direction: column; padding: 20px; border-radius: 16px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); height: 320px;">
@@ -319,6 +319,22 @@
                                 </h3>
                                 <div style="flex: 1; position: relative; width: 100%;">
                                     <canvas id="ramChart"></canvas>
+                                </div>
+                            </div>
+
+                            <!-- Disk Chart -->
+                            <div class="chart-container glass-panel"
+                                style="display: flex; flex-direction: column; padding: 20px; border-radius: 16px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); height: 320px;">
+                                <h3
+                                    style="margin: 0 0 15px 0; font-size: 1rem; color: #e2e8f0; display: flex; align-items: center; gap: 10px; font-weight: 500;">
+                                    <div
+                                        style="background: rgba(234, 179, 8, 0.15); width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #eab308;">
+                                        <i class="fa-solid fa-hard-drive"></i>
+                                    </div>
+                                    Uso de Disco (I/O)
+                                </h3>
+                                <div style="flex: 1; position: relative; width: 100%;">
+                                    <canvas id="diskChart"></canvas>
                                 </div>
                             </div>
 

@@ -7529,6 +7529,57 @@ function updateCharts(metrics, keepDropdown = false) {
     cpuChart = createOrUpdateChart(cpuChart, 'cpuChart', 'line', 'CPU Usage (%)', sortedCpu, '#38bdf8');
     ramChart = createOrUpdateChart(ramChart, 'ramChart', 'line', 'RAM Usage (GB)', sortedRam, '#a855f7');
 
+    // Disk Chart
+    const canvasDisk = document.getElementById('diskChart');
+    if (canvasDisk) {
+        if (typeof diskChart !== 'undefined' && diskChart) {
+            diskChart.data.labels = netLabels;
+            diskChart.data.datasets[0].data = ratesDiskRead;
+            diskChart.data.datasets[1].data = ratesDiskWrite;
+            diskChart.update('none');
+        } else {
+            const ctxDisk = canvasDisk.getContext('2d');
+            const gradRead = getGradient(ctxDisk, '#fbbf24');
+            const gradWrite = getGradient(ctxDisk, '#f59e0b');
+
+            const diskOptions = JSON.parse(JSON.stringify(commonOptions));
+            diskOptions.plugins.legend = {
+                display: true,
+                labels: { color: '#94a3b8', usePointStyle: true, boxWidth: 8 }
+            };
+
+            diskChart = new Chart(ctxDisk, {
+                type: 'line',
+                data: {
+                    labels: netLabels,
+                    datasets: [
+                        {
+                            label: 'Read (MB/s)',
+                            data: ratesDiskRead,
+                            borderColor: '#fbbf24',
+                            backgroundColor: gradRead,
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 0
+                        },
+                        {
+                            label: 'Write (MB/s)',
+                            data: ratesDiskWrite,
+                            borderColor: '#f59e0b',
+                            backgroundColor: gradWrite,
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 0
+                        }
+                    ]
+                },
+                options: diskOptions
+            });
+        }
+    }
+
     // Special handling for net chart multiple datasets (Network)
     const canvasNet = document.getElementById('netChart');
     if (canvasNet) {
