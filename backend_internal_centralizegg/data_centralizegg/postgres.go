@@ -429,7 +429,18 @@ func NewPostgresDB(connStr string) (*DB, error) {
 		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS cpu_model VARCHAR(255) DEFAULT ''", t))
 	}
 
+	// Migration: Add cert_expiration to all generic servers
+	for _, t := range genericTables {
+		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS cert_expiration TIMESTAMP", t))
+	}
+
 	return &DB{Conn: db}, nil
+}
+
+func (d *DB) UpdateKubernetesCertExpiration(serverID int64, expiration time.Time) error {
+	query := "UPDATE kubernetes.kubernetes_servers SET cert_expiration=$1 WHERE id=$2"
+	_, err := d.Conn.Exec(query, expiration, serverID)
+	return err
 }
 
 func ensureSchema(db *sql.DB) {
@@ -771,6 +782,7 @@ func ensureSchema(db *sql.DB) {
 		"ALTER TABLE containers.podman_servers ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
 		"ALTER TABLE kubernetes.kubernetes_servers ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
 		"ALTER TABLE firewall.pfsense_servers ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
+		"ALTER TABLE kubernetes.kubernetes_servers ADD COLUMN IF NOT EXISTS cert_expiration TIMESTAMP",
 
 		// Docker Tables
 		`CREATE TABLE IF NOT EXISTS containers.hosts (
@@ -1464,6 +1476,7 @@ type GenericServer struct {
 	ResourceCounts     string     `json:"resource_counts"`      // JSON string for Kubernetes resource counts
 	NetworkTopology    string     `json:"network_topology"`     // JSON string for Kubernetes network map
 	OfflineSince       *time.Time `json:"offline_since"`        // Timestamp when server went offline
+	CertExpiration     *time.Time `json:"cert_expiration"`      // TLS Certificate expiration date
 	HostEvents         string     `json:"host_events"`          // JSON string for host events/logs
 }
 
@@ -1483,7 +1496,7 @@ func (d *DB) GetGenericServers(toolType string) ([]GenericServer, error) {
 		return nil, fmt.Errorf("unknown tool type: %s", toolType)
 	}
 
-	query := fmt.Sprintf("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, kubeconfig_path, kubeconfig_content, status, cpu_usage, cpu_cores, total_memory, free_memory, storage_used, storage_total, os_name, cpu_model, control_plane_status, resource_counts, network_topology, offline_since, host_events FROM %s", table)
+	query := fmt.Sprintf("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, kubeconfig_path, kubeconfig_content, status, cpu_usage, cpu_cores, total_memory, free_memory, storage_used, storage_total, os_name, cpu_model, control_plane_status, resource_counts, network_topology, offline_since, cert_expiration, host_events FROM %s", table)
 	rows, err := d.Conn.Query(query)
 	if err != nil {
 		return nil, err
@@ -1494,7 +1507,7 @@ func (d *DB) GetGenericServers(toolType string) ([]GenericServer, error) {
 	for rows.Next() {
 		var s GenericServer
 		var pwd sql.NullString
-		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.SSHKeyContent, &s.KubeconfigPath, &s.KubeconfigContent, &s.Status, &s.CPUUsage, &s.CPUCores, &s.TotalMemory, &s.FreeMemory, &s.StorageUsed, &s.StorageTotal, &s.OSName, &s.CPUModel, &s.ControlPlaneStatus, &s.ResourceCounts, &s.NetworkTopology, &s.OfflineSince, &s.HostEvents); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.SSHKeyContent, &s.KubeconfigPath, &s.KubeconfigContent, &s.Status, &s.CPUUsage, &s.CPUCores, &s.TotalMemory, &s.FreeMemory, &s.StorageUsed, &s.StorageTotal, &s.OSName, &s.CPUModel, &s.ControlPlaneStatus, &s.ResourceCounts, &s.NetworkTopology, &s.OfflineSince, &s.CertExpiration, &s.HostEvents); err != nil {
 			return nil, err
 		}
 		s.Password = pwd.String

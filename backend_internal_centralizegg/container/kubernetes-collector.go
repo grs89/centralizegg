@@ -1,6 +1,7 @@
 package container
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -610,7 +611,10 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 		log.Printf("[KubernetesCollector] Failed to update cluster stats: %v", err)
 	}
 
-	// 5. Collect Control Plane Status (from kube-system pods, since ComponentStatus API was removed)
+	// 5. Check Certificate Expiration
+	kc.checkCertExpiration(s)
+
+	// 6. Collect Control Plane Status (from kube-system pods, since ComponentStatus API was removed)
 	var cpPodsJSON string
 	if isLocal {
 		cpPodsJSON, _ = kc.runLocalCommand(kubectlCmd + " get pods -n kube-system -o json")
@@ -1012,4 +1016,42 @@ func (kc *KubernetesCollector) parseK8sQuantity(s string) uint64 {
 	// Default to just number
 	fmt.Sscanf(s, "%f%s", &val, &unit)
 	return uint64(val)
+}
+
+func (kc *KubernetesCollector) checkCertExpiration(s data_centralizegg.GenericServer) {
+	serverURL := kc.extractServerURL(s.KubeconfigContent)
+	if serverURL == "" {
+		return
+	}
+
+	// Remove protocol
+	serverURL = strings.Replace(serverURL, "https://", "", 1)
+	serverURL = strings.Replace(serverURL, "http://", "", 1)
+
+	// Set timeout
+	conn, err := tls.Dial("tcp", serverURL, &tls.Config{InsecureSkipVerify: true})
+	if err != nil {
+		log.Printf("[KubernetesCollector] Failed to check cert for %s: %v", serverURL, err)
+		return
+	}
+	defer conn.Close()
+
+	if len(conn.ConnectionState().PeerCertificates) > 0 {
+		cert := conn.ConnectionState().PeerCertificates[0]
+		kc.DB.UpdateKubernetesCertExpiration(s.ID, cert.NotAfter)
+	}
+}
+
+func (kc *KubernetesCollector) extractServerURL(kubeconfig string) string {
+	lines := strings.Split(kubeconfig, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "server:") {
+			parts := strings.Fields(trimmed)
+			if len(parts) >= 2 {
+				return parts[1]
+			}
+		}
+	}
+	return ""
 }

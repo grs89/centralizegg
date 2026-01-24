@@ -3273,6 +3273,52 @@ async function renderKubernetesServerDetails(serverId) {
                                     </div>
                                 </div>
 
+                                <!-- Certificate Card -->
+                                <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
+                                    <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 8px;">Certificado del Cluster</div>
+                                    ${(() => {
+                if (!server.cert_expiration) return '<div style="font-size: 0.75rem; color: var(--text-secondary);"><i class="fa-solid fa-circle-question"></i> No disponible</div>';
+
+                const expDate = new Date(server.cert_expiration);
+                const now = new Date();
+                const diffTime = expDate - now;
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                let statusColor = '#4ade80'; // Green
+                let statusText = 'Válido';
+
+                if (diffDays < 15) {
+                    statusColor = '#ef4444'; // Red
+                    statusText = 'Crítico';
+                } else if (diffDays < 30) {
+                    statusColor = '#eab308'; // Yellow
+                    statusText = 'Pronto a vencer';
+                }
+
+                return `
+                                            <div style="display: flex; flex-direction: column; gap: 8px;">
+                                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                                    <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                                                        <i class="fa-solid fa-calendar-check" style="font-size: 0.8rem; opacity: 0.7;"></i> 
+                                                        <span>Expira el</span>
+                                                    </div>
+                                                    <span style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">${expDate.toLocaleDateString()}</span>
+                                                </div>
+                                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                                    <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                                                        <i class="fa-solid fa-hourglass-half" style="font-size: 0.8rem; opacity: 0.7;"></i> 
+                                                        <span>Días restantes</span>
+                                                    </div>
+                                                    <span style="font-weight: 700; font-size: 0.85rem; color: ${statusColor};">${diffDays} días</span>
+                                                </div>
+                                                <div style="margin-top: 4px; padding: 4px 8px; background: ${statusColor}20; border: 1px solid ${statusColor}40; border-radius: 4px; text-align: center;">
+                                                     <span style="font-weight: 700; font-size: 0.75rem; color: ${statusColor}; text-transform: uppercase;">${statusText}</span>
+                                                </div>
+                                            </div>
+                                        `;
+            })()}
+                                </div>
+
 
                             </div>
 
