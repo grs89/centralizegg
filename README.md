@@ -128,6 +128,7 @@ VMs y Contenedores LXC alojados en Proxmox.
 *   **Monitoreo de Kubernetes (K8s)**:
     - Visualización de Nodos y Pods en tiempo real.
     - Métricas de consumo de recursos por Namespace.
+    - [Documentación Detallada](web_centralizegg/static/docs/kubernetes.html)
 *   **Sparklines de Red**: Gráficos lineales en tiempo real para visualizar tendencias de tráfico RX/TX.
 *   **Filtrado Inteligente**: Selecciona un host para filtrar instantáneamente su cuadrícula de máquinas virtuales.
 *   **Búsqueda Global ("Search Everything")**:
@@ -374,12 +375,9 @@ Los servidores KVM se configuran a través del dashboard web:
 - Verifica configuración de Libvirt en el servidor remoto
 - Revisa políticas de acceso en `/etc/libvirt/libvirt.conf`
 
-## ⚡ Backend
+## ⚡ Optimización del Sistema
 
-Hemos implementado varias optimizaciones en el backend para mejorar el rendimiento y la eficiencia:
-
-## ⚙️ Optimización del Backend
-
+### ⚙️ Optimización del Backend
 Hemos implementado varias optimizaciones en el backend para mejorar el rendimiento y la eficiencia:
 
 * **Conexiones SSH persistentes**: Reutilización de conexiones SSH para reducir la sobrecarga de establecimiento de conexión.
@@ -387,8 +385,17 @@ Hemos implementado varias optimizaciones en el backend para mejorar el rendimien
 * **Manejo de errores mejorado**: Captura y registro más detallado de errores para facilitar la depuración.
 * **Optimización de consultas SQL**: Ajustes en las consultas a la base de datos para una recuperación de datos más rápida.
 * **Ajustes de pool de conexiones DB**: `SetMaxOpenConns(25)` y `SetMaxIdleConns(25)` para reducir latencia.
-* **Timeouts del servidor HTTP**: `ReadTimeout`, `WriteTimeout` y `IdleTimeout` configurados a 15 s/15 s/60 s.
+* **Timeouts del servidor HTTP**: `ReadTimeout`, `WriteTimeout` y `IdleTimeout` configurados a 15s/15s/60s.
 * **Compresión GZIP**: Uso de `gzip.BestSpeed` para minimizar la sobrecarga de CPU en respuestas API.
+
+### ⚡ Optimización del Frontend
+El frontend ha sido completamente refactorizado para ofrecer una experiencia ultra-fluida:
+
+* **Arquitectura Modular (ES Modules)**: División de `app.js` en módulos especializados (`state.js`, `ui.js`, `api.js`, `history.js`) para una carga y mantenimiento eficiente.
+* **Estado Centralizado**: Uso de un objeto `state` único para sincronizar datos entre todos los componentes.
+* **Smart Rendering (Memoización)**: El sistema compara los datos antes de actualizar el DOM, evitando reflows innecesarios.
+* **Sparklines Ultra-Light**: Gráficos de red SVG generados al vuelo con impacto mínimo en CPU/Memoria.
+* **Carga Bajo Demanda**: Las métricas e historial se procesan solo para la herramienta activa, reduciendo el tráfico de red.
 
 ---
 
