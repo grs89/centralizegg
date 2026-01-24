@@ -675,6 +675,17 @@ Hemos implementado varias optimizaciones en el backend para mejorar el rendimien
 * **Timeouts del servidor HTTP**: `ReadTimeout`, `WriteTimeout` y `IdleTimeout` configurados a 15s/15s/60s.
 * **Compresión GZIP**: Uso de `gzip.BestSpeed` para minimizar sobrecarga de CPU en respuestas API.
 
+## ⚡ Optimización del Frontend
+
+Se ha realizado una reestructuración profunda del frontend para garantizar una experiencia fluida incluso con cientos de recursos monitoreados:
+
+* **Arquitectura Modular (ES Modules)**: El código principal se ha dividido en módulos especializados (`state.js`, `ui-components.js`, `history.js`, `tool-kvm.js`), reduciendo el tiempo de parseo inicial del navegador.
+* **Estado Centralizado (Single Source of Truth)**: Implementación de un objeto `state` global que sincroniza caches, filtros y selecciones entre todos los componentes, eliminando redundancia de datos en memoria.
+* **Renderizado Inteligente (Memoización)**: El motor de UI ahora utiliza hashing de datos para comparar el estado previo con el nuevo. Si los valores de CPU/RAM/Estado no han cambiado, se omite la actualización del DOM (innerHTML), evitando parpadeos de interfaz y reduciendo el uso de CPU.
+* **Carga Bajo Demanda**: Las herramientas pesadas (KVM, Docker, K8s) solo procesan y renderizan su lógica cuando están activas en la vista del usuario.
+* **Sparklines y Gráficos Ultra-ligeros**: Uso de SVG puros para mini-gráficos de red, optimizados para cientos de actualizaciones concurrentes por segundo sin degradar el rendimiento.
+
+
 ---
 
 

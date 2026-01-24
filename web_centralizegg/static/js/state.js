@@ -1,36 +1,60 @@
-// Global state state.js
+// Global state js/state.js
 export const state = {
-    currentTool: 'virtualization',
+    currentTool: 'welcome',
     searchQuery: '',
-    selectedHostId: null,
-    selectedFirewallHostId: null,
-    selectedDockerHostId: null,
-    selectedPodmanHostId: null,
-    selectedKubernetesServerId: null,
-    selectedKubernetesNodeId: null,
-    selectedProxmoxHostId: null,
-    selectedNasHostId: null,
+    selectedSuggestionIndex: -1,
 
+    // KVM / General
+    selectedHostId: null,
     allHostsCache: [],
     allVMsCache: [],
-    allContainersCache: [],
-    allPodmanContainersCache: [],
-    allPodsCache: [],
-    allNasVolumesCache: [],
-    allNasDisksCache: [],
-
-    currentServers: [],
-    currentFirewallServers: [],
-    currentDockerServers: [],
-    currentPodmanServers: [],
-    currentKubernetesServers: [],
-    currentProxmoxServers: [],
-    currentNasServers: [],
-
+    allKVMHostsCache: [],
     vmNetworkHistory: {},
     bridgeNetworkHistory: {},
+    lastRenderedVMsHash: "",
+
+    // pfSense / Firewall
+    selectedFirewallHostId: null,
+    allFirewallHostsCache: [],
+    pfSenseNetworkHistory: {},
+
+    // Docker
+    currentDockerServers: [],
+    selectedDockerHostId: null,
+    allDockerHostsCache: [],
+    allContainersCache: [],
     containerNetworkHistory: {},
 
+    // Podman
+    currentPodmanServers: [],
+    selectedPodmanHostId: null,
+    allPodmanHostsCache: [],
+    allPodmanContainersCache: [],
+
+    // Kubernetes
+    currentKubernetesServers: [],
+    selectedKubernetesServerId: null,
+    selectedKubernetesNodeId: null,
+    allKubernetesHostsCache: [],
+    allPodsCache: [],
+    expandedK8sNodes: {},
+
+    // Proxmox
+    currentProxmoxServers: [],
+    selectedProxmoxHostId: null,
+    allProxmoxHostsCache: [],
+    allProxmoxVMsCache: [],
+
+    // NAS
+    currentNasServers: [],
+    selectedNasHostId: null,
+    allNasHostsCache: [],
+    allNasDisksCache: [],
+    allNasVolumesCache: [],
+
+    // Global UI State
+    currentServers: [], // General servers cache
     lastNotificationCount: 0,
-    lastReminderSoundTime: 0
+    lastReminderSoundTime: 0,
+    HISTORY_POINTS: 20
 };

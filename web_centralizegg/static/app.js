@@ -11,274 +11,25 @@ import {
     debounce, formatBytes, getStatusColor, getRelativeTime, playAlertSound
 } from './js/utils.js';
 import { initSummaryDashboard } from './js/summary-dashboard.js';
+import { state } from './js/state.js';
+import { renderHostNodes, isStatusOnline, renderDonutChart, renderSparkline } from './js/ui-components.js';
+import {
+    updateNetworkHistory, updateBridgeHistory, updateContainerHistory, updateFirewallHistory
+} from './js/history.js';
+import {
+    fetchHosts, renderHosts, selectHost, fetchVMs, renderVMs
+} from './js/tool-kvm.js';
+
+// Expose functions to global scope for event handlers
+window.selectHost = selectHost;
 
 
-// Global state
-let currentTool = 'welcome'; // default landing tool
-let currentServers = [];
-let currentFirewallServers = [];
-let currentDockerServers = []; // Global for Docker
-let currentPodmanServers = [];
-let currentKubernetesServers = [];
-let currentProxmoxServers = [];
-let currentNasServers = [];
-let lastNotificationCount = 0; // Track previous count for sound
-let lastReminderSoundTime = 0; // Track last time persistent alert sound was played
+// Note: We are migrating these to the 'state' object for better performance and modularity.
+// References will be updated progressively.
+const HISTORY_POINTS = state.HISTORY_POINTS;
 
-// Sound Effect: Web Audio API Oscillator (Clean "Ping")
-let selectedHostId = null;
-
-// Cache for search
-let allHostsCache = [];
-let allVMsCache = [];
-let searchQuery = "";
-let selectedSuggestionIndex = -1;
-
-// VM Network History Cache
-const vmNetworkHistory = {}; // Key: vmId, Value: { rx: [], tx: [], lastRx, lastTx, lastTime }
-// Bridge Network History Cache
-const bridgeNetworkHistory = {}; // Key: hostId_brName, Value: { rx: [], tx: [], lastRx, lastTx, lastTime }
-// Firewall Network History Cache
-const pfSenseNetworkHistory = {}; // Key: hostId_ifaceName, Value: { rx: [], tx: [], lastRx, lastTx, lastTime }
-// Container Network History Cache
-const containerNetworkHistory = {}; // Key: containerUniqueId, Value: { rx: [], tx: [], lastRx, lastTx, lastTime }
-const HISTORY_POINTS = 20;
-let lastRenderedVMsHash = "";
-
-let selectedFirewallHostId = null;
-let selectedDockerHostId = null;
-let selectedKubernetesServerId = null;
-let expandedK8sNodes = {}; // Tracks expanded pod lists in the cluster summary
-let selectedKubernetesNodeId = null;
-let selectedPodmanHostId = null;
-let selectedProxmoxHostId = null;
-let selectedNasHostId = null;
-let allContainersCache = [];
-let allPodsCache = [];
-let allPodmanContainersCache = [];
-let allProxmoxVMsCache = [];
-let allNasDisksCache = [];
-let allDockerHostsCache = [];
-let allPodmanHostsCache = [];
-let allKubernetesHostsCache = [];
-let allFirewallHostsCache = [];
-let allNasHostsCache = [];
-let allProxmoxHostsCache = [];
-let allKVMHostsCache = [];
-
-function updateNetworkHistory(vms) {
-    const now = Date.now();
-    vms.forEach(vm => {
-        if (!vmNetworkHistory[vm.id]) {
-            vmNetworkHistory[vm.id] = {
-                rx: Array(HISTORY_POINTS).fill(0),
-                tx: Array(HISTORY_POINTS).fill(0),
-                lastRx: vm.net_rx,
-                lastTx: vm.net_tx,
-                lastTime: now
-            };
-        } else {
-            const entry = vmNetworkHistory[vm.id];
-            const timeDelta = (now - entry.lastTime) / 1000; // seconds
-
-            if (timeDelta > 0) {
-                // Calculate rate in Bytes/s
-                // Handle counter reset/overflow rudimentarily (if current < last, assume 0 rate or just push 0)
-                let rxRate = 0;
-                let txRate = 0;
-
-                if (vm.net_rx >= entry.lastRx) {
-                    rxRate = (vm.net_rx - entry.lastRx) / timeDelta;
-                }
-                if (vm.net_tx >= entry.lastTx) {
-                    txRate = (vm.net_tx - entry.lastTx) / timeDelta;
-                }
-
-                entry.rx.push(rxRate);
-                entry.tx.push(txRate);
-
-                if (entry.rx.length > HISTORY_POINTS) entry.rx.shift();
-                if (entry.tx.length > HISTORY_POINTS) entry.tx.shift();
-
-                entry.lastRx = vm.net_rx;
-                entry.lastTx = vm.net_tx;
-                entry.lastTime = now;
-            }
-        }
-    });
-}
-
-function updateContainerHistory(containers) {
-    const now = Date.now();
-    containers.forEach(c => {
-        const key = `${c.host_id}_${c.name}`;
-        if (!containerNetworkHistory[key]) {
-            containerNetworkHistory[key] = {
-                rx: Array(HISTORY_POINTS).fill(0),
-                tx: Array(HISTORY_POINTS).fill(0),
-                lastRx: c.net_rx,
-                lastTx: c.net_tx,
-                lastTime: now
-            };
-        } else {
-            const entry = containerNetworkHistory[key];
-            const timeDelta = (now - entry.lastTime) / 1000;
-
-            if (timeDelta > 0) {
-                let rxRate = 0;
-                let txRate = 0;
-
-                if (c.net_rx >= entry.lastRx) rxRate = (c.net_rx - entry.lastRx) / timeDelta;
-                if (c.net_tx >= entry.lastTx) txRate = (c.net_tx - entry.lastTx) / timeDelta;
-
-                entry.rx.push(rxRate);
-                entry.tx.push(txRate);
-
-                if (entry.rx.length > HISTORY_POINTS) entry.rx.shift();
-                if (entry.tx.length > HISTORY_POINTS) entry.tx.shift();
-
-                entry.lastRx = c.net_rx;
-                entry.lastTx = c.net_tx;
-                entry.lastTime = now;
-            }
-        }
-    });
-}
-
-function updateFirewallHistory(hosts) {
-    const now = Date.now();
-    hosts.forEach(host => {
-        if (host.interfaces && Array.isArray(host.interfaces)) {
-            host.interfaces.forEach(iface => {
-                const key = `${host.id}_${iface.interface_name}`;
-                if (!pfSenseNetworkHistory[key]) {
-                    pfSenseNetworkHistory[key] = {
-                        rx: Array(HISTORY_POINTS).fill(0),
-                        tx: Array(HISTORY_POINTS).fill(0),
-                        lastRx: parseFloat(iface.net_rx_bytes),
-                        lastTx: parseFloat(iface.net_tx_bytes),
-                        lastTime: now
-                    };
-                } else {
-                    const entry = pfSenseNetworkHistory[key];
-                    const timeDelta = (now - entry.lastTime) / 1000;
-
-                    if (timeDelta > 0) {
-                        let rxRate = 0;
-                        let txRate = 0;
-
-                        const currentRx = parseFloat(iface.net_rx_bytes);
-                        const currentTx = parseFloat(iface.net_tx_bytes);
-
-                        if (currentRx >= entry.lastRx) {
-                            rxRate = (currentRx - entry.lastRx) / timeDelta;
-                        }
-                        if (currentTx >= entry.lastTx) {
-                            txRate = (currentTx - entry.lastTx) / timeDelta;
-                        }
-
-                        entry.rx.push(rxRate);
-                        entry.tx.push(txRate);
-
-                        if (entry.rx.length > HISTORY_POINTS) entry.rx.shift();
-                        if (entry.tx.length > HISTORY_POINTS) entry.tx.shift();
-
-                        entry.lastRx = currentRx;
-                        entry.lastTx = currentTx;
-                        entry.lastTime = now;
-                    }
-                }
-            });
-        }
-    });
-}
-
-function updateBridgeHistory(hosts) {
-    const now = Date.now();
-    hosts.forEach(host => {
-        let bridges = [];
-        try {
-            if (host.bridge_interfaces) bridges = JSON.parse(host.bridge_interfaces);
-        } catch (e) { return; }
-
-        bridges.forEach(br => {
-            const key = `${host.id}_${br.name}`;
-            if (!bridgeNetworkHistory[key]) {
-                bridgeNetworkHistory[key] = {
-                    rx: Array(HISTORY_POINTS).fill(0),
-                    tx: Array(HISTORY_POINTS).fill(0),
-                    lastRx: br.net_rx,
-                    lastTx: br.net_tx,
-                    lastTime: now
-                };
-            } else {
-                const entry = bridgeNetworkHistory[key];
-                const timeDelta = (now - entry.lastTime) / 1000;
-
-                if (timeDelta > 0) {
-                    let rxRate = 0;
-                    let txRate = 0;
-
-                    if (br.net_rx >= entry.lastRx) {
-                        rxRate = (br.net_rx - entry.lastRx) / timeDelta;
-                    }
-                    if (br.net_tx >= entry.lastTx) {
-                        txRate = (br.net_tx - entry.lastTx) / timeDelta;
-                    }
-
-                    entry.rx.push(rxRate);
-                    entry.tx.push(txRate);
-
-                    if (entry.rx.length > HISTORY_POINTS) entry.rx.shift();
-                    if (entry.tx.length > HISTORY_POINTS) entry.tx.shift();
-
-                    entry.lastRx = br.net_rx;
-                    entry.lastTx = br.net_tx;
-                    entry.lastTime = now;
-                }
-            }
-        });
-    });
-}
-
-function renderDonutChart(percent, color, size = 50) {
-    const strokeWidth = 5;
-    const radius = (size - strokeWidth) / 2;
-    const circumference = 2 * Math.PI * radius;
-    const offset = circumference - (percent / 100) * circumference;
-
-    return `
-        <div class="donut-chart-container" style="position: relative; width: ${size}px; height: ${size}px; display: flex; align-items: center; justify-content: center;">
-            <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="transform: rotate(-90deg);">
-                <!-- Background circle -->
-                <circle cx="${size / 2}" cy="${size / 2}" r="${radius}" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="${strokeWidth}" />
-                <!-- Foreground circle -->
-                <circle cx="${size / 2}" cy="${size / 2}" r="${radius}" fill="none" stroke="${color}" stroke-width="${strokeWidth}"
-                    stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" stroke-linecap="round"
-                    style="transition: stroke-dashoffset 0.5s ease-out; filter: drop-shadow(0 0 4px ${color}40);" />
-            </svg>
-            <div style="position: absolute; font-size: 0.75rem; font-weight: 700; color: ${color};">${percent}%</div>
-        </div>
-    `;
-}
-
-function renderSparkline(data, color, width = 100, height = 30) {
-    if (!data || data.length < 2) return '';
-
-    const max = Math.max(...data, 1); // Avoid div by zero
-    // Scale points
-    const points = data.map((val, idx) => {
-        const x = (idx / (HISTORY_POINTS - 1)) * width;
-        const y = height - ((val / max) * height);
-        return `${x},${y}`;
-    }).join(' ');
-
-    return `
-        <svg width="${width}" height="${height}" fill="none" class="sparkline">
-            <polyline points="${points}" stroke="${color}" stroke-width="1.5" stroke-linecap="round" vector-effect="non-scaling-stroke" />
-        </svg>
-    `;
-}
+// Chart components are now in ui-components.js
+// History updaters are now in history.js
 
 
 
@@ -404,8 +155,8 @@ function switchTool(toolKey) {
         return;
     }
 
-    currentTool = toolKey;
-    selectedHostId = null;
+    state.currentTool = toolKey;
+    state.selectedHostId = null;
     lastRenderedVMsHash = "";
 
     // Update Category Button Identity (Skip for config-btn to avoid layout break)
@@ -519,36 +270,36 @@ function switchTool(toolKey) {
                         renderFirewallSummary();
                     } else if (toolKey === 'docker') {
                         // Restore previous selection if exists
-                        if (selectedDockerHostId) {
-                            renderDockerHostDetails(selectedDockerHostId);
+                        if (state.selectedDockerHostId) {
+                            renderDockerHostDetails(state.selectedDockerHostId);
                         } else {
                             renderDockerSummary();
                         }
                     } else if (toolKey === 'kubernetes') {
                         // Restore previous selection if exists
-                        if (selectedKubernetesServerId) {
-                            renderKubernetesServerDetails(selectedKubernetesServerId);
+                        if (state.selectedKubernetesServerId) {
+                            renderKubernetesServerDetails(state.selectedKubernetesServerId);
                         } else {
                             renderKubernetesSummary();
                         }
                     } else if (toolKey === 'podman') {
                         // Restore previous selection if exists
-                        if (selectedPodmanHostId) {
-                            renderPodmanHostDetails(selectedPodmanHostId);
+                        if (state.selectedPodmanHostId) {
+                            renderPodmanHostDetails(state.selectedPodmanHostId);
                         } else {
                             renderPodmanSummary();
                         }
                     } else if (toolKey === 'proxmox') {
                         // Restore previous selection if exists
-                        if (selectedProxmoxHostId) {
-                            renderProxmoxHostDetails(selectedProxmoxHostId);
+                        if (state.selectedProxmoxHostId) {
+                            renderProxmoxHostDetails(state.selectedProxmoxHostId);
                         } else {
                             renderProxmoxSummary();
                         }
                     } else if (toolKey === 'nas') {
                         // Restore previous selection if exists
-                        if (selectedNasHostId) {
-                            renderNasHostDetails(selectedNasHostId);
+                        if (state.selectedNasHostId) {
+                            renderNasHostDetails(state.selectedNasHostId);
                         } else {
                             renderNasSummary();
                         }
@@ -612,8 +363,8 @@ window.switchTool = switchTool;
 
 function selectHost(id) {
     console.log('[DEBUG] Selected Host ID:', id);
-    if (selectedHostId !== id) {
-        selectedHostId = id;
+    if (state.selectedHostId !== id) {
+        state.selectedHostId = id;
         lastRenderedVMsHash = ""; // Reset render cache for new host
     }
     fetchHosts(); // Re-render hosts to show active state
@@ -802,12 +553,12 @@ searchInput?.addEventListener('focus', () => {
 });
 
 const debouncedSearch = debounce((e) => {
-    searchQuery = e.target.value.toLowerCase().trim();
-    console.log('[DEBUG] Search Query (Debounced):', searchQuery);
+    state.searchQuery = e.target.value.toLowerCase().trim();
+    console.log('[DEBUG] Search Query (Debounced):', state.searchQuery);
 
     // If on summary dashboard and user starts searching, switch to a tool view (kvm)
     const summaryTool = document.getElementById('summary-tool');
-    if (searchQuery.length > 0 && summaryTool && !summaryTool.classList.contains('hidden')) {
+    if (state.searchQuery.length > 0 && summaryTool && !summaryTool.classList.contains('hidden')) {
         switchTool('kvm');
         // Restore the search query after switchTool (which might reset some state)
         searchInput.value = e.target.value;
@@ -820,12 +571,12 @@ const debouncedSearch = debounce((e) => {
     renderHosts();
 
     // Update VMs if KVM tool is active
-    if (currentTool === 'kvm') {
+    if (state.currentTool === 'kvm') {
         renderVMs();
     }
 
-    if (currentTool === 'docker') {
-        renderDockerHostDetails(selectedDockerHostId);
+    if (state.currentTool === 'docker') {
+        renderDockerHostDetails(state.selectedDockerHostId);
     }
 
     // Also update generic host nodes container if visible (for other tools)
@@ -833,8 +584,8 @@ const debouncedSearch = debounce((e) => {
     if (genericContainer) {
         const toolSection = genericContainer.closest('section');
         if (toolSection && !toolSection.closest('.hidden')) {
-            const currentToolObj = tools[currentTool];
-            if (currentToolObj && currentTool !== 'kvm') {
+            const currentToolObj = tools[state.currentTool];
+            if (currentToolObj && state.currentTool !== 'kvm') {
                 renderHostNodes('host-nodes-container-generic', {
                     icon: currentToolObj.icon,
                     showOSInfo: true,
@@ -886,7 +637,7 @@ function updateSuggestionSelection(items) {
 }
 
 function updateSuggestions() {
-    if (!searchQuery || searchQuery.length < 1) {
+    if (!state.searchQuery || state.searchQuery.length < 1) {
         suggestionsContainer.innerHTML = '';
         suggestionsContainer.classList.add('hidden');
         return;
@@ -895,79 +646,79 @@ function updateSuggestions() {
     const suggestions = [];
 
     // Match KVM Hosts
-    allKVMHostsCache.forEach(host => {
-        if (host.server_name.toLowerCase().includes(searchQuery) ||
-            host.hostname.toLowerCase().includes(searchQuery) ||
-            host.ip_address.toLowerCase().includes(searchQuery)) {
+    state.allKVMHostsCache.forEach(host => {
+        if (host.server_name.toLowerCase().includes(state.searchQuery) ||
+            host.hostname.toLowerCase().includes(state.searchQuery) ||
+            host.ip_address.toLowerCase().includes(state.searchQuery)) {
             suggestions.push({ type: 'host', id: host.id, title: host.server_name, subtitle: `${host.hostname} | ${host.ip_address}`, icon: 'fa-solid fa-server', tool: 'kvm' });
         }
     });
 
     // Match Docker Hosts
-    allDockerHostsCache.forEach(host => {
-        if (host.server_name.toLowerCase().includes(searchQuery) ||
-            host.hostname.toLowerCase().includes(searchQuery) ||
-            host.ip_address.toLowerCase().includes(searchQuery)) {
+    state.allDockerHostsCache.forEach(host => {
+        if (host.server_name.toLowerCase().includes(state.searchQuery) ||
+            host.hostname.toLowerCase().includes(state.searchQuery) ||
+            host.ip_address.toLowerCase().includes(state.searchQuery)) {
             suggestions.push({ type: 'host', id: host.id, title: host.server_name, subtitle: `Docker: ${host.hostname}`, icon: 'fa-brands fa-docker', tool: 'docker' });
         }
     });
 
     // Match Podman Hosts
-    allPodmanHostsCache.forEach(host => {
-        if (host.server_name.toLowerCase().includes(searchQuery) ||
-            host.hostname.toLowerCase().includes(searchQuery) ||
-            host.ip_address.toLowerCase().includes(searchQuery)) {
+    state.allPodmanHostsCache.forEach(host => {
+        if (host.server_name.toLowerCase().includes(state.searchQuery) ||
+            host.hostname.toLowerCase().includes(state.searchQuery) ||
+            host.ip_address.toLowerCase().includes(state.searchQuery)) {
             suggestions.push({ type: 'host', id: host.id, title: host.server_name, subtitle: `Podman: ${host.hostname}`, icon: 'fa-solid fa-layer-group', tool: 'podman' });
         }
     });
 
     // Match Kubernetes Servers
-    allKubernetesHostsCache.forEach(host => {
+    state.allKubernetesHostsCache.forEach(host => {
         const name = host.server_name || host.name || 'K8s Cluster';
-        if (name.toLowerCase().includes(searchQuery) || (host.ip_address && host.ip_address.toLowerCase().includes(searchQuery))) {
+        if (name.toLowerCase().includes(state.searchQuery) || (host.ip_address && host.ip_address.toLowerCase().includes(state.searchQuery))) {
             suggestions.push({ type: 'host', id: host.id, title: name, subtitle: `K8s: ${host.ip_address || 'Cluster'}`, icon: 'fa-solid fa-network-wired', tool: 'kubernetes' });
         }
     });
 
     // Match firewall/pfsense Hosts
-    allFirewallHostsCache.forEach(host => {
-        if (host.server_name.toLowerCase().includes(searchQuery) ||
-            host.hostname.toLowerCase().includes(searchQuery) ||
-            host.ip_address.toLowerCase().includes(searchQuery)) {
+    state.allFirewallHostsCache.forEach(host => {
+        if (host.server_name.toLowerCase().includes(state.searchQuery) ||
+            host.hostname.toLowerCase().includes(state.searchQuery) ||
+            host.ip_address.toLowerCase().includes(state.searchQuery)) {
             suggestions.push({ type: 'host', id: host.id, title: host.server_name, subtitle: `pfSense: ${host.ip_address}`, icon: 'fa-solid fa-shield-halved', tool: 'pfsense' });
         }
     });
 
     // Match NAS Hosts
-    allNasHostsCache.forEach(host => {
-        if (host.server_name.toLowerCase().includes(searchQuery) ||
-            host.hostname.toLowerCase().includes(searchQuery) ||
-            host.ip_address.toLowerCase().includes(searchQuery)) {
+    state.allNasHostsCache.forEach(host => {
+        if (host.server_name.toLowerCase().includes(state.searchQuery) ||
+            host.hostname.toLowerCase().includes(state.searchQuery) ||
+            host.ip_address.toLowerCase().includes(state.searchQuery)) {
             suggestions.push({ type: 'host', id: host.id, title: host.server_name, subtitle: `NAS: ${host.ip_address}`, icon: 'fa-solid fa-hdd', tool: 'nas' });
         }
     });
 
     // Match Proxmox Hosts
-    allProxmoxHostsCache.forEach(host => {
-        if (host.server_name.toLowerCase().includes(searchQuery) ||
-            host.hostname.toLowerCase().includes(searchQuery) ||
-            host.ip_address.toLowerCase().includes(searchQuery)) {
+    state.allProxmoxHostsCache.forEach(host => {
+        if (host.server_name.toLowerCase().includes(state.searchQuery) ||
+            host.hostname.toLowerCase().includes(state.searchQuery) ||
+            host.ip_address.toLowerCase().includes(state.searchQuery)) {
             suggestions.push({ type: 'host', id: host.id, title: host.server_name, subtitle: `Proxmox: ${host.ip_address}`, icon: 'fa-solid fa-microchip', tool: 'proxmox' });
         }
     });
 
     // Match KVM VMs
-    allVMsCache.forEach(vm => {
-        if (vm.name.toLowerCase().includes(searchQuery)) {
-            const host = allKVMHostsCache.find(h => h.id === vm.host_id);
+    state.allVMsCache.forEach(vm => {
+        if (vm.name.toLowerCase().includes(state.searchQuery)) {
+            const host = state.allKVMHostsCache.find(h => h.id === vm.host_id);
             suggestions.push({ type: 'vm', id: vm.host_id, title: vm.name, subtitle: host ? `KVM Host: ${host.server_name}` : 'Virtual Machine', icon: 'fa-solid fa-desktop', tool: 'kvm' });
         }
     });
 
     // Match Docker Containers
-    allContainersCache.forEach(c => {
+    state.allContainersCache.forEach(c => {
         const name = c.Names ? c.Names[0].replace('/', '') : c.Id.substring(0, 12);
-        if (name.toLowerCase().includes(searchQuery) || c.Image.toLowerCase().includes(searchQuery)) {
+        if (name.toLowerCase().includes(state.searchQuery) || c.Image.toLowerCase().includes(state.searchQuery)) {
             suggestions.push({ type: 'container', id: null, title: name, subtitle: `Docker Image: ${c.Image}`, icon: 'fa-brands fa-docker', tool: 'docker' });
         }
     });
@@ -996,11 +747,11 @@ function updateSuggestions() {
 }
 
 window.applySuggestion = (type, hostId, title, tool) => {
-    searchQuery = title.toLowerCase();
+    state.searchQuery = title.toLowerCase();
     searchInput.value = title;
     suggestionsContainer.classList.add('hidden');
 
-    if (tool && tool !== currentTool) {
+    if (tool && tool !== state.currentTool) {
         switchTool(tool);
     }
 
@@ -1067,46 +818,46 @@ async function checkAndFetchHostsForTool(toolKey) {
 
                     // Update cache and render
                     if (toolKey === 'pfsense') {
-                        allFirewallHostsCache = hosts;
-                        allHostsCache = hosts || [];
+                        state.allFirewallHostsCache = hosts;
+                        state.allHostsCache = hosts || [];
                         renderHostNodes('host-nodes-container-generic', {
                             icon: tools[toolKey].icon,
                             showOSInfo: true,
                             showStats: true,
                             onHostClick: 'selectFirewallHost'
                         });
-                        if (selectedFirewallHostId) {
-                            renderFirewallHostDetails(selectedFirewallHostId);
+                        if (state.selectedFirewallHostId) {
+                            renderFirewallHostDetails(state.selectedFirewallHostId);
                         }
                     } else if (toolKey === 'docker') {
-                        allDockerHostsCache = hosts;
-                        allHostsCache = hosts || [];
+                        state.allDockerHostsCache = hosts;
+                        state.allHostsCache = hosts || [];
                         renderHostNodes('host-nodes-container-generic', {
                             icon: tools[toolKey].icon,
                             showOSInfo: true,
                             showStats: true,
                             onHostClick: 'selectDockerHost'
                         });
-                        if (selectedDockerHostId) {
-                            renderDockerHostDetails(selectedDockerHostId);
+                        if (state.selectedDockerHostId) {
+                            renderDockerHostDetails(state.selectedDockerHostId);
                         } else {
                             renderDockerSummary();
                         }
                         fetchContainers();
                     } else if (toolKey === 'kubernetes') {
-                        allKubernetesHostsCache = hosts;
-                        allHostsCache = hosts || [];
+                        state.allKubernetesHostsCache = hosts;
+                        state.allHostsCache = hosts || [];
                         renderHostNodes('host-nodes-container-generic', {
                             icon: tools[toolKey].icon,
                             showOSInfo: true,
                             showStats: true,
                             onHostClick: 'selectKubernetesServer'
                         });
-                        if (selectedKubernetesServerId) {
-                            if (selectedKubernetesNodeId) {
-                                renderKubernetesNodeDetails(selectedKubernetesNodeId);
+                        if (state.selectedKubernetesServerId) {
+                            if (state.selectedKubernetesNodeId) {
+                                renderKubernetesNodeDetails(state.selectedKubernetesNodeId);
                             } else {
-                                renderKubernetesServerDetails(selectedKubernetesServerId);
+                                renderKubernetesServerDetails(state.selectedKubernetesServerId);
                             }
                         } else {
                             renderKubernetesSummary();
@@ -1114,46 +865,46 @@ async function checkAndFetchHostsForTool(toolKey) {
                         // Optionally fetch pods/nodes for cache
                         fetchPods();
                     } else if (toolKey === 'podman') {
-                        allPodmanHostsCache = hosts;
-                        allHostsCache = hosts || [];
+                        state.allPodmanHostsCache = hosts;
+                        state.allHostsCache = hosts || [];
                         renderHostNodes('host-nodes-container-generic', {
                             icon: tools[toolKey].icon,
                             showOSInfo: true,
                             showStats: true,
                             onHostClick: 'selectPodmanHost'
                         });
-                        if (selectedPodmanHostId) {
-                            renderPodmanHostDetails(selectedPodmanHostId);
+                        if (state.selectedPodmanHostId) {
+                            renderPodmanHostDetails(state.selectedPodmanHostId);
                         } else {
                             renderPodmanSummary();
                         }
                         fetchPodmanContainers();
                     } else if (toolKey === 'proxmox') {
-                        allProxmoxHostsCache = hosts;
-                        allHostsCache = hosts || [];
+                        state.allProxmoxHostsCache = hosts;
+                        state.allHostsCache = hosts || [];
                         renderHostNodes('host-nodes-container-generic', {
                             icon: tools[toolKey].icon,
                             showOSInfo: true,
                             showStats: true,
                             onHostClick: 'selectProxmoxHost'
                         });
-                        if (selectedProxmoxHostId) {
-                            renderProxmoxHostDetails(selectedProxmoxHostId);
+                        if (state.selectedProxmoxHostId) {
+                            renderProxmoxHostDetails(state.selectedProxmoxHostId);
                         } else {
                             renderProxmoxSummary();
                         }
                         fetchProxmoxVMs();
                     } else if (toolKey === 'nas') {
-                        allNasHostsCache = hosts;
-                        allHostsCache = hosts || [];
+                        state.allNasHostsCache = hosts;
+                        state.allHostsCache = hosts || [];
                         renderHostNodes('host-nodes-container-generic', {
                             icon: tools[toolKey].icon,
                             showOSInfo: true,
                             showStats: true,
                             onHostClick: 'selectNasHost'
                         });
-                        if (selectedNasHostId) {
-                            renderNasHostDetails(selectedNasHostId);
+                        if (state.selectedNasHostId) {
+                            renderNasHostDetails(state.selectedNasHostId);
                         } else {
                             renderNasSummary();
                         }
@@ -1198,11 +949,11 @@ async function fetchContainers() {
             }
         }
         if (!response.ok) throw new Error('Failed to fetch containers');
-        allContainersCache = await response.json();
-        updateContainerHistory(allContainersCache);
-        if (currentTool === 'docker') {
-            if (selectedDockerHostId) {
-                renderDockerHostDetails(selectedDockerHostId);
+        state.allContainersCache = await response.json();
+        updateContainerHistory(state.allContainersCache);
+        if (state.currentTool === 'docker') {
+            if (state.selectedDockerHostId) {
+                renderDockerHostDetails(state.selectedDockerHostId);
             } else {
                 renderDockerSummary();
             }
@@ -1213,7 +964,7 @@ async function fetchContainers() {
 }
 
 function selectDockerHost(id) {
-    selectedDockerHostId = id;
+    state.selectedDockerHostId = id;
     renderHostNodes('host-nodes-container-generic', {
         icon: tools['docker']?.icon || 'fa-brands fa-docker',
         showOSInfo: true,
@@ -1230,7 +981,7 @@ function renderDockerHostDetails(hostId) {
     const scannerSection = container.querySelector('.scanner-section');
     if (!scannerSection) return;
 
-    const host = allHostsCache.find(h => h.id === hostId);
+    const host = state.allHostsCache.find(h => h.id === hostId);
     if (!host) return;
 
     // --- WRAPPER INITIALIZATION (Firewall Pattern) ---
@@ -1255,13 +1006,13 @@ function renderDockerHostDetails(hostId) {
 
     const inner = statsWrapper;
 
-    let filteredContainers = allContainersCache.filter(c => c.host_id === hostId);
+    let filteredContainers = state.allContainersCache.filter(c => c.host_id === hostId);
     filteredContainers.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
-    if (searchQuery) {
+    if (state.searchQuery) {
         filteredContainers = filteredContainers.filter(c =>
-            c.name.toLowerCase().includes(searchQuery) ||
-            c.image.toLowerCase().includes(searchQuery)
+            c.name.toLowerCase().includes(state.searchQuery) ||
+            c.image.toLowerCase().includes(state.searchQuery)
         );
     }
 
@@ -1450,7 +1201,7 @@ function renderDockerHostDetails(hostId) {
                         </div>
                         <div style="height: 18px; width: 100%; opacity: 0.8;">
                             ${(() => {
-                    const history = containerNetworkHistory[`${c.host_id}_${c.name}`];
+                    const history = state.containerNetworkHistory[`${c.host_id}_${c.name}`];
                     return history ? renderSparkline(history.rx, '#4ade80', 100, 18) : '';
                 })()}
                         </div>
@@ -1460,7 +1211,7 @@ function renderDockerHostDetails(hostId) {
                         </div>
                         <div style="height: 18px; width: 100%; opacity: 0.8;">
                             ${(() => {
-                    const history = containerNetworkHistory[`${c.host_id}_${c.name}`];
+                    const history = state.containerNetworkHistory[`${c.host_id}_${c.name}`];
                     return history ? renderSparkline(history.tx, '#fb923c', 100, 18) : '';
                 })()}
                         </div>
@@ -1545,7 +1296,7 @@ function renderDockerHostDetails(hostId) {
             if (!window.currentDockerMap) {
                 window.currentDockerMap = new DockerTopologyMap('docker-topology-map');
             }
-            window.currentDockerMap.render(host.docker_networks, false, allContainersCache, host, 'docker');
+            window.currentDockerMap.render(host.docker_networks, false, state.allContainersCache, host, 'docker');
         }
 
         return; // Done with partial update
@@ -1722,7 +1473,7 @@ function renderDockerHostDetails(hostId) {
         if (!window.currentDockerMap) {
             window.currentDockerMap = new DockerTopologyMap('docker-topology-map');
         }
-        window.currentDockerMap.render(host.docker_networks, false, allContainersCache, host, 'docker');
+        window.currentDockerMap.render(host.docker_networks, false, state.allContainersCache, host, 'docker');
     }
 }
 
@@ -1755,26 +1506,26 @@ async function fetchFirewallHosts() {
             hosts.sort((a, b) => (a.server_name || '').localeCompare(b.server_name || ''));
         }
 
-        allFirewallHostsCache = hosts || [];
-        allHostsCache = hosts || [];
-        updateFirewallHistory(allHostsCache);
+        state.allFirewallHostsCache = hosts || [];
+        state.allHostsCache = hosts || [];
+        updateFirewallHistory(state.allHostsCache);
 
         renderHostNodes('host-nodes-container-generic', {
-            icon: tools[currentTool]?.icon || 'fa-solid fa-shield-halved',
+            icon: tools[state.currentTool]?.icon || 'fa-solid fa-shield-halved',
             showOSInfo: true,
             showStats: true,
             onHostClick: 'selectFirewallHost' // Custom handler
         });
 
-        if (selectedFirewallHostId) {
-            renderFirewallHostDetails(selectedFirewallHostId);
+        if (state.selectedFirewallHostId) {
+            renderFirewallHostDetails(state.selectedFirewallHostId);
         } else {
             renderFirewallSummary();
         }
 
         // Update config button visibility after fetching hosts
-        if (currentTool) {
-            updateConfigButtonVisibility(currentTool);
+        if (state.currentTool) {
+            updateConfigButtonVisibility(state.currentTool);
         }
     } catch (e) {
         console.error(e);
@@ -1803,16 +1554,16 @@ async function fetchHosts() {
             hosts.sort((a, b) => a.server_name.localeCompare(b.server_name));
         }
 
-        allKVMHostsCache = hosts || [];
-        allHostsCache = hosts || [];
-        if (allHostsCache.length > 0) {
-            updateBridgeHistory(allHostsCache);
+        state.allKVMHostsCache = hosts || [];
+        state.allHostsCache = hosts || [];
+        if (state.allHostsCache.length > 0) {
+            updateBridgeHistory(state.allHostsCache);
         }
         renderHosts();
 
         // Update config button visibility after fetching hosts
-        if (currentTool) {
-            updateConfigButtonVisibility(currentTool);
+        if (state.currentTool) {
+            updateConfigButtonVisibility(state.currentTool);
         }
 
         // Also update generic host nodes container if visible (for other tools)
@@ -1820,9 +1571,9 @@ async function fetchHosts() {
         if (genericContainer) {
             const toolSection = genericContainer.closest('section');
             if (toolSection && !toolSection.closest('.hidden')) {
-                const currentToolObj = tools[currentTool];
-                if (currentToolObj && currentTool !== 'kvm') {
-                    checkAndFetchHostsForTool(currentTool);
+                const currentToolObj = tools[state.currentTool];
+                if (currentToolObj && state.currentTool !== 'kvm') {
+                    checkAndFetchHostsForTool(state.currentTool);
                 }
             }
         }
@@ -1835,192 +1586,13 @@ async function fetchHosts() {
     }
 }
 
-// Generic function to render host nodes for any tool
-// Status Helpers
-function isStatusOnline(status) {
-    if (!status) return false;
-    const s = status.toString().toLowerCase();
-    return ['online', 'running', 'up', 'ready', 'active', 'open'].includes(s);
-}
-
-function renderHostNodes(containerId = 'host-nodes-container', config = {}) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-
-    // Use allHostsCache by default, or custom data if provided
-    const hostsData = config.hostsData || allHostsCache;
-    const customFilter = config.customFilter || null;
-    const onHostClick = config.onHostClick || 'selectHost'; // Default to string for onclick
-    const showOSInfo = config.showOSInfo !== false; // Default true
-    const showStats = config.showStats !== false; // Default true
-    const customIcon = config.icon || 'fa-solid fa-server';
-
-    if (!hostsData || hostsData.length === 0) {
-        container.innerHTML = '<div class="loading-state" style="opacity:0.6; text-align:center; padding:3rem;">No hay hosts configurados para esta herramienta</div>';
-        return;
-    }
-
-    // Filter hosts based on search query OR if they contain matching VMs
-    let filteredHosts = hostsData;
-
-    if (customFilter) {
-        filteredHosts = hostsData.filter(customFilter);
-    } else if (searchQuery) {
-        // Pre-calculate which hosts have matching VMs to avoid O(N*M) check in filter loop
-        const hostsWithMatchingVMs = new Set();
-        if (currentTool === 'kvm') {
-            allVMsCache.forEach(vm => {
-                if (vm.name.toLowerCase().includes(searchQuery)) {
-                    hostsWithMatchingVMs.add(vm.host_id);
-                }
-            });
-        }
-
-        filteredHosts = hostsData.filter(host => {
-            const matchesHost = host.server_name?.toLowerCase().includes(searchQuery) ||
-                host.hostname?.toLowerCase().includes(searchQuery) ||
-                host.ip_address?.toLowerCase().includes(searchQuery) ||
-                (host.os_name && host.os_name.toLowerCase().includes(searchQuery));
-
-            return matchesHost || hostsWithMatchingVMs.has(host.id);
-        });
-    }
-
-    if (filteredHosts.length === 0) {
-        container.innerHTML = '<div class="loading-state">No se encontraron resultados para "' + searchQuery + '"</div>';
-        return;
-    }
-
-    container.innerHTML = filteredHosts.map(host => {
-        const memTotal = host.total_memory || 0;
-        const memFree = host.free_memory || 0;
-        const memTotalGB = (memTotal / (1024 * 1024 * 1024)).toFixed(1);
-        const memFreeGB = (memFree / (1024 * 1024 * 1024)).toFixed(1);
-        const memUsedGB = (parseFloat(memTotalGB) - parseFloat(memFreeGB)).toFixed(1);
-        const memPercent = memTotal > 0 ? (((memTotal - memFree) / memTotal) * 100).toFixed(0) : 0;
-
-        const cpuPercent = host.cpu_usage ? host.cpu_usage.toFixed(0) : 0;
-        const isActive = (selectedHostId === host.id ||
-            selectedFirewallHostId === host.id ||
-            selectedDockerHostId === host.id ||
-            selectedKubernetesServerId === host.id ||
-            selectedKubernetesNodeId === host.id ||
-            selectedPodmanHostId === host.id ||
-            selectedProxmoxHostId === host.id ||
-            selectedNasHostId === host.id) ? 'active' : '';
-
-        // Find if server is online from specialized cache
-        let serverCache = currentServers;
-        if (currentTool === 'pfsense') serverCache = currentFirewallServers;
-        else if (currentTool === 'docker') serverCache = currentDockerServers;
-        else if (currentTool === 'podman') serverCache = currentPodmanServers;
-        else if (currentTool === 'kubernetes') serverCache = currentKubernetesServers;
-        else if (currentTool === 'proxmox') serverCache = currentProxmoxServers;
-        else if (currentTool === 'nas') serverCache = currentNasServers;
-
-        const serverConfig = serverCache.find(s => s.id === host.server_id);
-
-        // Unify status check: check specialized status fields first
-        const rawStatus = host.status || host.service_status || host.docker_service_status || host.podman_service_status || (serverConfig ? serverConfig.status : null);
-        const isOnline = isStatusOnline(rawStatus);
-
-        // Handle onclick - use the provided function name or default to selectHost
-        const onClickHandler = onHostClick || 'selectHost';
-
-        // Detect Architecture
-        let arch = '';
-        const fullInfo = ((host.cpu_model || '') + ' ' + (host.os_name || '')).toLowerCase();
-        if (fullInfo.includes('amd64') || fullInfo.includes('x86_64')) arch = 'x86_64';
-        else if (fullInfo.includes('arm') || fullInfo.includes('aarch64')) arch = 'ARM';
-        else if (host.tool_type === 'kubernetes') arch = 'Cluster Resources';
-
-        return `
-        <div class="host-node-card glass-panel ${isActive}" onclick="${onClickHandler}(${host.id})">
-            <div class="host-node-header">
-                <div class="host-node-identity">
-                    <div class="host-icon-box">
-                        <i class="${customIcon}"></i>
-                    </div>
-                    <div class="host-title-group">
-                        <h3>${host.server_name || host.name || 'Unknown'}</h3>
-                        <div class="ip-badge">${host.ip_address || (host.tool_type === 'kubernetes' ? 'Cluster' : 'N/A')}</div>
-                    </div>
-                </div>
-                <div class="host-status-badge ${isOnline ? '' : 'offline'}">
-                    <span class="status-dot ${isOnline ? 'online' : 'offline'}"></span>
-                    ${isOnline ? 'Online' : 'Offline'}
-                </div>
-            </div>
-
-            ${showOSInfo && host.os_name ? `
-            <div class="host-os-info" style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
-                <i class="${getOSIcon(host.os_name)} fa-fw" style="font-size: 1rem; color: var(--accent-color);"></i>
-                <span>${host.os_name || 'Linux Generic'}</span>
-            </div>
-            ` : ''}
-
-            ${showStats ? `
-            <div class="host-stats-grid">
-                <!-- CPU Stat -->
-                <div class="host-stat-item">
-                    <div class="stat-label-row">
-                        <i class="fa-solid fa-microchip"></i>
-                        <span>CPU</span>
-                    </div>
-                    <div class="stat-value-display">
-                        <div class="stat-value-main" style="color: ${getStatusColor(cpuPercent)};">${cpuPercent}%</div>
-                        <div class="host-progress-container">
-                            <div class="host-progress-fill" style="width: ${cpuPercent}%; background: ${getStatusColor(cpuPercent)};"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Memory Stat -->
-                <div class="host-stat-item">
-                    <div class="stat-label-row">
-                        <i class="fa-solid fa-memory"></i>
-                        <span>Memoria</span>
-                    </div>
-                    <div class="stat-value-display">
-                        <div class="stat-value-main" style="color: ${getStatusColor(memPercent)};">
-                            ${memPercent}% <span class="stat-value-sub" style="font-size: 0.75rem; color: inherit; opacity: 0.8;">(${memUsedGB} / ${memTotalGB} GB)</span>
-                        </div>
-                        <div class="host-progress-container">
-                            <div class="host-progress-fill" style="width: ${memPercent}%; background: ${getStatusColor(memPercent)};"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Disk Stat -->
-                <div class="host-stat-item">
-                    <div class="stat-label-row">
-                        <i class="fa-solid fa-hard-drive"></i>
-                        <span>Disco</span>
-                    </div>
-                    <div class="stat-value-display">
-                        <div class="stat-value-main" style="color: ${getStatusColor(67)};">67%</div>
-                        <div class="host-progress-container">
-                            <div class="host-progress-fill" style="width: 67%; background: ${getStatusColor(67)};"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Cores Stat -->
-                <div class="host-stat-item">
-                    <div class="stat-label-row">
-                        <i class="fa-solid fa-layer-group"></i>
-                        <span>Cores</span>
-                    </div>
-                    <div class="stat-value-display">
-                        <div class="stat-value-main color-cores">${host.cpu_cores || 'N/A'}</div>
-                        <div class="stat-value-sub" style="font-size: 0.7rem; color: rgba(255,255,255,0.5);">${arch || 'Unknown'}</div>
-                    </div>
-                </div>
-            </div>
-            ` : ''}
-        </div>
-        `;
-    }).join('');
+// Wrapper function for KVM (backward compatibility)
+function renderHosts() {
+    renderHostNodes('host-nodes-container', {
+        icon: 'fa-solid fa-server',
+        showOSInfo: true,
+        showStats: true
+    });
 }
 
 // Wrapper function for KVM (backward compatibility)
@@ -2052,8 +1624,8 @@ async function fetchVMs() {
             vms.sort((a, b) => a.name.localeCompare(b.name));
         }
 
-        allVMsCache = vms || [];
-        updateNetworkHistory(allVMsCache);
+        state.allVMsCache = vms || [];
+        updateNetworkHistory(state.allVMsCache);
         renderVMs();
     } catch (e) {
         console.error(e);
@@ -2066,29 +1638,29 @@ function renderVMs() {
     const grid = document.getElementById('vm-grid');
     if (!grid) return;
 
-    if (!selectedHostId) {
+    if (!state.selectedHostId) {
         grid.innerHTML = '<div class="loading-state" style="opacity:0.6;"><i class="fa-solid fa-arrow-up"></i> Selecciona un Host Node para ver sus VMs</div>';
         return;
     }
 
     // Filter and Sort VMs
-    let filteredVMs = allVMsCache.filter(vm => vm.host_id === selectedHostId);
+    let filteredVMs = state.allVMsCache.filter(vm => vm.host_id === state.selectedHostId);
     filteredVMs.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
     // Apply search filter
-    if (searchQuery) {
+    if (state.searchQuery) {
         filteredVMs = filteredVMs.filter(vm =>
-            vm.name.toLowerCase().includes(searchQuery) ||
-            vm.state.toLowerCase().includes(searchQuery)
+            vm.name.toLowerCase().includes(state.searchQuery) ||
+            vm.state.toLowerCase().includes(state.searchQuery)
         );
     }
 
-    const host = allHostsCache.find(h => h.id === selectedHostId);
+    const host = state.allHostsCache.find(h => h.id === state.selectedHostId);
     if (!host) return;
 
     // --- PARTIAL UPDATE LOGIC ---
     const hostInfoLeft = document.getElementById('vm-host-info-left');
-    const isAlreadyRenderingHost = hostInfoLeft && hostInfoLeft.getAttribute('data-host-id') === String(selectedHostId);
+    const isAlreadyRenderingHost = hostInfoLeft && hostInfoLeft.getAttribute('data-host-id') === String(state.selectedHostId);
 
     // Helpers for common rendering parts
     const renderBridgesList = () => {
@@ -2100,7 +1672,7 @@ function renderVMs() {
         if (bridges.length === 0) return '<div style="opacity:0.5; font-size:0.85rem; padding: 5px;">No bridge interfaces</div>';
 
         return bridges.map(br => {
-            const net = bridgeNetworkHistory[`${host.id}_${br.name}`] || { rx: [], tx: [] };
+            const net = state.bridgeNetworkHistory[`${host.id}_${br.name}`] || { rx: [], tx: [] };
             const currentRx = net.rx.length > 0 ? net.rx[net.rx.length - 1] : 0;
             const currentTx = net.tx.length > 0 ? net.tx[net.tx.length - 1] : 0;
 
@@ -2232,7 +1804,7 @@ function renderVMs() {
             const primaryIp = vm.guest_ips ? vm.guest_ips.split(' ')[0] : 'N/A';
 
             // Network data
-            const net = vmNetworkHistory[vm.id] || { rx: [], tx: [] };
+            const net = state.vmNetworkHistory[vm.id] || { rx: [], tx: [] };
             const currentRx = net.rx.length > 0 ? net.rx[net.rx.length - 1] : 0;
             const currentTx = net.tx.length > 0 ? net.tx[net.tx.length - 1] : 0;
 
@@ -2379,7 +1951,7 @@ function renderVMs() {
 
     // --- FULL RENDER ---
     if (hostInfoLeft) {
-        hostInfoLeft.setAttribute('data-host-id', selectedHostId);
+        hostInfoLeft.setAttribute('data-host-id', state.selectedHostId);
         hostInfoLeft.innerHTML = `
             <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
                 Sistema y Red
@@ -2560,12 +2132,12 @@ async function fetchPods() {
             }
         }
         if (!response.ok) throw new Error('Failed to fetch pods');
-        allPodsCache = await response.json();
-        if (currentTool === 'kubernetes') {
-            if (selectedKubernetesNodeId) {
-                renderKubernetesNodeDetails(selectedKubernetesNodeId);
-            } else if (selectedKubernetesServerId) {
-                renderKubernetesServerDetails(selectedKubernetesServerId);
+        state.allPodsCache = await response.json();
+        if (state.currentTool === 'kubernetes') {
+            if (state.selectedKubernetesNodeId) {
+                renderKubernetesNodeDetails(state.selectedKubernetesNodeId);
+            } else if (state.selectedKubernetesServerId) {
+                renderKubernetesServerDetails(state.selectedKubernetesServerId);
             } else {
                 renderKubernetesSummary();
             }
@@ -2576,8 +2148,8 @@ async function fetchPods() {
 }
 
 function selectKubernetesServer(id) {
-    selectedKubernetesServerId = id;
-    selectedKubernetesNodeId = null; // Reset node selection when switching clusters
+    state.selectedKubernetesServerId = id;
+    state.selectedKubernetesNodeId = null; // Reset node selection when switching clusters
     renderHostNodes('host-nodes-container-generic', {
         icon: tools['kubernetes']?.icon || 'fa-solid fa-dharmachakra',
         showOSInfo: true,
@@ -2594,11 +2166,11 @@ async function renderKubernetesServerDetails(serverId) {
     const scannerSection = container.querySelector('.scanner-section');
     if (!scannerSection) return;
 
-    const server = allHostsCache.find(s => s.id === serverId);
+    const server = state.allHostsCache.find(s => s.id === serverId);
     if (!server) return;
 
     // Ensure pods are loaded to avoid 0 counts
-    if (allPodsCache.length === 0) {
+    if (state.allPodsCache.length === 0) {
         console.log('[K8s] cache empty, fetching pods before server details...');
         await fetchPods();
     }
@@ -2635,7 +2207,7 @@ async function renderKubernetesServerDetails(serverId) {
 
         // Calculate Running/Stopped Pods
         const clusterNodeIds = clusterNodes.map(n => n.id);
-        const clusterPods = allPodsCache.filter(p => clusterNodeIds.includes(p.node_id));
+        const clusterPods = state.allPodsCache.filter(p => clusterNodeIds.includes(p.node_id));
         const totalPods = clusterPods.length;
         const runningPodsCount = clusterPods.filter(p => (p.state || '').toLowerCase() === 'running').length;
         const stoppedPodsCount = totalPods - runningPodsCount;
@@ -2676,10 +2248,10 @@ async function renderKubernetesServerDetails(serverId) {
                 const cpuPercent = (node.cpu_usage || 0).toFixed(1);
                 const nMemUsed = node.total_memory - node.free_memory;
                 const nMemPercent = node.total_memory > 0 ? ((nMemUsed / node.total_memory) * 100).toFixed(0) : 0;
-                const nodePods = allPodsCache.filter(p => p.node_id === node.id);
+                const nodePods = state.allPodsCache.filter(p => p.node_id === node.id);
                 // Sort by Memory usage descending
                 nodePods.sort((a, b) => (b.memory_usage || 0) - (a.memory_usage || 0));
-                const isExpanded = expandedK8sNodes[node.id] || false;
+                const isExpanded = state.expandedK8sNodes[node.id] || false;
 
                 const memTotalGB = (node.total_memory / (1024 * 1024 * 1024)).toFixed(1);
                 const memUsedGB = (nMemUsed / (1024 * 1024 * 1024)).toFixed(1);
@@ -2979,7 +2551,7 @@ async function renderKubernetesServerDetails(serverId) {
                 fetch(API_KUBERNETES_PVS)
                     .then(res => res.json())
                     .then(pvs => {
-                        const clusterPVs = pvs.filter(pv => pv.server_id === selectedKubernetesServerId);
+                        const clusterPVs = pvs.filter(pv => pv.server_id === state.selectedKubernetesServerId);
                         clusterPVs.sort((a, b) => b.capacity - a.capacity);
                         const newHTML = renderK8sPVList(clusterPVs.slice(0, 10));
                         if (pvListEl.innerHTML !== newHTML) {
@@ -3022,7 +2594,7 @@ async function renderKubernetesServerDetails(serverId) {
                 fetch(API_KUBERNETES_EVENTS)
                     .then(res => res.json())
                     .then(events => {
-                        const clusterEvents = events.filter(e => e.server_id === selectedKubernetesServerId)
+                        const clusterEvents = events.filter(e => e.server_id === state.selectedKubernetesServerId)
                             .slice(0, 10); // Show last 10 events
 
                         if (clusterEvents.length === 0) {
@@ -3093,7 +2665,7 @@ async function renderKubernetesServerDetails(serverId) {
                 if (!window.currentK8sMap) {
                     window.currentK8sMap = new KubernetesTopologyMap('k8s-topology-map');
                 }
-                window.currentK8sMap.renderFromData(clusterNodes, allPodsCache, server);
+                window.currentK8sMap.renderFromData(clusterNodes, state.allPodsCache, server);
             }
 
             return;
@@ -3385,7 +2957,7 @@ async function renderKubernetesServerDetails(serverId) {
                 // Check for NotReady nodes
                 const notReadyNodes = clusterNodes.filter(n => n.status !== 'Ready');
                 if (notReadyNodes.length > 0) {
-                    const podsOnNotReadyNodes = allPodsCache.filter(p =>
+                    const podsOnNotReadyNodes = state.allPodsCache.filter(p =>
                         notReadyNodes.some(n => n.id === p.node_id)
                     );
                     if (podsOnNotReadyNodes.length > 0) {
@@ -3399,7 +2971,7 @@ async function renderKubernetesServerDetails(serverId) {
                 }
 
                 // Check for OOM pods (based on state containing "OOM" or "CrashLoop")
-                const oomPods = allPodsCache.filter(p =>
+                const oomPods = state.allPodsCache.filter(p =>
                     p.state && (p.state.includes('OOM') || p.state.includes('CrashLoop'))
                 );
                 if (oomPods.length > 0) {
@@ -3521,7 +3093,7 @@ async function renderKubernetesServerDetails(serverId) {
                     if (!window.currentK8sMap) {
                         window.currentK8sMap = new KubernetesTopologyMap('k8s-topology-map');
                     }
-                    window.currentK8sMap.renderFromData(clusterNodes, allPodsCache, server);
+                    window.currentK8sMap.renderFromData(clusterNodes, state.allPodsCache, server);
                 }
             }
         }, 100);
@@ -3551,17 +3123,17 @@ function toggleNodePods(event, nodeId) {
     if (container.style.display === 'none') {
         container.style.display = 'block';
         if (chevron) chevron.style.transform = 'rotate(180deg)';
-        expandedK8sNodes[nodeId] = true;
+        state.expandedK8sNodes[nodeId] = true;
     } else {
         container.style.display = 'none';
         if (chevron) chevron.style.transform = 'rotate(0deg)';
-        delete expandedK8sNodes[nodeId];
+        delete state.expandedK8sNodes[nodeId];
     }
 }
 window.toggleNodePods = toggleNodePods;
 
 function selectKubernetesNode(id) {
-    selectedKubernetesNodeId = id;
+    state.selectedKubernetesNodeId = id;
     // We don't change the left list (still shows servers)
     renderKubernetesNodeDetails(id);
 }
@@ -3573,20 +3145,20 @@ async function renderKubernetesNodeDetails(nodeId) {
     const scannerSection = container.querySelector('.scanner-section');
     if (!scannerSection) return;
 
-    // Fetch the node info (since allHostsCache now contains servers)
+    // Fetch the node info (since state.allHostsCache now contains servers)
     try {
         const resp = await fetch(API_KUBERNETES_NODES);
         const allNodes = await resp.json();
         const node = allNodes.find(n => n.id === nodeId);
         if (!node) return;
 
-        let filteredPods = allPodsCache.filter(p => p.node_id === nodeId);
+        let filteredPods = state.allPodsCache.filter(p => p.node_id === nodeId);
         filteredPods.sort((a, b) => (a.namespace || "").localeCompare(b.namespace || "") || (a.name || "").localeCompare(b.name || ""));
 
-        if (searchQuery) {
+        if (state.searchQuery) {
             filteredPods = filteredPods.filter(p =>
-                p.name.toLowerCase().includes(searchQuery) ||
-                p.namespace.toLowerCase().includes(searchQuery)
+                p.name.toLowerCase().includes(state.searchQuery) ||
+                p.namespace.toLowerCase().includes(state.searchQuery)
             );
         }
         const renderPodGrid = (pods) => {
@@ -3725,13 +3297,13 @@ async function fetchPodmanContainers() {
             }
         }
         if (!response.ok) throw new Error('Failed to fetch podman containers');
-        allPodmanContainersCache = await response.json();
+        state.allPodmanContainersCache = await response.json();
         // Update history for sparklines
-        updateContainerHistory(allPodmanContainersCache);
+        updateContainerHistory(state.allPodmanContainersCache);
 
-        if (currentTool === 'podman') {
-            if (selectedPodmanHostId) {
-                renderPodmanHostDetails(selectedPodmanHostId);
+        if (state.currentTool === 'podman') {
+            if (state.selectedPodmanHostId) {
+                renderPodmanHostDetails(state.selectedPodmanHostId);
             } else {
                 renderPodmanSummary();
             }
@@ -3742,7 +3314,7 @@ async function fetchPodmanContainers() {
 }
 
 function selectPodmanHost(id) {
-    selectedPodmanHostId = id;
+    state.selectedPodmanHostId = id;
     renderHostNodes('host-nodes-container-generic', {
         icon: tools['podman']?.icon || 'fa-solid fa-layer-group',
         showOSInfo: true,
@@ -3759,11 +3331,11 @@ function renderPodmanHostDetails(hostId) {
     const scannerSection = container.querySelector('.scanner-section');
     if (!scannerSection) return;
 
-    const host = allHostsCache.find(h => h.id === hostId);
+    const host = state.allHostsCache.find(h => h.id === hostId);
     if (!host) return;
 
     console.log(`[PodmanDebug] Rendering host details for: ${host.server_name || host.name} (ID: ${hostId})`);
-    console.log(`[PodmanDebug] Containers in cache for this host:`, allPodmanContainersCache.filter(c => c.host_id === hostId).length);
+    console.log(`[PodmanDebug] Containers in cache for this host:`, state.allPodmanContainersCache.filter(c => c.host_id === hostId).length);
 
     let statsWrapper = document.getElementById('podman-stats-wrapper');
     let mapWrapper = document.getElementById('podman-map-wrapper');
@@ -3786,13 +3358,13 @@ function renderPodmanHostDetails(hostId) {
 
     const inner = statsWrapper;
 
-    let filteredContainers = allPodmanContainersCache.filter(c => c.host_id === hostId);
+    let filteredContainers = state.allPodmanContainersCache.filter(c => c.host_id === hostId);
     filteredContainers.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
-    if (searchQuery) {
+    if (state.searchQuery) {
         filteredContainers = filteredContainers.filter(c =>
-            c.name.toLowerCase().includes(searchQuery) ||
-            c.image.toLowerCase().includes(searchQuery)
+            c.name.toLowerCase().includes(state.searchQuery) ||
+            c.image.toLowerCase().includes(state.searchQuery)
         );
     }
 
@@ -4014,7 +3586,7 @@ function renderPodmanHostDetails(hostId) {
                          </div>
                           <div style="height: 18px; width: 100%; opacity: 0.8;">
                              ${(() => {
-                    const history = containerNetworkHistory[`${c.host_id}_${c.name}`];
+                    const history = state.containerNetworkHistory[`${c.host_id}_${c.name}`];
                     return history ? renderSparkline(history.rx, '#4ade80', 100, 18) : '';
                 })()}
                          </div>
@@ -4024,7 +3596,7 @@ function renderPodmanHostDetails(hostId) {
                          </div>
                          <div style="height: 18px; width: 100%; opacity: 0.8;">
                              ${(() => {
-                    const history = containerNetworkHistory[`${c.host_id}_${c.name}`];
+                    const history = state.containerNetworkHistory[`${c.host_id}_${c.name}`];
                     return history ? renderSparkline(history.tx, '#fb923c', 100, 18) : '';
                 })()}
                          </div>
@@ -4114,7 +3686,7 @@ function renderPodmanHostDetails(hostId) {
                 }
             }
             if (window.currentPodmanMap) {
-                window.currentPodmanMap.render(host.podman_networks, true, allPodmanContainersCache, host, 'podman');
+                window.currentPodmanMap.render(host.podman_networks, true, state.allPodmanContainersCache, host, 'podman');
             }
         }
 
@@ -4286,7 +3858,7 @@ function renderPodmanHostDetails(hostId) {
             if (!window.currentPodmanMap) {
                 window.currentPodmanMap = new DockerTopologyMap('podman-topology-map');
             }
-            window.currentPodmanMap.render(host.podman_networks, true, allPodmanContainersCache, host, 'podman');
+            window.currentPodmanMap.render(host.podman_networks, true, state.allPodmanContainersCache, host, 'podman');
         }
     }
 }
@@ -4323,10 +3895,10 @@ async function fetchProxmoxVMs() {
             }
         }
         if (!response.ok) throw new Error('Failed to fetch proxmox vms');
-        allProxmoxVMsCache = await response.json();
-        if (currentTool === 'proxmox') {
-            if (selectedProxmoxHostId) {
-                renderProxmoxHostDetails(selectedProxmoxHostId);
+        state.allProxmoxVMsCache = await response.json();
+        if (state.currentTool === 'proxmox') {
+            if (state.selectedProxmoxHostId) {
+                renderProxmoxHostDetails(state.selectedProxmoxHostId);
             } else {
                 renderProxmoxSummary();
             }
@@ -4337,7 +3909,7 @@ async function fetchProxmoxVMs() {
 }
 
 function selectProxmoxHost(id) {
-    selectedProxmoxHostId = id;
+    state.selectedProxmoxHostId = id;
     renderHostNodes('host-nodes-container-generic', {
         icon: tools['proxmox']?.icon || 'fa-solid fa-server',
         showOSInfo: true,
@@ -4354,16 +3926,16 @@ function renderProxmoxHostDetails(hostId) {
     const scannerSection = container.querySelector('.scanner-section');
     if (!scannerSection) return;
 
-    const host = allHostsCache.find(h => h.id === hostId);
+    const host = state.allHostsCache.find(h => h.id === hostId);
     if (!host) return;
 
-    let filteredVMs = allProxmoxVMsCache.filter(v => v.host_id === hostId);
+    let filteredVMs = state.allProxmoxVMsCache.filter(v => v.host_id === hostId);
     filteredVMs.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
-    if (searchQuery) {
+    if (state.searchQuery) {
         filteredVMs = filteredVMs.filter(v =>
-            v.name.toLowerCase().includes(searchQuery) ||
-            v.vmid.toString().includes(searchQuery)
+            v.name.toLowerCase().includes(state.searchQuery) ||
+            v.vmid.toString().includes(state.searchQuery)
         );
     }
 
@@ -4475,7 +4047,7 @@ async function fetchNasData() {
             if (ct && ct.indexOf("application/json") === -1) {
                 console.error(`[ERROR] Expected JSON from ${API_NAS_VOLUMES} but got ${ct}`);
             } else {
-                allNasVolumesCache = await volumesResp.json();
+                state.allNasVolumesCache = await volumesResp.json();
             }
         }
 
@@ -4484,13 +4056,13 @@ async function fetchNasData() {
             if (ct && ct.indexOf("application/json") === -1) {
                 console.error(`[ERROR] Expected JSON from ${API_NAS_DISKS} but got ${ct}`);
             } else {
-                allNasDisksCache = await disksResp.json();
+                state.allNasDisksCache = await disksResp.json();
             }
         }
 
-        if (currentTool === 'nas') {
-            if (selectedNasHostId) {
-                renderNasHostDetails(selectedNasHostId);
+        if (state.currentTool === 'nas') {
+            if (state.selectedNasHostId) {
+                renderNasHostDetails(state.selectedNasHostId);
             } else {
                 renderNasSummary();
             }
@@ -4501,7 +4073,7 @@ async function fetchNasData() {
 }
 
 function selectNasHost(id) {
-    selectedNasHostId = id;
+    state.selectedNasHostId = id;
     renderHostNodes('host-nodes-container-generic', {
         icon: tools['nas'].icon,
         showOSInfo: true,
@@ -4518,11 +4090,11 @@ function renderNasHostDetails(hostId) {
     const scannerSection = container.querySelector('.scanner-section');
     if (!scannerSection) return;
 
-    const host = allHostsCache.find(h => h.id === hostId);
+    const host = state.allHostsCache.find(h => h.id === hostId);
     if (!host) return;
 
-    const volumes = allNasVolumesCache.filter(v => v.host_id === hostId);
-    const disks = allNasDisksCache.filter(d => d.host_id === hostId);
+    const volumes = state.allNasVolumesCache.filter(v => v.host_id === hostId);
+    const disks = state.allNasDisksCache.filter(d => d.host_id === hostId);
 
     scannerSection.innerHTML = `
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
@@ -4741,7 +4313,7 @@ function initLogs() {
             window.location.hash = '';
             document.getElementById('logs-tool').classList.add('hidden');
             document.getElementById('welcome-screen').style.display = 'flex';
-            currentTool = null;
+            state.currentTool = null;
         };
     }
     logsInitialized = true;
@@ -4895,7 +4467,7 @@ function initSettings() {
                 if (containerTool) containerTool.classList.add('hidden');
                 if (welcomeScreen) welcomeScreen.style.display = 'flex';
                 if (configBtn) configBtn.classList.remove('active');
-                currentTool = null;
+                state.currentTool = null;
             }
         };
     }
@@ -5299,13 +4871,13 @@ async function saveSettingsServer() {
             resetSettingsForm();
             renderSettingsServerList();
             // Refresh main lists if needed
-            if (currentTool === 'kvm') refreshAll();
-            if (currentTool === 'pfsense') fetchFirewallHosts();
-            if (currentTool === 'docker') checkAndFetchHostsForTool('docker');
-            if (currentTool === 'podman') checkAndFetchHostsForTool('podman');
-            if (currentTool === 'proxmox') checkAndFetchHostsForTool('proxmox');
-            if (currentTool === 'kubernetes') checkAndFetchHostsForTool('kubernetes');
-            if (currentTool === 'nas') checkAndFetchHostsForTool('nas');
+            if (state.currentTool === 'kvm') refreshAll();
+            if (state.currentTool === 'pfsense') fetchFirewallHosts();
+            if (state.currentTool === 'docker') checkAndFetchHostsForTool('docker');
+            if (state.currentTool === 'podman') checkAndFetchHostsForTool('podman');
+            if (state.currentTool === 'proxmox') checkAndFetchHostsForTool('proxmox');
+            if (state.currentTool === 'kubernetes') checkAndFetchHostsForTool('kubernetes');
+            if (state.currentTool === 'nas') checkAndFetchHostsForTool('nas');
         } else {
             const err = await response.text();
             alert('Error al guardar: ' + err);
@@ -5324,13 +4896,13 @@ window.deleteSettingsServer = async (id) => {
         const response = await fetch(`${apiUrl}/${id}`, { method: 'DELETE' });
         if (response.ok) {
             renderSettingsServerList();
-            if (currentTool === 'kvm') refreshAll();
-            if (currentTool === 'pfsense') fetchFirewallHosts();
-            if (currentTool === 'docker') checkAndFetchHostsForTool('docker');
-            if (currentTool === 'podman') checkAndFetchHostsForTool('podman');
-            if (currentTool === 'proxmox') checkAndFetchHostsForTool('proxmox');
-            if (currentTool === 'kubernetes') checkAndFetchHostsForTool('kubernetes');
-            if (currentTool === 'nas') checkAndFetchHostsForTool('nas');
+            if (state.currentTool === 'kvm') refreshAll();
+            if (state.currentTool === 'pfsense') fetchFirewallHosts();
+            if (state.currentTool === 'docker') checkAndFetchHostsForTool('docker');
+            if (state.currentTool === 'podman') checkAndFetchHostsForTool('podman');
+            if (state.currentTool === 'proxmox') checkAndFetchHostsForTool('proxmox');
+            if (state.currentTool === 'kubernetes') checkAndFetchHostsForTool('kubernetes');
+            if (state.currentTool === 'nas') checkAndFetchHostsForTool('nas');
         } else {
             alert('Error al eliminar.');
         }
@@ -5406,13 +4978,13 @@ async function checkServerStatus() {
                     });
 
                     // Update global caches (maintaining existing logic for tool UI)
-                    if (tool.key === 'kvm') currentServers = servers;
-                    if (tool.key === 'pfsense') currentFirewallServers = servers;
-                    if (tool.key === 'docker') currentDockerServers = servers;
-                    if (tool.key === 'podman') currentPodmanServers = servers;
-                    if (tool.key === 'kubernetes') currentKubernetesServers = servers;
-                    if (tool.key === 'proxmox') currentProxmoxServers = servers;
-                    if (tool.key === 'nas') currentNasServers = servers;
+                    if (tool.key === 'kvm') state.currentServers = servers;
+                    if (tool.key === 'pfsense') state.currentFirewallServers = servers;
+                    if (tool.key === 'docker') state.currentDockerServers = servers;
+                    if (tool.key === 'podman') state.currentPodmanServers = servers;
+                    if (tool.key === 'kubernetes') state.currentKubernetesServers = servers;
+                    if (tool.key === 'proxmox') state.currentProxmoxServers = servers;
+                    if (tool.key === 'nas') state.currentNasServers = servers;
                 } catch (jsonErr) {
                     console.warn(`[DEBUG] Error parsing JSON for ${tool.label}:`, jsonErr);
                 }
@@ -5495,14 +5067,14 @@ async function checkServerStatus() {
 function refreshAll() {
     if (document.hidden) return; // Skip background updates to save resources
     checkServerStatus();
-    if (currentTool === 'kvm') {
+    if (state.currentTool === 'kvm') {
         fetchHosts();
         fetchVMs();
-    } else if (currentTool === 'pfsense') {
+    } else if (state.currentTool === 'pfsense') {
         fetchFirewallHosts();
-    } else if (currentTool) {
+    } else if (state.currentTool) {
         // Refresh hosts for other tools
-        checkAndFetchHostsForTool(currentTool);
+        checkAndFetchHostsForTool(state.currentTool);
     }
 }
 
@@ -5511,7 +5083,7 @@ setInterval(refreshAll, 10000);
 checkServerStatus(); // Run immediately
 
 // Initial tool view
-switchTool(currentTool);
+switchTool(state.currentTool);
 
 
 
@@ -5579,16 +5151,16 @@ function getOSIcon(osName) {
 }
 
 function selectFirewallHost(hostId) {
-    selectedFirewallHostId = hostId;
+    state.selectedFirewallHostId = hostId;
     // Rerender nodes to update selection state
     renderHostNodes('host-nodes-container-generic', {
-        icon: tools[currentTool]?.icon || 'fa-solid fa-shield-halved',
+        icon: tools[state.currentTool]?.icon || 'fa-solid fa-shield-halved',
         showOSInfo: true,
         showStats: true,
         onHostClick: 'selectFirewallHost'
     });
 
-    selectedHostId = hostId; // Also update global (though mostly used for KVM)
+    state.selectedHostId = hostId; // Also update global (though mostly used for KVM)
     renderFirewallHostDetails(hostId);
 }
 
@@ -5602,7 +5174,7 @@ function renderFirewallHostDetails(hostId) {
      * with a detailed grid view of interfaces.
      */
 
-    const host = allHostsCache.find(h => h.id === hostId);
+    const host = state.allHostsCache.find(h => h.id === hostId);
     if (host) window.currentFirewallHost = host; // Expose for map logic
     if (!host) {
         scannerSection.innerHTML = `<div class="glass-panel"><div class="loading-state">Host not found</div></div>`;
@@ -5621,7 +5193,7 @@ function renderFirewallHostDetails(hostId) {
     // List layout for interfaces within a single card
     const interfacesRows = host.interfaces.map(iface => {
         const historyKey = `${host.id}_${iface.interface_name}`;
-        const history = pfSenseNetworkHistory[historyKey];
+        const history = state.pfSenseNetworkHistory[historyKey];
 
         let rxCurrent = '0 B/s';
         let txCurrent = '0 B/s';
@@ -6379,7 +5951,7 @@ function closeDocDrawer() {
 window.closeDocDrawer = closeDocDrawer;
 
 function goBackToDockerSummary() {
-    selectedDockerHostId = null;
+    state.selectedDockerHostId = null;
     renderHostNodes('host-nodes-container-generic', {
         icon: tools['docker']?.icon || 'fa-brands fa-docker',
         showOSInfo: true,
@@ -6391,7 +5963,7 @@ function goBackToDockerSummary() {
 window.goBackToDockerSummary = goBackToDockerSummary;
 
 function goBackToFirewallSummary() {
-    selectedFirewallHostId = null;
+    state.selectedFirewallHostId = null;
     renderHostNodes('host-nodes-container-generic', {
         icon: tools['pfsense']?.icon || 'fa-solid fa-shield-halved',
         showOSInfo: true,
@@ -7195,13 +6767,13 @@ let historyToolMap = null;
 
 async function renderHistory() {
     // Ensure data is loaded
-    if ((!allKVMHostsCache || allKVMHostsCache.length === 0) &&
-        (!allProxmoxHostsCache || allProxmoxHostsCache.length === 0) &&
-        (!allDockerHostsCache || allDockerHostsCache.length === 0) &&
-        (!allPodmanHostsCache || allPodmanHostsCache.length === 0) &&
-        (!allKubernetesHostsCache || allKubernetesHostsCache.length === 0) &&
-        (!allNasHostsCache || allNasHostsCache.length === 0) &&
-        (!allFirewallHostsCache || allFirewallHostsCache.length === 0)) {
+    if ((!state.allKVMHostsCache || state.allKVMHostsCache.length === 0) &&
+        (!state.allProxmoxHostsCache || state.allProxmoxHostsCache.length === 0) &&
+        (!state.allDockerHostsCache || state.allDockerHostsCache.length === 0) &&
+        (!state.allPodmanHostsCache || state.allPodmanHostsCache.length === 0) &&
+        (!state.allKubernetesHostsCache || state.allKubernetesHostsCache.length === 0) &&
+        (!state.allNasHostsCache || state.allNasHostsCache.length === 0) &&
+        (!state.allFirewallHostsCache || state.allFirewallHostsCache.length === 0)) {
         await preloadAllCaches();
     }
 
@@ -7335,13 +6907,13 @@ async function populateHistoryServers() {
     };
 
     // Use global caches
-    if (typeof allKVMHostsCache !== 'undefined') addOpts(allKVMHostsCache, 'kvm', 'KVM');
-    if (typeof allProxmoxHostsCache !== 'undefined') addOpts(allProxmoxHostsCache, 'proxmox', 'Proxmox');
-    if (typeof allDockerHostsCache !== 'undefined') addOpts(allDockerHostsCache, 'docker', 'Docker');
-    if (typeof allPodmanHostsCache !== 'undefined') addOpts(allPodmanHostsCache, 'podman', 'Podman');
-    if (typeof allKubernetesHostsCache !== 'undefined') addOpts(allKubernetesHostsCache, 'kubernetes', 'Kubernetes');
-    if (typeof allNasHostsCache !== 'undefined') addOpts(allNasHostsCache, 'nas', 'NAS');
-    if (typeof allFirewallHostsCache !== 'undefined') addOpts(allFirewallHostsCache, 'pfsense', 'pfSense');
+    if (typeof state.allKVMHostsCache !== 'undefined') addOpts(state.allKVMHostsCache, 'kvm', 'KVM');
+    if (typeof state.allProxmoxHostsCache !== 'undefined') addOpts(state.allProxmoxHostsCache, 'proxmox', 'Proxmox');
+    if (typeof state.allDockerHostsCache !== 'undefined') addOpts(state.allDockerHostsCache, 'docker', 'Docker');
+    if (typeof state.allPodmanHostsCache !== 'undefined') addOpts(state.allPodmanHostsCache, 'podman', 'Podman');
+    if (typeof state.allKubernetesHostsCache !== 'undefined') addOpts(state.allKubernetesHostsCache, 'kubernetes', 'Kubernetes');
+    if (typeof state.allNasHostsCache !== 'undefined') addOpts(state.allNasHostsCache, 'nas', 'NAS');
+    if (typeof state.allFirewallHostsCache !== 'undefined') addOpts(state.allFirewallHostsCache, 'pfsense', 'pfSense');
 
     select.innerHTML = options;
 
