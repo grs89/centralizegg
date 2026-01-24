@@ -114,28 +114,47 @@ export function renderHostNodes(containerId = 'host-nodes-container', config = {
             </div>
             
             ${showStats ? `
-            <div class="host-mini-stats">
-                <div class="mini-stat-item">
-                    <div class="stat-label"><i class="fa-solid fa-microchip"></i> CPU</div>
-                    <div class="stat-value" style="color: ${getStatusColor(cpuPercent)}">${cpuPercent}%</div>
+            <div class="host-stats-grid">
+                <div class="host-stat-item">
+                    <div class="stat-label-row">
+                        <i class="fa-solid fa-microchip"></i>
+                        <span>CPU</span>
+                    </div>
+                    <div class="stat-value-display">
+                        <div class="stat-value-main color-cpu">${cpuPercent}%</div>
+                        <div class="host-progress-container">
+                            <div class="host-progress-fill" style="width: ${cpuPercent}%; background: ${getStatusColor(cpuPercent)};"></div>
+                        </div>
+                    </div>
                 </div>
-                <div class="mini-stat-item">
-                    <div class="stat-label"><i class="fa-solid fa-memory"></i> RAM</div>
-                    <div class="stat-value" style="color: ${getStatusColor(memPercent)}">${memPercent}%</div>
+                <div class="host-stat-item">
+                    <div class="stat-label-row">
+                        <i class="fa-solid fa-memory"></i>
+                        <span>RAM</span>
+                    </div>
+                    <div class="stat-value-display">
+                        <div class="stat-value-main color-mem">${memPercent}%</div>
+                        <div class="stat-value-sub">${memUsedGB}/${memTotalGB}GB</div>
+                    </div>
                 </div>
-                <div class="mini-stat-item">
-                    <div class="stat-label">${arch ? '<i class="fa-solid fa-microchip"></i> ARCH' : '<i class="fa-solid fa-microchip"></i> CORES'}</div>
-                    <div class="stat-value" style="font-size: 0.65rem; opacity: 0.8;">${arch || host.cpu_cores || 'N/A'}</div>
+                <div class="host-stat-item">
+                    <div class="stat-label-row">
+                        <i class="fa-solid fa-microchip"></i>
+                        <span>${arch ? 'ARCH' : 'CORES'}</span>
+                    </div>
+                    <div class="stat-value-display">
+                        <div class="stat-value-main color-cores" style="font-size: ${arch ? '0.85rem' : '1.2rem'};">${arch || host.cpu_cores || 'N/A'}</div>
+                    </div>
                 </div>
             </div>
             ` : ''}
 
             ${showOSInfo ? `
-            <div class="host-node-footer">
-                <div class="os-info">
+            <div class="host-node-footer" style="display: flex; justify-content: space-between; align-items: center; margin-top: auto; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.05);">
+                <div class="host-os-info">
                      <i class="fa-brands fa-linux"></i> <span>${host.os_name || (host.tool_type === 'kubernetes' ? 'K8s Cluster' : 'Linux')}</span>
                 </div>
-                <div class="host-uptime">
+                <div class="host-uptime" style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.7; display: flex; align-items: center; gap: 4px;">
                     <i class="fa-solid fa-clock"></i> <span>${host.uptime || 'N/A'}</span>
                 </div>
             </div>
