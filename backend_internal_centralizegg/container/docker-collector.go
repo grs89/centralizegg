@@ -283,6 +283,17 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 		}
 	}
 
+	// Host Disk I/O Stats (Read/Write Bytes)
+	var totalDiskRead, totalDiskWrite uint64
+	// Reuse existing session or new one? Using existing client.
+	diskIORaw, err := dc.runCommand(client, `awk '/(sd[a-z]+|nvme[0-9]n[0-9]+|vd[a-z]+|xvd[a-z]+)$/ {r+=$6; w+=$10} END {print r, w}' /proc/diskstats`)
+	if err == nil {
+		var rSectors, wSectors uint64
+		fmt.Sscanf(strings.TrimSpace(diskIORaw), "%d %d", &rSectors, &wSectors)
+		totalDiskRead = rSectors * 512
+		totalDiskWrite = wSectors * 512
+	}
+
 	hostID, err := dc.DB.UpsertDockerHost(data_centralizegg.DockerHost{
 		ServerID:      s.ID,
 		Hostname:      hostname,
@@ -319,6 +330,8 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 			MemoryUsage:    memTotal - memFree,
 			NetRX:          totalNetRX,
 			NetTX:          totalNetTX,
+			DiskRead:       totalDiskRead,
+			DiskWrite:      totalDiskWrite,
 			InterfacesData: interfacesJSON,
 		}
 		if err := dc.DB.InsertServerMetrics(metric); err != nil {

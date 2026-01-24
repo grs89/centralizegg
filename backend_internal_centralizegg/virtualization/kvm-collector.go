@@ -302,9 +302,9 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 	sessionBridges, err := sshClient.NewSession()
 	if err == nil {
 		defer sessionBridges.Close()
-		// Get Bridge names, status, RX bytes, and TX bytes
-		// Using awk to get traffic from /proc/net/dev and operstate from sysfs
-		cmd := `awk -F: '/(br|virbr)/ {iface=$1; gsub(/ /, "", iface); cmd="cat /sys/class/net/"iface"/operstate 2>/dev/null"; cmd | getline status; close(cmd); if(status == "") status="unknown"; print iface, status, $2, $10}' /proc/net/dev`
+		// Get Bridge and Interface names, status, RX bytes, and TX bytes
+		// Capturing bridges (br, virbr) AND physical interfaces (eth, enp, eno, bond, ib) to ensure graph shows data
+		cmd := `awk -F: '/(br|virbr|eth|enp|eno|bond|ib)/ {iface=$1; gsub(/ /, "", iface); cmd="cat /sys/class/net/"iface"/operstate 2>/dev/null"; cmd | getline status; close(cmd); if(status == "") status="unknown"; print iface, status, $2, $10}' /proc/net/dev`
 		brOutput, err := sessionBridges.Output(cmd)
 		if err == nil {
 			output := string(brOutput)
