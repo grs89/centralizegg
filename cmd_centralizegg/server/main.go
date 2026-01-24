@@ -319,6 +319,25 @@ func main() {
 		json.NewEncoder(w).Encode(events)
 	}).Methods("GET")
 
+	// Kubernetes logs API
+	r.HandleFunc("/api/kubernetes/pods/{serverID}/{namespace}/{name}/logs", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		serverID, err := strconv.ParseInt(vars["serverID"], 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid Server ID", http.StatusBadRequest)
+			return
+		}
+		namespace := vars["namespace"]
+		name := vars["name"]
+
+		logs, err := k8sCol.GetPodLogs(serverID, namespace, name)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"logs": logs})
+	}).Methods("GET")
+
 	// Podman hosts API
 	r.HandleFunc("/api/podman/hosts", func(w http.ResponseWriter, r *http.Request) {
 		hosts, err := db.GetPodmanHosts()

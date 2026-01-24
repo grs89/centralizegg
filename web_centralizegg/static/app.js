@@ -3090,7 +3090,7 @@ async function renderKubernetesServerDetails(serverId) {
                 if (!window.currentK8sMap) {
                     window.currentK8sMap = new KubernetesTopologyMap('k8s-topology-map');
                 }
-                window.currentK8sMap.renderFromData(clusterNodes, allPodsCache, server.status);
+                window.currentK8sMap.renderFromData(clusterNodes, allPodsCache, server);
             }
 
             return;
@@ -3518,7 +3518,7 @@ async function renderKubernetesServerDetails(serverId) {
                     if (!window.currentK8sMap) {
                         window.currentK8sMap = new KubernetesTopologyMap('k8s-topology-map');
                     }
-                    window.currentK8sMap.renderFromData(clusterNodes, allPodsCache, server.status);
+                    window.currentK8sMap.renderFromData(clusterNodes, allPodsCache, server);
                 }
             }
         }, 100);
@@ -6747,8 +6747,9 @@ class KubernetesTopologyMap {
         this.draw();
     }
 
-    renderFromData(nodesData, podsData, clusterStatus = 'online') {
-        this.clusterStatus = clusterStatus;
+    renderFromData(nodesData, podsData, server) {
+        this.server = server;
+        this.clusterStatus = server ? (server.status || 'online') : 'online';
         const container = document.getElementById(this.containerId);
         if (!container) return;
         this.width = container.clientWidth || 800;
@@ -7025,6 +7026,16 @@ class KubernetesTopologyMap {
             this.nodes.forEach(node => {
                 const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
                 group.style.cursor = 'pointer';
+
+                // Add click handler for Pods
+                if (node.type === 'pod') {
+                    group.onclick = (e) => {
+                        e.stopPropagation();
+                        if (this.server && node.original) {
+                            showPodLogs(this.server.id, node.original.namespace, node.original.name);
+                        }
+                    };
+                }
 
                 const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
                 circle.setAttribute('cx', node.x);
@@ -7635,3 +7646,75 @@ function updateCharts(metrics, keepDropdown = false) {
     }
 }
 
+
+// --- Pod Logs Viewer ---
+async function showPodLogs(serverId, namespace, podName) {
+    if (!serverId || !namespace || !podName) return;
+
+    // Create modal if not exists
+    let modal = document.getElementById('log-viewer-modal');
+    if (!modal) {
+        modal = createLogModal();
+    }
+
+    const contentEl = document.getElementById('log-viewer-content');
+    const titleEl = document.getElementById('log-viewer-title');
+
+    titleEl.textContent = `Logs: ${podName} (${namespace})`;
+    contentEl.textContent = 'Loading logs...';
+    contentEl.style.color = '#e2e8f0';
+
+    modal.style.display = 'flex';
+
+    try {
+        const response = await fetch(`/api/kubernetes/pods/${serverId}/${namespace}/${podName}/logs`);
+        if (!response.ok) throw new Error('Failed to fetch logs');
+        const data = await response.json();
+
+        // Basic ANSI color stripping or rendering? 
+        // For now, simpler to strip or just display raw. Browser might not handle ANSI codes.
+        // Let's strip standard ANSI codes for readability
+        let cleanLogs = data.logs || 'No logs available.';
+        // Simple regex for ANSI codes
+        // cleanLogs = cleanLogs.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, ''); 
+
+        contentEl.textContent = cleanLogs;
+    } catch (e) {
+        contentEl.textContent = `Error: ${e.message}`;
+        contentEl.style.color = '#ef4444';
+    }
+}
+
+function createLogModal() {
+    const modal = document.createElement('div');
+    modal.id = 'log-viewer-modal';
+    modal.style.cssText = `
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.8); z-index: 10000;
+        display: none; align-items: center; justify-content: center;
+        backdrop-filter: blur(5px);
+    `;
+
+    modal.innerHTML = `
+        <div class="glass-panel" style="width: 80%; height: 80%; display: flex; flex-direction: column; padding: 0; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);">
+            <div style="padding: 15px 20px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02);">
+                <h3 id="log-viewer-title" style="margin: 0; font-size: 1.1rem; color: var(--text-primary); font-family: monospace;">Logs</h3>
+                <button onclick="document.getElementById('log-viewer-modal').style.display='none'" style="background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 1.2rem; padding: 5px;">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div style="flex: 1; padding: 0; overflow: auto; background: #0f172a;">
+                <pre id="log-viewer-content" style="margin: 0; padding: 20px; font-family: 'Fira Code', monospace; font-size: 0.85rem; line-height: 1.5; color: #e2e8f0; white-space: pre-wrap;"></pre>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Close on click outside
+    modal.onclick = (e) => {
+        if (e.target === modal) modal.style.display = 'none';
+    };
+
+    return modal;
+}

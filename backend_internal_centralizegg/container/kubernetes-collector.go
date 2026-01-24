@@ -1117,3 +1117,78 @@ func (kc *KubernetesCollector) checkAndLogAlerts(s data_centralizegg.GenericServ
 		}
 	}
 }
+
+func (kc *KubernetesCollector) GetPodLogs(serverID int64, namespace string, podName string) (string, error) {
+	servers, err := kc.DB.GetGenericServers("kubernetes")
+	if err != nil {
+		return "", err
+	}
+	var targetServer data_centralizegg.GenericServer
+	found := false
+	for _, s := range servers {
+		if s.ID == serverID {
+			targetServer = s
+			found = true
+			break
+		}
+	}
+	if !found {
+		return "", fmt.Errorf("server not found")
+	}
+
+	var client *ssh.Client
+	isLocal := targetServer.IPAddress == "" || targetServer.Username == ""
+
+	if !isLocal {
+		client, err = kc.getSSHClient(targetServer)
+		if err != nil {
+			return "", fmt.Errorf("ssh connection failed: %w", err)
+		}
+		defer client.Close()
+	}
+
+	// Determine kubeconfig
+	kubeconfigPath := ""
+	if targetServer.KubeconfigContent != "" {
+		if isLocal {
+			tmpFile, err := ioutil.TempFile("", "kubeconfig-*.yaml")
+			if err == nil {
+				tmpFile.Write([]byte(targetServer.KubeconfigContent))
+				tmpFile.Close()
+				kubeconfigPath = tmpFile.Name()
+				defer os.Remove(kubeconfigPath)
+			}
+		} else {
+			remotePath := fmt.Sprintf("/tmp/centralize-kubeconfig-%d-logs", targetServer.ID)
+			cmd := fmt.Sprintf("cat << 'EOF' > %s\n%s\nEOF", remotePath, targetServer.KubeconfigContent)
+			if _, err := kc.runCommand(client, cmd, ""); err == nil {
+				kubeconfigPath = remotePath
+				defer kc.runCommand(client, fmt.Sprintf("rm -f %s", remotePath), "")
+			}
+		}
+	}
+
+	kubectlCmd := "kubectl"
+	if kubeconfigPath != "" {
+		if isLocal {
+			kubectlCmd = fmt.Sprintf("kubectl --kubeconfig=%s", kubeconfigPath)
+		} else {
+			kubectlCmd = fmt.Sprintf("KUBECONFIG=%s kubectl", kubeconfigPath)
+		}
+	}
+
+	// Execute logs command
+	cmd := fmt.Sprintf("%s logs -n %s %s --tail=100", kubectlCmd, namespace, podName)
+	var output string
+	if isLocal {
+		output, err = kc.runLocalCommand(cmd)
+	} else {
+		output, err = kc.runCommand(client, cmd, "")
+	}
+
+	if err != nil {
+		return "", fmt.Errorf("failed to get logs: %v (output: %s)", err, output)
+	}
+
+	return output, nil
+}
