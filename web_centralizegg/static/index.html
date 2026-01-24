@@ -269,29 +269,37 @@
 
                     <!-- Metrics Section -->
                     <div class="glass-panel" style="padding: 24px; margin-bottom: 30px; border-radius: 20px;">
-                        <div class="metrics-controls" style="display: flex; gap: 15px; margin-bottom: 20px; align-items: center;">
+                        <div class="metrics-controls"
+                            style="display: flex; gap: 15px; margin-bottom: 20px; align-items: center;">
                             <select id="history-server-select" class="glass-input" style="width: 250px;">
                                 <option value="" disabled selected>Seleccionar Servidor</option>
                                 <!-- Populated dynamically -->
                             </select>
                             <select id="history-time-range" class="glass-input" style="width: 150px;">
+                                <option value="15m">Últimos 15m</option>
                                 <option value="1h">Última 1h</option>
                                 <option value="6h">Últimas 6h</option>
                                 <option value="24h" selected>Últimas 24h</option>
                                 <option value="7d">Últimos 7d</option>
                                 <option value="30d">Últimos 30d</option>
+                                <option value="1y">Último 1 año</option>
                             </select>
-                            <button id="load-history-btn" class="primary-btn"><i class="fa-solid fa-sync"></i> Actualizar</button>
+                            <button id="load-history-btn" class="primary-btn"><i class="fa-solid fa-sync"></i>
+                                Actualizar</button>
                         </div>
-                        
-                        <div class="charts-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
-                            <div class="chart-container" style="position: relative; height: 300px; background: rgba(0,0,0,0.2); border-radius: 12px; padding: 15px;">
+
+                        <div class="charts-grid"
+                            style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
+                            <div class="chart-container"
+                                style="position: relative; height: 300px; background: rgba(0,0,0,0.2); border-radius: 12px; padding: 15px;">
                                 <canvas id="cpuChart"></canvas>
                             </div>
-                            <div class="chart-container" style="position: relative; height: 300px; background: rgba(0,0,0,0.2); border-radius: 12px; padding: 15px;">
+                            <div class="chart-container"
+                                style="position: relative; height: 300px; background: rgba(0,0,0,0.2); border-radius: 12px; padding: 15px;">
                                 <canvas id="ramChart"></canvas>
                             </div>
-                            <div class="chart-container" style="position: relative; height: 300px; background: rgba(0,0,0,0.2); border-radius: 12px; padding: 15px;">
+                            <div class="chart-container"
+                                style="position: relative; height: 300px; background: rgba(0,0,0,0.2); border-radius: 12px; padding: 15px;">
                                 <canvas id="netChart"></canvas>
                             </div>
                         </div>

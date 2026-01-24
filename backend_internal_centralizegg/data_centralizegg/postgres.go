@@ -2486,6 +2486,8 @@ func (d *DB) InsertServerMetrics(m ServerMetric) error {
 func (d *DB) GetServerHistory(serverID int64, category string, duration string) ([]ServerMetric, error) {
 	var interval string
 	switch duration {
+	case "15m":
+		interval = "15 minutes"
 	case "1h":
 		interval = "1 hour"
 	case "6h":
@@ -2498,6 +2500,8 @@ func (d *DB) GetServerHistory(serverID int64, category string, duration string) 
 		interval = "7 days"
 	case "30d":
 		interval = "30 days"
+	case "1y":
+		interval = "1 year"
 	default:
 		interval = "24 hours"
 	}
