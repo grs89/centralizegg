@@ -413,6 +413,30 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 		}
 	}
 
+	// New session for Host Disk I/O Stats (Read/Write Bytes)
+	var totalDiskRead, totalDiskWrite uint64
+	sessionDiskIO, err := sshClient.NewSession()
+	if err == nil {
+		defer sessionDiskIO.Close()
+		// Get sectors read ($3) and sectors written ($7) from /proc/diskstats for common physical devices
+		// Filter for loop/ram/dm devices usually? We want physical.
+		// grep -E 'sd[a-z]+|nvme[0-9]n[0-9]+|vd[a-z]+|xvd[a-z]+' | awk '{read += $6; write += $10} END {print read, write}'  <-- Correct fields typically:
+		// Field 1: major, 2: minor, 3: device name
+		// Field 4: reads completed successfully
+		// Field 6: sectors read (512 bytes?) usually field 6 (index 5 from 0 in C, field 6 in awk 1-based?)
+		// Documentation: https://www.kernel.org/doc/Documentation/iostats.txt
+		// Field 6: sectors read
+		// Field 10: sectors written
+		cmd := `awk '/(sd[a-z]+|nvme[0-9]n[0-9]+|vd[a-z]+|xvd[a-z]+)$/ {r+=$6; w+=$10} END {print r, w}' /proc/diskstats`
+		ioOutput, err := sessionDiskIO.Output(cmd)
+		if err == nil {
+			var rSectors, wSectors uint64
+			fmt.Sscanf(string(ioOutput), "%d %d", &rSectors, &wSectors)
+			totalDiskRead = rSectors * 512
+			totalDiskWrite = wSectors * 512
+		}
+	}
+
 	// Insert Historical Metrics
 	metric := data_centralizegg.ServerMetric{
 		ServerID:       hostID,
@@ -422,6 +446,8 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 		MemoryUsage:    (uint64(memory) * 1024) - freeMem,
 		NetRX:          totalNetRX,
 		NetTX:          totalNetTX,
+		DiskRead:       totalDiskRead,
+		DiskWrite:      totalDiskWrite,
 		InterfacesData: interfacesJSON,
 	}
 	if err := mc.DB.InsertServerMetrics(metric); err != nil {
