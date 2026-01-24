@@ -134,6 +134,9 @@ export function renderHostNodes(containerId = 'host-nodes-container', config = {
                     </div>
                     <div class="stat-value-display">
                         <div class="stat-value-main color-mem">${memPercent}%</div>
+                        <div class="host-progress-container">
+                            <div class="host-progress-fill" style="width: ${memPercent}%; background: ${getStatusColor(memPercent)};"></div>
+                        </div>
                         <div class="stat-value-sub">${memUsedGB}/${memTotalGB}GB</div>
                     </div>
                 </div>
