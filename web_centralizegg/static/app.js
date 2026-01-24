@@ -7139,7 +7139,11 @@ async function renderHistory() {
     // Ensure data is loaded
     if ((!allKVMHostsCache || allKVMHostsCache.length === 0) &&
         (!allProxmoxHostsCache || allProxmoxHostsCache.length === 0) &&
-        (!allDockerHostsCache || allDockerHostsCache.length === 0)) {
+        (!allDockerHostsCache || allDockerHostsCache.length === 0) &&
+        (!allPodmanHostsCache || allPodmanHostsCache.length === 0) &&
+        (!allKubernetesHostsCache || allKubernetesHostsCache.length === 0) &&
+        (!allNasHostsCache || allNasHostsCache.length === 0) &&
+        (!allFirewallHostsCache || allFirewallHostsCache.length === 0)) {
         await preloadAllCaches();
     }
 
@@ -7274,10 +7278,12 @@ async function populateHistoryServers() {
 
     // Use global caches
     if (typeof allKVMHostsCache !== 'undefined') addOpts(allKVMHostsCache, 'kvm', 'KVM');
-    // Add generic servers if available (need to check if variable names match)
-    // allProxmoxHostsCache is defined in app.js
     if (typeof allProxmoxHostsCache !== 'undefined') addOpts(allProxmoxHostsCache, 'proxmox', 'Proxmox');
     if (typeof allDockerHostsCache !== 'undefined') addOpts(allDockerHostsCache, 'docker', 'Docker');
+    if (typeof allPodmanHostsCache !== 'undefined') addOpts(allPodmanHostsCache, 'podman', 'Podman');
+    if (typeof allKubernetesHostsCache !== 'undefined') addOpts(allKubernetesHostsCache, 'kubernetes', 'Kubernetes');
+    if (typeof allNasHostsCache !== 'undefined') addOpts(allNasHostsCache, 'nas', 'NAS');
+    if (typeof allFirewallHostsCache !== 'undefined') addOpts(allFirewallHostsCache, 'pfsense', 'pfSense');
 
     select.innerHTML = options;
 
