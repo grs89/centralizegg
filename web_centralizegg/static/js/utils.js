@@ -66,3 +66,22 @@ export function playAlertSound() {
         console.warn("Audio play failed", e);
     }
 }
+
+export function getOSIcon(osName) {
+    if (!osName) return 'fa-brands fa-linux';
+    const os = osName.toLowerCase();
+
+    // Default fallback
+    let icon = 'fa-brands fa-linux';
+
+    if (os.includes('ubuntu')) icon = 'fa-brands fa-ubuntu';
+    else if (os.includes('debian')) icon = 'fa-brands fa-linux'; // Use linux penguin for debian for better compatibility
+    else if (os.includes('fedora')) icon = 'fa-brands fa-fedora';
+    else if (os.includes('centos')) icon = 'fa-brands fa-centos';
+    else if (os.includes('windows')) icon = 'fa-brands fa-windows';
+    else if (os.includes('red hat') || os.includes('rhel')) icon = 'fa-brands fa-redhat';
+    else if (os.includes('suse')) icon = 'fa-brands fa-suse';
+    else if (os.includes('pfsense') || os.includes('freebsd')) icon = 'fa-brands fa-freebsd';
+
+    return icon;
+}

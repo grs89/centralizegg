@@ -168,11 +168,9 @@ export function renderDonutChart(percent, color, size = 50) {
 
 export function renderSparkline(data, color, width = 100, height = 30) {
     if (!data || data.length < 2) return '';
-    const state = { HISTORY_POINTS: 20 }; // Fallback if state.js not accessed for points, or import it.
-    // Actually better to use state from state.js
     const max = Math.max(...data, 1);
     const points = data.map((val, idx) => {
-        const x = (idx / (20 - 1)) * width; // Using 20 as constant for now or import state
+        const x = (idx / (state.HISTORY_POINTS - 1)) * width;
         const y = height - ((val / max) * height);
         return `${x},${y}`;
     }).join(' ');
