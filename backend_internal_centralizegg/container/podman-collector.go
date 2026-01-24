@@ -407,6 +407,7 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 
 	// Host Network Topology
 	var totalNetRX, totalNetTX uint64
+	interfacesMap := make(map[string]map[string]uint64)
 	netRaw, err := pc.runCommand(client, "awk 'NR>2 {print $1, $2, $10}' /proc/net/dev")
 	if err == nil {
 		lines := strings.Split(strings.TrimSpace(netRaw), "\n")
@@ -416,12 +417,25 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 				if strings.HasPrefix(parts[0], "lo:") {
 					continue
 				}
+				name := strings.TrimSuffix(parts[0], ":")
 				var rx, tx uint64
 				fmt.Sscanf(parts[1], "%d", &rx)
 				fmt.Sscanf(parts[2], "%d", &tx)
 				totalNetRX += rx
 				totalNetTX += tx
+
+				interfacesMap[name] = map[string]uint64{
+					"rx": rx,
+					"tx": tx,
+				}
 			}
+		}
+	}
+
+	interfacesJSON := "{}"
+	if len(interfacesMap) > 0 {
+		if b, err := json.Marshal(interfacesMap); err == nil {
+			interfacesJSON = string(b)
 		}
 	}
 
@@ -451,13 +465,14 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 
 		// Insert Historical Metrics
 		metric := data_centralizegg.ServerMetric{
-			ServerID:    hostID,
-			Category:    "podman",
-			Timestamp:   time.Now(),
-			CPUUsage:    cpuUsage,
-			MemoryUsage: memTotal - memFree,
-			NetRX:       totalNetRX,
-			NetTX:       totalNetTX,
+			ServerID:       hostID,
+			Category:       "podman",
+			Timestamp:      time.Now(),
+			CPUUsage:       cpuUsage,
+			MemoryUsage:    memTotal - memFree,
+			NetRX:          totalNetRX,
+			NetTX:          totalNetTX,
+			InterfacesData: interfacesJSON,
 		}
 		if err := pc.DB.InsertServerMetrics(metric); err != nil {
 			// log.Printf("[PodmanCollector] Failed to insert metrics: %v", err)

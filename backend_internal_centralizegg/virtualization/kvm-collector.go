@@ -297,6 +297,8 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 	// New session for Bridge Interfaces
 	var bridgesJSON = "[]"
 	var totalNetRX, totalNetTX uint64
+	var bridges []BridgeStat // Define outside for later use
+
 	sessionBridges, err := sshClient.NewSession()
 	if err == nil {
 		defer sessionBridges.Close()
@@ -307,7 +309,6 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 		if err == nil {
 			output := string(brOutput)
 			lines := strings.Split(strings.TrimSpace(output), "\n")
-			var bridges []BridgeStat
 			for _, line := range lines {
 				parts := strings.Fields(line)
 				if len(parts) >= 4 {
@@ -397,15 +398,31 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 		return fmt.Errorf("upsert host: %w", err)
 	}
 
+	// Serialize Interface Stats for History
+	interfacesMap := make(map[string]map[string]uint64)
+	for _, b := range bridges {
+		interfacesMap[b.Name] = map[string]uint64{
+			"rx": b.NetRX,
+			"tx": b.NetTX,
+		}
+	}
+	interfacesJSON := "{}"
+	if len(interfacesMap) > 0 {
+		if b, err := json.Marshal(interfacesMap); err == nil {
+			interfacesJSON = string(b)
+		}
+	}
+
 	// Insert Historical Metrics
 	metric := data_centralizegg.ServerMetric{
-		ServerID:    hostID,
-		Category:    "kvm",
-		Timestamp:   time.Now(),
-		CPUUsage:    cpuUsage,
-		MemoryUsage: (uint64(memory) * 1024) - freeMem,
-		NetRX:       totalNetRX,
-		NetTX:       totalNetTX,
+		ServerID:       hostID,
+		Category:       "kvm",
+		Timestamp:      time.Now(),
+		CPUUsage:       cpuUsage,
+		MemoryUsage:    (uint64(memory) * 1024) - freeMem,
+		NetRX:          totalNetRX,
+		NetTX:          totalNetTX,
+		InterfacesData: interfacesJSON,
 	}
 	if err := mc.DB.InsertServerMetrics(metric); err != nil {
 		log.Printf("Failed to insert server metrics for %s: %v", s.Name, err)

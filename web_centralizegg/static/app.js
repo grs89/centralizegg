@@ -7314,8 +7314,25 @@ async function loadHistoryMetrics() {
     }
 }
 
-function updateCharts(metrics) {
+let currentHistoryMetrics = [];
+let netInterfaceSelectorInitialized = false;
+
+// Initialize interface selector listener once
+function initNetInterfaceSelector() {
+    const selector = document.getElementById('net-interface-selector');
+    if (selector && !netInterfaceSelectorInitialized) {
+        selector.addEventListener('change', () => {
+            updateCharts(currentHistoryMetrics, true); // true = keep dropdown
+        });
+        netInterfaceSelectorInitialized = true;
+    }
+}
+
+function updateCharts(metrics, keepDropdown = false) {
     if (!metrics) metrics = [];
+    currentHistoryMetrics = metrics; // Cache for selector
+
+    initNetInterfaceSelector();
 
     // Sort by timestamp
     metrics.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
@@ -7324,27 +7341,99 @@ function updateCharts(metrics) {
     const sortedCpu = metrics.map(m => m.cpu_usage);
     const sortedRam = metrics.map(m => m.memory_usage / (1024 * 1024 * 1024));
 
-    const sortedNetRx = metrics.map(m => m.net_rx);
-    const sortedNetTx = metrics.map(m => m.net_tx);
+    // Handle Network Interface Selection
+    const selector = document.getElementById('net-interface-selector');
+    let selectedIface = "total";
+    if (selector) {
+        selectedIface = selector.value;
+    }
+
+    // Collect all available interfaces from history
+    if (!keepDropdown && selector) {
+        const interfacesSet = new Set();
+        metrics.forEach(m => {
+            if (m.interfaces_data && m.interfaces_data !== "{}" && m.interfaces_data !== "[]") {
+                try {
+                    const ifaceMap = JSON.parse(m.interfaces_data);
+                    Object.keys(ifaceMap).forEach(k => interfacesSet.add(k));
+                } catch (e) {
+                    // ignore parse error
+                }
+            }
+        });
+
+        // Save current selection if valid
+        const previousSelection = selector.value;
+
+        // Rebuild options
+        // Clear old options except "Total"
+        selector.innerHTML = '<option value="total">Total</option>';
+
+        const sortedIfaces = Array.from(interfacesSet).sort();
+        sortedIfaces.forEach(iface => {
+            const opt = document.createElement('option');
+            opt.value = iface;
+            opt.textContent = iface;
+            selector.appendChild(opt);
+        });
+
+        // Restore selection if it still exists
+        if (interfacesSet.has(previousSelection)) {
+            selector.value = previousSelection;
+            selectedIface = previousSelection;
+        } else {
+            selector.value = "total";
+            selectedIface = "total";
+        }
+    }
 
     const ratesRx = [];
     const ratesTx = [];
     const netLabels = [];
 
-    // Calculate network rates
+    // Calculate network rates based on selected interface
     for (let i = 1; i < metrics.length; i++) {
         const t1 = new Date(metrics[i - 1].timestamp).getTime();
         const t2 = new Date(metrics[i].timestamp).getTime();
         const sec = (t2 - t1) / 1000;
 
-        // Push label corresponding to the end of the interval
         netLabels.push(new Date(metrics[i].timestamp).toLocaleString());
 
         if (sec > 0) {
-            let dRx = sortedNetRx[i] - sortedNetRx[i - 1];
-            let dTx = sortedNetTx[i] - sortedNetTx[i - 1];
-            if (dRx < 0) dRx = 0; // restart
-            if (dTx < 0) dTx = 0;
+            let rx1 = metrics[i - 1].net_rx;
+            let tx1 = metrics[i - 1].net_tx;
+            let rx2 = metrics[i].net_rx;
+            let tx2 = metrics[i].net_tx;
+
+            // Override if specific interface selected
+            if (selectedIface !== "total") {
+                rx1 = 0; tx1 = 0; rx2 = 0; tx2 = 0;
+                try {
+                    const map1 = JSON.parse(metrics[i - 1].interfaces_data || "{}");
+                    const map2 = JSON.parse(metrics[i].interfaces_data || "{}");
+                    if (map1[selectedIface]) {
+                        rx1 = map1[selectedIface].rx || 0;
+                        tx1 = map1[selectedIface].tx || 0;
+                    }
+                    if (map2[selectedIface]) {
+                        rx2 = map2[selectedIface].rx || 0;
+                        tx2 = map2[selectedIface].tx || 0;
+                    }
+                } catch (e) {
+                    // error
+                }
+            }
+
+            let dRx = rx2 - rx1;
+            let dTx = tx2 - tx1;
+
+            // Handle restart/overflow (counters reset)
+            if (dRx < 0) dRx = rx2; // Assume reset to 0
+            if (dTx < 0) dTx = tx2;
+
+            // Sanity check: if spike is impossibly large relative to duration (e.g. > 100Gbps), clip it?
+            // For now just raw.
+
             ratesRx.push((dRx / sec) * 8 / (1000 * 1000)); // Mbps
             ratesTx.push((dTx / sec) * 8 / (1000 * 1000)); // Mbps
         } else {
@@ -7353,24 +7442,48 @@ function updateCharts(metrics) {
         }
     }
 
-    const chartOptions = {
+    const getGradient = (ctx, color) => {
+        const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+        gradient.addColorStop(0, color + '66'); // 40% opacity
+        gradient.addColorStop(1, color + '00'); // 0% opacity
+        return gradient;
+    };
+
+    const commonOptions = {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-            legend: {
-                labels: { color: '#ccc' }
+            legend: { display: false }, // Hide default legend as we have custom headers
+            tooltip: {
+                mode: 'index',
+                intersect: false,
+                backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                titleColor: '#fff',
+                bodyColor: '#ccc',
+                borderColor: 'rgba(255, 255, 255, 0.1)',
+                borderWidth: 1
             }
         },
         scales: {
             y: {
                 beginAtZero: true,
-                grid: { color: 'rgba(255, 255, 255, 0.1)' },
-                ticks: { color: '#ccc' }
+                grid: { color: 'rgba(255, 255, 255, 0.05)', drawBorder: false },
+                ticks: { color: '#94a3b8', font: { size: 11 } },
+                border: { display: false }
             },
             x: {
-                grid: { color: 'rgba(255, 255, 255, 0.1)' },
-                ticks: { color: '#ccc' }
+                grid: { display: false },
+                ticks: { color: '#94a3b8', font: { size: 10 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 6 },
+                border: { display: false }
             }
+        },
+        interaction: {
+            mode: 'nearest',
+            axis: 'x',
+            intersect: false
+        },
+        elements: {
+            point: { radius: 0, hoverRadius: 6, hitRadius: 10 }
         }
     };
 
@@ -7379,16 +7492,20 @@ function updateCharts(metrics) {
         const canvas = document.getElementById(id);
         if (!canvas) return null;
 
+        const ctx = canvas.getContext('2d');
+        const gradient = getGradient(ctx, color);
+
         // Update existing
         if (instance) {
             instance.data.labels = labelsOverride || labels;
             instance.data.datasets[0].data = data;
-            instance.update('none'); // 'none' mode prevents full re-animation flickering
+            // Update gradient on resize/update if needed, but usually static is fine
+            // instance.data.datasets[0].backgroundColor = gradient; 
+            instance.update('none');
             return instance;
         }
 
         // Create new
-        const ctx = canvas.getContext('2d');
         return new Chart(ctx, {
             type: type,
             data: {
@@ -7397,12 +7514,15 @@ function updateCharts(metrics) {
                     label: label,
                     data: data,
                     borderColor: color,
-                    backgroundColor: color + '33',
+                    backgroundColor: gradient,
+                    borderWidth: 2,
                     fill: fill,
-                    tension: 0.4
+                    tension: 0.4,
+                    pointBackgroundColor: color,
+                    pointBorderColor: '#fff'
                 }]
             },
-            options: chartOptions
+            options: commonOptions
         });
     };
 
@@ -7419,6 +7539,16 @@ function updateCharts(metrics) {
             netChart.update('none');
         } else {
             const ctxNet = canvasNet.getContext('2d');
+            const gradRx = getGradient(ctxNet, '#22c55e');
+            const gradTx = getGradient(ctxNet, '#f97316');
+
+            // Copy options and enable legend for network
+            const netOptions = JSON.parse(JSON.stringify(commonOptions));
+            netOptions.plugins.legend = {
+                display: true,
+                labels: { color: '#94a3b8', usePointStyle: true, boxWidth: 8 }
+            };
+
             netChart = new Chart(ctxNet, {
                 type: 'line',
                 data: {
@@ -7428,21 +7558,27 @@ function updateCharts(metrics) {
                             label: 'RX (Mbps)',
                             data: ratesRx,
                             borderColor: '#22c55e',
-                            backgroundColor: '#22c55e33',
+                            backgroundColor: gradRx,
+                            borderWidth: 2,
                             fill: true,
-                            tension: 0.4
+                            tension: 0.4,
+                            pointRadius: 0,
+                            pointHoverRadius: 5
                         },
                         {
                             label: 'TX (Mbps)',
                             data: ratesTx,
                             borderColor: '#f97316',
-                            backgroundColor: '#f9731633',
+                            backgroundColor: gradTx,
+                            borderWidth: 2,
                             fill: true,
-                            tension: 0.4
+                            tension: 0.4,
+                            pointRadius: 0,
+                            pointHoverRadius: 5
                         }
                     ]
                 },
-                options: chartOptions
+                options: netOptions
             });
         }
     }

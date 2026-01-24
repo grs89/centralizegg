@@ -14,16 +14,17 @@ type DB struct {
 }
 
 type ServerMetric struct {
-	ID          int64     `json:"id"`
-	ServerID    int64     `json:"server_id"`
-	Category    string    `json:"category"`
-	Timestamp   time.Time `json:"timestamp"`
-	CPUUsage    float64   `json:"cpu_usage"`
-	MemoryUsage uint64    `json:"memory_usage"`
-	NetRX       uint64    `json:"net_rx"`
-	NetTX       uint64    `json:"net_tx"`
-	DiskRead    uint64    `json:"disk_read"`
-	DiskWrite   uint64    `json:"disk_write"`
+	ID             int64     `json:"id"`
+	ServerID       int64     `json:"server_id"`
+	Category       string    `json:"category"`
+	Timestamp      time.Time `json:"timestamp"`
+	CPUUsage       float64   `json:"cpu_usage"`
+	MemoryUsage    uint64    `json:"memory_usage"`
+	NetRX          uint64    `json:"net_rx"`
+	NetTX          uint64    `json:"net_tx"`
+	DiskRead       uint64    `json:"disk_read"`
+	DiskWrite      uint64    `json:"disk_write"`
+	InterfacesData string    `json:"interfaces_data"` // JSON map of interface stats
 }
 
 type VM struct {
@@ -433,6 +434,9 @@ func NewPostgresDB(connStr string) (*DB, error) {
 	for _, t := range genericTables {
 		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS cert_expiration TIMESTAMP", t))
 	}
+
+	// Migration: Add interfaces_data to server_metrics_history
+	_, _ = db.Exec("ALTER TABLE server_metrics_history ADD COLUMN IF NOT EXISTS interfaces_data TEXT DEFAULT '{}'")
 
 	return &DB{Conn: db}, nil
 }
@@ -2507,7 +2511,7 @@ func (d *DB) GetServerHistory(serverID int64, category string, duration string) 
 	}
 
 	query := fmt.Sprintf(`
-		SELECT id, server_id, category, timestamp, cpu_usage, memory_usage, net_rx, net_tx, disk_read, disk_write
+		SELECT id, server_id, category, timestamp, cpu_usage, memory_usage, net_rx, net_tx, disk_read, disk_write, COALESCE(interfaces_data, '{}')
 		FROM server_metrics_history
 		WHERE server_id = $1 AND category = $2 AND timestamp > NOW() - INTERVAL '%s'
 		ORDER BY timestamp ASC`, interval)
@@ -2521,7 +2525,7 @@ func (d *DB) GetServerHistory(serverID int64, category string, duration string) 
 	var metrics []ServerMetric
 	for rows.Next() {
 		var m ServerMetric
-		if err := rows.Scan(&m.ID, &m.ServerID, &m.Category, &m.Timestamp, &m.CPUUsage, &m.MemoryUsage, &m.NetRX, &m.NetTX, &m.DiskRead, &m.DiskWrite); err != nil {
+		if err := rows.Scan(&m.ID, &m.ServerID, &m.Category, &m.Timestamp, &m.CPUUsage, &m.MemoryUsage, &m.NetRX, &m.NetTX, &m.DiskRead, &m.DiskWrite, &m.InterfacesData); err != nil {
 			return nil, err
 		}
 		metrics = append(metrics, m)

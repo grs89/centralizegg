@@ -433,19 +433,28 @@ func (mc *PfsenseCollector) collectOne(s data_centralizegg.PFSenseServer) error 
 
 	// Now store interfaces using the correct hostID
 	var netRXTotal, netTXTotal uint64
+	var interfacesMap map[string]map[string]uint64
 	if netStats != "" {
-		netRXTotal, netTXTotal = parseAndStoreInterfaces(mc.DB, hostID, netStats, interfaceIPs, interfaceMACs)
+		netRXTotal, netTXTotal, interfacesMap = parseAndStoreInterfaces(mc.DB, hostID, netStats, interfaceIPs, interfaceMACs)
+	}
+
+	interfacesJSON := "{}"
+	if len(interfacesMap) > 0 {
+		if b, err := json.Marshal(interfacesMap); err == nil {
+			interfacesJSON = string(b)
+		}
 	}
 
 	// Insert Historical Metrics
 	metric := data_centralizegg.ServerMetric{
-		ServerID:    hostID,
-		Category:    "pfsense", // Using 'pfsense' as category
-		Timestamp:   time.Now(),
-		CPUUsage:    cpuUsage,
-		MemoryUsage: memTotal - memFree,
-		NetRX:       netRXTotal,
-		NetTX:       netTXTotal,
+		ServerID:       hostID,
+		Category:       "pfsense", // Using 'pfsense' as category
+		Timestamp:      time.Now(),
+		CPUUsage:       cpuUsage,
+		MemoryUsage:    memTotal - memFree,
+		NetRX:          netRXTotal,
+		NetTX:          netTXTotal,
+		InterfacesData: interfacesJSON,
 	}
 	if err := mc.DB.InsertServerMetrics(metric); err != nil {
 		// log.Printf("[PFSenseCollector] Failed to insert metrics: %v", err)
@@ -641,13 +650,14 @@ func parseIfconfigIPs(output string) (map[string]string, map[string]string) {
 	return ips, macs
 }
 
-func parseAndStoreInterfaces(db *data_centralizegg.DB, hostID int64, output string, ipMap map[string]string, macMap map[string]string) (uint64, uint64) {
+func parseAndStoreInterfaces(db *data_centralizegg.DB, hostID int64, output string, ipMap map[string]string, macMap map[string]string) (uint64, uint64, map[string]map[string]uint64) {
 	// Header: Name  Mtu   Network       Address            Ipkts Ierrs Idrop    Opkts Oerrs  Coll
 	// em0   1500  <Link#1>      00:50:56:a6:31:3e  3685412     0     0  2835252     0     0
 
 	lines := strings.Split(output, "\n")
 	start := false
 	var totalRX, totalTX uint64
+	interfacesMap := make(map[string]map[string]uint64)
 
 	for _, line := range lines {
 		if strings.HasPrefix(line, "Name") {
@@ -728,6 +738,11 @@ func parseAndStoreInterfaces(db *data_centralizegg.DB, hostID int64, output stri
 		totalRX += rxBytes
 		totalTX += txBytes
 
+		interfacesMap[cleanName] = map[string]uint64{
+			"rx": rxBytes,
+			"tx": txBytes,
+		}
+
 		_ = db.UpsertFirewallInterface(data_centralizegg.FirewallInterface{
 			HostID:        hostID,
 			InterfaceName: cleanName,
@@ -742,7 +757,7 @@ func parseAndStoreInterfaces(db *data_centralizegg.DB, hostID int64, output stri
 			IPAddress:     ipMap[cleanName],
 		})
 	}
-	return totalRX, totalTX
+	return totalRX, totalTX, interfacesMap
 }
 
 func parseAndStoreGateways(db *data_centralizegg.DB, hostID int64, output string) {

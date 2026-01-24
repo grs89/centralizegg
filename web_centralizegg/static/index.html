@@ -290,17 +290,59 @@
 
                         <div class="charts-grid"
                             style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
-                            <div class="chart-container"
-                                style="position: relative; height: 300px; background: rgba(0,0,0,0.2); border-radius: 12px; padding: 15px;">
-                                <canvas id="cpuChart"></canvas>
+                            <!-- CPU Chart -->
+                            <div class="chart-container glass-panel"
+                                style="display: flex; flex-direction: column; padding: 20px; border-radius: 16px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); height: 320px;">
+                                <h3
+                                    style="margin: 0 0 15px 0; font-size: 1rem; color: #e2e8f0; display: flex; align-items: center; gap: 10px; font-weight: 500;">
+                                    <div
+                                        style="background: rgba(56, 189, 248, 0.15); width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #38bdf8;">
+                                        <i class="fa-solid fa-microchip"></i>
+                                    </div>
+                                    Uso de CPU
+                                </h3>
+                                <div style="flex: 1; position: relative; width: 100%;">
+                                    <canvas id="cpuChart"></canvas>
+                                </div>
                             </div>
-                            <div class="chart-container"
-                                style="position: relative; height: 300px; background: rgba(0,0,0,0.2); border-radius: 12px; padding: 15px;">
-                                <canvas id="ramChart"></canvas>
+
+                            <!-- RAM Chart -->
+                            <div class="chart-container glass-panel"
+                                style="display: flex; flex-direction: column; padding: 20px; border-radius: 16px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); height: 320px;">
+                                <h3
+                                    style="margin: 0 0 15px 0; font-size: 1rem; color: #e2e8f0; display: flex; align-items: center; gap: 10px; font-weight: 500;">
+                                    <div
+                                        style="background: rgba(168, 85, 247, 0.15); width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #a855f7;">
+                                        <i class="fa-solid fa-memory"></i>
+                                    </div>
+                                    Uso de Memoria
+                                </h3>
+                                <div style="flex: 1; position: relative; width: 100%;">
+                                    <canvas id="ramChart"></canvas>
+                                </div>
                             </div>
-                            <div class="chart-container"
-                                style="position: relative; height: 300px; background: rgba(0,0,0,0.2); border-radius: 12px; padding: 15px;">
-                                <canvas id="netChart"></canvas>
+
+                            <!-- Network Chart -->
+                            <div class="chart-container glass-panel"
+                                style="display: flex; flex-direction: column; padding: 20px; border-radius: 16px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); height: 320px;">
+                                <div
+                                    style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px;">
+                                    <h3
+                                        style="margin: 0; font-size: 1rem; color: #e2e8f0; display: flex; align-items: center; gap: 10px; font-weight: 500;">
+                                        <div
+                                            style="background: rgba(34, 197, 94, 0.15); width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #22c55e;">
+                                            <i class="fa-solid fa-network-wired"></i>
+                                        </div>
+                                        Tráfico de Red
+                                    </h3>
+                                    <select id="net-interface-selector" class="glass-input"
+                                        style="padding: 4px 8px; font-size: 0.8rem; width: auto; max-width: 120px;">
+                                        <option value="total">Total</option>
+                                    </select>
+                                </div>
+                                <div style="flex: 1; position: relative; width: 100%;">
+                                    <canvas id="netChart"></canvas>
+                                </div>
                             </div>
                         </div>
                     </div>
