@@ -1545,7 +1545,7 @@ function renderDockerHostDetails(hostId) {
             if (!window.currentDockerMap) {
                 window.currentDockerMap = new DockerTopologyMap('docker-topology-map');
             }
-            window.currentDockerMap.render(host.docker_networks);
+            window.currentDockerMap.render(host.docker_networks, false, allContainersCache, host, 'docker');
         }
 
         return; // Done with partial update
@@ -1722,7 +1722,7 @@ function renderDockerHostDetails(hostId) {
         if (!window.currentDockerMap) {
             window.currentDockerMap = new DockerTopologyMap('docker-topology-map');
         }
-        window.currentDockerMap.render(host.docker_networks);
+        window.currentDockerMap.render(host.docker_networks, false, allContainersCache, host, 'docker');
     }
 }
 
@@ -3042,7 +3042,10 @@ async function renderKubernetesServerDetails(serverId) {
                                     <div style="flex: 1; min-width: 0;">
                                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                                             <span style="font-weight: 600; font-size: 0.75rem; color: var(--text-primary);">${event.reason}</span>
-                                            <span style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.7;">${timeAgo}</span>
+                                            <div style="text-align: right; display: flex; flex-direction: column;">
+                                                <span style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.9; font-weight: 600;">${lastSeen.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                                                <span style="font-size: 0.6rem; color: var(--text-secondary); opacity: 0.6;">${timeAgo}</span>
+                                            </div>
                                         </div>
                                         <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 4px; line-height: 1.4;">${event.message}</div>
                                         <div style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.6;">
@@ -4111,7 +4114,7 @@ function renderPodmanHostDetails(hostId) {
                 }
             }
             if (window.currentPodmanMap) {
-                window.currentPodmanMap.render(host.podman_networks, true, allPodmanContainersCache);
+                window.currentPodmanMap.render(host.podman_networks, true, allPodmanContainersCache, host, 'podman');
             }
         }
 
@@ -4283,7 +4286,7 @@ function renderPodmanHostDetails(hostId) {
             if (!window.currentPodmanMap) {
                 window.currentPodmanMap = new DockerTopologyMap('podman-topology-map');
             }
-            window.currentPodmanMap.render(host.podman_networks, true, allPodmanContainersCache);
+            window.currentPodmanMap.render(host.podman_networks, true, allPodmanContainersCache, host, 'podman');
         }
     }
 }
@@ -5532,10 +5535,22 @@ function renderHostEvents(host_events_json, type = 'host') {
             ${events.map(event => {
         const isError = event.toLowerCase().includes('error') || event.toLowerCase().includes('fail') || event.toLowerCase().includes('warning') || event.toLowerCase().includes('critical');
         const color = isError ? '#f87171' : '#cbd5e1';
+
+        // Try to extract timestamp (e.g. "Jan 23 22:30:00")
+        // Standard journalctl/syslog format is "Month Day Time ..."
+        let logContent = event;
+        let timestamp = "";
+
+        const tsMatch = event.match(/^([A-Z][a-z]{2}\s+\d+\s+\d{2}:\d{2}:\d{2})(.*)/);
+        if (tsMatch) {
+            timestamp = tsMatch[1];
+            logContent = tsMatch[2].trim();
+        }
+
         return `
-                    <div style="color: ${color}; border-bottom: 1px solid rgba(255,255,255,0.03); padding: 6px 0; line-height: 1.5; display: flex; gap: 10px;">
-                        <span style="color: var(--accent-color); opacity: 0.5; font-weight: bold;">[LOG]</span>
-                        <span style="word-break: break-all;">${event}</span>
+                    <div style="color: ${color}; border-bottom: 1px solid rgba(255,255,255,0.03); padding: 6px 0; line-height: 1.5; display: flex; gap: 10px; align-items: baseline;">
+                        ${timestamp ? `<span style="color: var(--accent-color); opacity: 0.8; font-weight: bold; white-space: nowrap; font-size: 0.7rem;">[${timestamp}]</span>` : '<span style="color: var(--accent-color); opacity: 0.5; font-weight: bold;">[LOG]</span>'}
+                        <span style="word-break: break-all;">${logContent}</span>
                     </div>
                 `;
     }).join('')}
@@ -6445,7 +6460,9 @@ class DockerTopologyMap {
         this.initialized = false;
     }
 
-    render(networksJSON, activeOnly = false, containersCache = []) {
+    render(networksJSON, activeOnly = false, containersCache = [], server = null, engineType = 'docker') {
+        this.server = server;
+        this.engineType = engineType;
         const container = document.getElementById(this.containerId);
         if (!container) return;
 
@@ -6495,10 +6512,11 @@ class DockerTopologyMap {
                 const c = containers[cid];
                 const cleanName = c.Name.replace(/^\//, '').split('.')[0]; // Shorten name
 
+                const cacheEntry = (containersCache || []).find(cc => cc.name === cleanName || cc.id === cid || cc.name === c.Name.replace(/^\//, '')) || null;
+
                 // Filter by active status if requested
-                if (activeOnly && containersCache && containersCache.length > 0) {
-                    const cacheEntry = containersCache.find(cc => cc.name === cleanName || cc.id === cid || cc.name === c.Name.replace(/^\//, ''));
-                    if (cacheEntry && (cacheEntry.state || '').toLowerCase() !== 'running') {
+                if (activeOnly && cacheEntry) {
+                    if ((cacheEntry.state || '').toLowerCase() !== 'running') {
                         return; // Skip inactive
                     }
                 }
@@ -6513,9 +6531,14 @@ class DockerTopologyMap {
                         image: cleanName,
                         type: 'container',
                         color: '#4ade80',
-                        ip: ip.split('/')[0] // Remove subnet mask
+                        ip: ip.split('/')[0], // Remove subnet mask
+                        original: cacheEntry // Store for metrics
                     });
                     nodeMap.set(cnodeId, nodes.length - 1);
+                }
+
+                if (typeof this.server !== 'undefined' && this.server) {
+                    // Add logic to register click handler in draw()
                 }
 
                 links.push({ source: cnodeId, target: netId, type: 'internal' });
@@ -6700,6 +6723,28 @@ class DockerTopologyMap {
             group.appendChild(fo);
             group.appendChild(label);
             nodesGroup.appendChild(group);
+
+            if (node.type === 'container') {
+                group.onclick = (e) => {
+                    e.stopPropagation();
+                    if (this.server) {
+                        const original = node.original || {};
+                        // Log API needs either the full container hash or the container name.
+                        // node.id has prefix 'c-', node.name is the shortened name.
+                        // original.name is the full name from database.
+                        const containerId = original.name || node.id.replace('c-', '');
+
+                        // Backend expects generic_server.id. 
+                        // host.server_id is the generic_server.id for Docker/Podman hosts.
+                        const sid = this.server.server_id || this.server.id;
+
+                        // Parse CPU/Mem if original data is available, otherwise 0
+                        const cpu = original.cpu_usage || 0;
+                        const mem = original.memory_usage || 0;
+                        showContainerLogs(this.engineType, sid, containerId, node.name, cpu, mem);
+                    }
+                };
+            }
 
             group.addEventListener('mouseenter', () => {
                 circle.setAttribute('fill-opacity', '0.5');
@@ -7032,7 +7077,9 @@ class KubernetesTopologyMap {
                     group.onclick = (e) => {
                         e.stopPropagation();
                         if (this.server && node.original) {
-                            showPodLogs(this.server.id, node.original.namespace, node.original.name);
+                            // K8s server object is usually the GenericServer itself, so .id is correct.
+                            const sid = this.server.id;
+                            showPodLogs(sid, node.original.namespace, node.original.name, node.original.cpu_usage, node.original.memory_usage);
                         }
                     };
                 }
@@ -7648,7 +7695,7 @@ function updateCharts(metrics, keepDropdown = false) {
 
 
 // --- Pod Logs Viewer ---
-async function showPodLogs(serverId, namespace, podName) {
+async function showPodLogs(serverId, namespace, podName, cpu = 0, mem = 0) {
     if (!serverId || !namespace || !podName) return;
 
     // Create modal if not exists
@@ -7660,23 +7707,36 @@ async function showPodLogs(serverId, namespace, podName) {
     const contentEl = document.getElementById('log-viewer-content');
     const titleEl = document.getElementById('log-viewer-title');
 
-    titleEl.textContent = `Logs: ${podName} (${namespace})`;
+    // Format memory (bytes to MB/GB)
+    const memFormatted = formatBytes(mem);
+    const cpuFormatted = cpu > 0 ? `${cpu.toFixed(3)} cores` : '0m';
+
+    titleEl.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <span>Logs: ${podName}</span>
+            <span style="font-size: 0.8rem; background: rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 4px; color: #94a3b8; font-weight: normal;">
+                ${namespace}
+            </span>
+            <div style="display: flex; gap: 10px; margin-left: 10px; font-size: 0.8rem; font-family: sans-serif;">
+                <span style="color: #60a5fa;"><i class="fa-solid fa-microchip"></i> ${cpuFormatted}</span>
+                <span style="color: #c084fc;"><i class="fa-solid fa-memory"></i> ${memFormatted}</span>
+            </div>
+        </div>
+    `;
+
     contentEl.textContent = 'Loading logs...';
     contentEl.style.color = '#e2e8f0';
 
     modal.style.display = 'flex';
 
     try {
-        const response = await fetch(`/api/kubernetes/pods/${serverId}/${namespace}/${podName}/logs`);
+        const url = `/api/kubernetes/pods/${serverId}/${namespace}/${podName}/logs`;
+        console.log(`[LogViewer] Fetching Pod logs from: ${url}`);
+        const response = await fetch(url);
         if (!response.ok) throw new Error('Failed to fetch logs');
         const data = await response.json();
 
-        // Basic ANSI color stripping or rendering? 
-        // For now, simpler to strip or just display raw. Browser might not handle ANSI codes.
-        // Let's strip standard ANSI codes for readability
         let cleanLogs = data.logs || 'No logs available.';
-        // Simple regex for ANSI codes
-        // cleanLogs = cleanLogs.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, ''); 
 
         contentEl.textContent = cleanLogs;
     } catch (e) {
@@ -7718,3 +7778,55 @@ function createLogModal() {
 
     return modal;
 }
+
+// --- Container Logs Viewer ---
+async function showContainerLogs(type, serverId, containerId, containerName, cpu = 0, mem = 0) {
+    if (!serverId || !containerId) return;
+
+    let modal = document.getElementById('log-viewer-modal');
+    if (!modal) {
+        modal = createLogModal();
+    }
+
+    const contentEl = document.getElementById('log-viewer-content');
+    const titleEl = document.getElementById('log-viewer-title');
+
+    // Format metrics (Docker stats are usually % for CPU and Bytes for Mem)
+    const memFormatted = formatBytes(mem);
+    const cpuFormatted = `${cpu.toFixed(2)}%`;
+
+    titleEl.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <span>Logs: ${containerName}</span>
+            <span style="font-size: 0.8rem; background: rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 4px; color: #94a3b8; font-weight: normal;">
+                ${containerId.substring(0, 12)} (${type})
+            </span>
+            <div style="display: flex; gap: 10px; margin-left: 10px; font-size: 0.8rem; font-family: sans-serif;">
+                <span style="color: #60a5fa;"><i class="fa-solid fa-microchip"></i> ${cpuFormatted}</span>
+                <span style="color: #c084fc;"><i class="fa-solid fa-memory"></i> ${memFormatted}</span>
+            </div>
+        </div>
+    `;
+
+    contentEl.textContent = 'Loading logs...';
+    contentEl.style.color = '#e2e8f0';
+
+    modal.style.display = 'flex';
+
+    try {
+        const endpoint = type === 'podman'
+            ? `/api/podman/containers/${serverId}/${containerId}/logs`
+            : `/api/containers/${serverId}/${containerId}/logs`;
+
+        console.log(`[LogViewer] Fetching ${type} logs from: ${endpoint}`);
+        const response = await fetch(endpoint);
+        if (!response.ok) throw new Error('Failed to fetch logs');
+        const data = await response.json();
+
+        contentEl.textContent = data.logs || 'No logs available.';
+    } catch (e) {
+        contentEl.textContent = `Error: ${e.message}`;
+        contentEl.style.color = '#ef4444';
+    }
+}
+

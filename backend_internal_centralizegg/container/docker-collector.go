@@ -649,3 +649,37 @@ func (dc *DockerCollector) parseNetBytes(s string, rx bool) uint64 {
 
 	return dc.parseBytes(target)
 }
+
+func (dc *DockerCollector) GetContainerLogs(serverID int64, containerID string) (string, error) {
+	servers, err := dc.DB.GetGenericServers("docker")
+	if err != nil {
+		return "", err
+	}
+	var targetServer data_centralizegg.GenericServer
+	found := false
+	for _, s := range servers {
+		if s.ID == serverID {
+			targetServer = s
+			found = true
+			break
+		}
+	}
+	if !found {
+		return "", fmt.Errorf("server not found")
+	}
+
+	client, err := dc.getSSHClient(targetServer)
+	if err != nil {
+		return "", fmt.Errorf("ssh connection failed: %w", err)
+	}
+	defer client.Close()
+
+	// Execute logs command
+	cmd := fmt.Sprintf("docker logs --tail 100 %s 2>&1", containerID)
+	output, err := dc.runCommand(client, cmd)
+	if err != nil {
+		return "", fmt.Errorf("failed to get logs: %v (output: %s)", err, output)
+	}
+
+	return output, nil
+}

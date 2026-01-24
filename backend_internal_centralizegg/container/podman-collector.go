@@ -802,3 +802,37 @@ func (pc *PodmanCollector) parseNetBytes(s string, rx bool) uint64 {
 
 	return pc.parseBytes(target)
 }
+
+func (pc *PodmanCollector) GetContainerLogs(serverID int64, containerID string) (string, error) {
+	servers, err := pc.DB.GetGenericServers("podman")
+	if err != nil {
+		return "", err
+	}
+	var targetServer data_centralizegg.GenericServer
+	found := false
+	for _, s := range servers {
+		if s.ID == serverID {
+			targetServer = s
+			found = true
+			break
+		}
+	}
+	if !found {
+		return "", fmt.Errorf("server not found")
+	}
+
+	client, err := pc.getSSHClient(targetServer)
+	if err != nil {
+		return "", fmt.Errorf("ssh connection failed: %w", err)
+	}
+	defer client.Close()
+
+	// Execute logs command
+	cmd := fmt.Sprintf("podman logs --tail 100 %s 2>&1", containerID)
+	output, err := pc.runCommand(client, cmd)
+	if err != nil {
+		return "", fmt.Errorf("failed to get logs: %v (output: %s)", err, output)
+	}
+
+	return output, nil
+}
