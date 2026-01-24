@@ -87,7 +87,7 @@ body {
 
 /* Layout */
 .container {
-    max-width: 1200px;
+    max-width: 1600px;
     margin: 0 auto;
 }
 
@@ -2203,4 +2203,43 @@ header {
 
 #history-map .leaflet-container {
     background: var(--bg-color) !important;
+}
+
+/* Custom Glass Select/Input */
+.glass-input {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-color: rgba(15, 23, 42, 0.6);
+    color: var(--text-primary);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    padding: 8px 36px 8px 12px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 16px;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+}
+
+.glass-input:hover {
+    border-color: var(--accent-color);
+    background-color: rgba(30, 41, 59, 0.8);
+    box-shadow: 0 0 15px rgba(56, 189, 248, 0.1);
+}
+
+.glass-input:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+}
+
+.glass-input option {
+    background-color: #1e293b;
+    color: var(--text-primary);
+    padding: 10px;
 }
