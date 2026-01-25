@@ -424,8 +424,22 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 	sessionEvents, err := sshClient.NewSession()
 	if err == nil {
 		defer sessionEvents.Close()
-		// Collect last 10 libvirt/qemu related logs from journal
-		cmd := `journalctl -u libvirtd -n 10 --no-pager || journalctl -t libvirt -n 10 --no-pager || echo ""`
+		// Collect last 10 libvirt/qemu related logs from various sources
+		// 1. journalctl service (systemd)
+		// 2. journalctl tag (systemd)
+		// 3. /var/log/libvirt/libvirtd.log (file)
+		// 4. /var/log/syslog (grep)
+		// 5. /var/log/messages (grep)
+		// 6. dmesg (fallback)
+		cmd := `
+		OUT=$(journalctl -u libvirtd -n 10 --no-pager 2>/dev/null);
+		if [ -z "$OUT" ]; then OUT=$(journalctl -t libvirtd -n 10 --no-pager 2>/dev/null); fi;
+		if [ -z "$OUT" ] && [ -f /var/log/libvirt/libvirtd.log ]; then OUT=$(tail -n 10 /var/log/libvirt/libvirtd.log 2>/dev/null); fi;
+		if [ -z "$OUT" ] && [ -f /var/log/syslog ]; then OUT=$(grep -Ei "libvirt|kvm|qemu" /var/log/syslog 2>/dev/null | tail -n 10); fi;
+		if [ -z "$OUT" ] && [ -f /var/log/messages ]; then OUT=$(grep -Ei "libvirt|kvm|qemu" /var/log/messages 2>/dev/null | tail -n 10); fi;
+		if [ -z "$OUT" ]; then OUT=$(dmesg | grep -i kvm | tail -n 10); fi;
+		echo "$OUT"
+		`
 		eventsOutput, err := sessionEvents.Output(cmd)
 		if err == nil {
 			output := strings.TrimSpace(string(eventsOutput))

@@ -28,7 +28,10 @@ export function renderHostEvents(host_events_json, type = 'host') {
         let logContent = event;
         let timestamp = "";
 
-        const tsMatch = event.match(/^([A-Z][a-z]{2}\s+\d+\s+\d{2}:\d{2}:\d{2})(.*)/);
+        const tsMatch = event.match(/^([A-Z][a-z]{2}\s+\d+\s+\d{2}:\d{2}:\d{2})(.*)/) ||
+            event.match(/^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}[^\s]*)(.*)/) ||
+            event.match(/^(\[\s*\d+\.\d+\])(.*)/);
+
         if (tsMatch) {
             timestamp = tsMatch[1];
             logContent = tsMatch[2].trim();
