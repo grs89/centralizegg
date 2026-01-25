@@ -430,6 +430,7 @@ func NewPostgresDB(connStr string) (*DB, error) {
 		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS storage_total BIGINT DEFAULT 0", t))
 		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS os_name VARCHAR(255) DEFAULT ''", t))
 		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS cpu_model VARCHAR(255) DEFAULT ''", t))
+		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS uptime VARCHAR(255) DEFAULT ''", t))
 	}
 
 	// Migration: Add cert_expiration to all generic servers
@@ -1508,6 +1509,7 @@ type GenericServer struct {
 	OfflineSince       *time.Time `json:"offline_since"`        // Timestamp when server went offline
 	CertExpiration     *time.Time `json:"cert_expiration"`      // TLS Certificate expiration date
 	HostEvents         string     `json:"host_events"`          // JSON string for host events/logs
+	Uptime             string     `json:"uptime"`
 }
 
 // Table names for each server type
@@ -1526,7 +1528,7 @@ func (d *DB) GetGenericServers(toolType string) ([]GenericServer, error) {
 		return nil, fmt.Errorf("unknown tool type: %s", toolType)
 	}
 
-	query := fmt.Sprintf("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, kubeconfig_path, kubeconfig_content, status, cpu_usage, cpu_cores, total_memory, free_memory, storage_used, storage_total, os_name, cpu_model, control_plane_status, resource_counts, network_topology, offline_since, cert_expiration, host_events FROM %s", table)
+	query := fmt.Sprintf("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, kubeconfig_path, kubeconfig_content, status, cpu_usage, cpu_cores, total_memory, free_memory, storage_used, storage_total, os_name, cpu_model, control_plane_status, resource_counts, network_topology, offline_since, cert_expiration, host_events, uptime FROM %s", table)
 	rows, err := d.Conn.Query(query)
 	if err != nil {
 		return nil, err
@@ -1537,7 +1539,7 @@ func (d *DB) GetGenericServers(toolType string) ([]GenericServer, error) {
 	for rows.Next() {
 		var s GenericServer
 		var pwd sql.NullString
-		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.SSHKeyContent, &s.KubeconfigPath, &s.KubeconfigContent, &s.Status, &s.CPUUsage, &s.CPUCores, &s.TotalMemory, &s.FreeMemory, &s.StorageUsed, &s.StorageTotal, &s.OSName, &s.CPUModel, &s.ControlPlaneStatus, &s.ResourceCounts, &s.NetworkTopology, &s.OfflineSince, &s.CertExpiration, &s.HostEvents); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.SSHKeyContent, &s.KubeconfigPath, &s.KubeconfigContent, &s.Status, &s.CPUUsage, &s.CPUCores, &s.TotalMemory, &s.FreeMemory, &s.StorageUsed, &s.StorageTotal, &s.OSName, &s.CPUModel, &s.ControlPlaneStatus, &s.ResourceCounts, &s.NetworkTopology, &s.OfflineSince, &s.CertExpiration, &s.HostEvents, &s.Uptime); err != nil {
 			return nil, err
 		}
 		s.Password = pwd.String
@@ -1775,14 +1777,14 @@ func (d *DB) GetHistory(limit int) ([]InfrastructureHistoryEvent, error) {
 	return events, nil
 }
 
-func (d *DB) UpdateGenericServerStats(toolType string, id int64, cpuUsage float64, cpuCores int, totalMem, freeMem, storageUsed, storageTotal uint64, osName, cpuModel string) error {
+func (d *DB) UpdateGenericServerStats(toolType string, id int64, cpuUsage float64, cpuCores int, totalMem, freeMem, storageUsed, storageTotal uint64, osName, cpuModel, uptime string) error {
 	table, ok := serverTableMap[toolType]
 	if !ok {
 		return fmt.Errorf("unknown tool type: %s", toolType)
 	}
 
-	query := fmt.Sprintf("UPDATE %s SET cpu_usage=$1, cpu_cores=$2, total_memory=$3, free_memory=$4, storage_used=$5, storage_total=$6, os_name=$7, cpu_model=$8 WHERE id=$9", table)
-	_, err := d.Conn.Exec(query, cpuUsage, cpuCores, totalMem, freeMem, storageUsed, storageTotal, osName, cpuModel, id)
+	query := fmt.Sprintf("UPDATE %s SET cpu_usage=$1, cpu_cores=$2, total_memory=$3, free_memory=$4, storage_used=$5, storage_total=$6, os_name=$7, cpu_model=$8, uptime=$9 WHERE id=$10", table)
+	_, err := d.Conn.Exec(query, cpuUsage, cpuCores, totalMem, freeMem, storageUsed, storageTotal, osName, cpuModel, uptime, id)
 	return err
 }
 

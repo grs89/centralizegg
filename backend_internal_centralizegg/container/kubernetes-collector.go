@@ -191,8 +191,9 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 	var nodeListView struct {
 		Items []struct {
 			Metadata struct {
-				Name   string            `json:"name"`
-				Labels map[string]string `json:"labels"`
+				Name              string            `json:"name"`
+				Labels            map[string]string `json:"labels"`
+				CreationTimestamp string            `json:"creationTimestamp"`
 			} `json:"metadata"`
 			Status struct {
 				Capacity struct {
@@ -677,6 +678,9 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 
 	var dominantArch string
 	archMap := make(map[string]int)
+	var dominantOS string
+	osMap := make(map[string]int)
+	var clusterStartTime time.Time
 
 	for _, item := range nodeListView.Items {
 		name := item.Metadata.Name
@@ -688,6 +692,19 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 		arch := item.Status.NodeInfo.Architecture
 		if arch != "" {
 			archMap[arch]++
+		}
+
+		osName := item.Status.NodeInfo.OSImage
+		if osName != "" {
+			osMap[osName]++
+		}
+
+		if item.Metadata.CreationTimestamp != "" {
+			if t, err := time.Parse(time.RFC3339, item.Metadata.CreationTimestamp); err == nil {
+				if clusterStartTime.IsZero() || t.Before(clusterStartTime) {
+					clusterStartTime = t
+				}
+			}
 		}
 
 		if stats, ok := kc.prevNetStats[name]; ok {
@@ -713,7 +730,30 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 		}
 	}
 	if dominantArch == "" {
-		dominantArch = "Cluster Resources"
+		dominantArch = "N/A"
+	}
+
+	// Determine dominant OS
+	maxOSCount := 0
+	for os, count := range osMap {
+		if count > maxOSCount {
+			maxOSCount = count
+			dominantOS = os
+		}
+	}
+	if dominantOS == "" {
+		dominantOS = "Kubernetes Cluster"
+	}
+
+	clusterUptime := "N/A"
+	if !clusterStartTime.IsZero() {
+		d := time.Since(clusterStartTime).Round(time.Hour)
+		days := int(d.Hours() / 24)
+		if days > 0 {
+			clusterUptime = fmt.Sprintf("%dd %dh", days, int(d.Hours())%24)
+		} else {
+			clusterUptime = fmt.Sprintf("%dh", int(d.Hours()))
+		}
 	}
 
 	avgCPUUsage := 0.0
@@ -721,7 +761,7 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 		avgCPUUsage = totalCPUUsage / float64(nodeCount)
 	}
 
-	err = kc.DB.UpdateGenericServerStats("kubernetes", s.ID, avgCPUUsage, totalCores, clusterTotalMemory, clusterFreeMemory, clusterUsedStorage, clusterTotalStorage, dominantArch, "Cluster Resources")
+	err = kc.DB.UpdateGenericServerStats("kubernetes", s.ID, avgCPUUsage, totalCores, clusterTotalMemory, clusterFreeMemory, clusterUsedStorage, clusterTotalStorage, dominantOS, dominantArch, clusterUptime)
 	if err != nil {
 		log.Printf("[KubernetesCollector] Failed to update cluster stats: %v", err)
 	}
