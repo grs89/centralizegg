@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"strconv"
 	"time"
 
 	"strings"
@@ -161,17 +162,38 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 	sessionMem, err := sshClient.NewSession()
 	if err == nil {
 		defer sessionMem.Close()
-		// Get Available Memory in bytes using /proc/meminfo
-		memOutput, err := sessionMem.Output("grep MemAvailable /proc/meminfo | awk '{print $2 * 1024}'")
+		// Get Memory Info: Read /proc/meminfo and parse inside Go to avoid awk dependency
+		memOutput, err := sessionMem.Output("cat /proc/meminfo")
 		if err == nil {
-			fmt.Sscanf(string(memOutput), "%d", &freeMem)
-		} else {
-			// Fallback to MemFree if Available is missing
-			sessionMem2, _ := sshClient.NewSession()
-			if sessionMem2 != nil {
-				defer sessionMem2.Close()
-				memOutput2, _ := sessionMem2.Output("grep MemFree /proc/meminfo | awk '{print $2 * 1024}'")
-				fmt.Sscanf(string(memOutput2), "%d", &freeMem)
+			lines := strings.Split(string(memOutput), "\n")
+			var memFree, memBuffers, memCached, memAvailable uint64
+			var hasAvailable bool
+
+			for _, line := range lines {
+				parts := strings.Fields(line)
+				if len(parts) >= 2 {
+					var val uint64
+					fmt.Sscanf(parts[1], "%d", &val)
+					val = val * 1024 // Convert kB to bytes
+
+					if strings.HasPrefix(parts[0], "MemFree:") {
+						memFree = val
+					} else if strings.HasPrefix(parts[0], "Buffers:") {
+						memBuffers = val
+					} else if strings.HasPrefix(parts[0], "Cached:") {
+						memCached = val
+					} else if strings.HasPrefix(parts[0], "MemAvailable:") {
+						memAvailable = val
+						hasAvailable = true
+					}
+				}
+			}
+
+			if hasAvailable {
+				freeMem = memAvailable
+			} else {
+				// Fallback calculation for older kernels
+				freeMem = memFree + memBuffers + memCached
 			}
 		}
 	}
@@ -181,10 +203,59 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 	sessionCPU, err := sshClient.NewSession()
 	if err == nil {
 		defer sessionCPU.Close()
-		// Get CPU Usage percentage (100 - idle)
-		cpuOutput, err := sessionCPU.Output("top -bn1 | grep 'Cpu(s)' | awk '{print $2 + $4}'")
+		// Calculate CPU Usage using /proc/stat delta
+		// Read stat, sleep 1, read stat
+		cmd := "cat /proc/stat; sleep 1; cat /proc/stat"
+		cpuOutput, err := sessionCPU.Output(cmd)
 		if err == nil {
-			fmt.Sscanf(string(cpuOutput), "%f", &cpuUsage)
+			lines := strings.Split(strings.TrimSpace(string(cpuOutput)), "\n")
+			var total1, idle1, total2, idle2 float64
+			var foundFirst bool
+
+			for _, line := range lines {
+				if strings.HasPrefix(line, "cpu ") {
+					fields := strings.Fields(line)
+					if len(fields) >= 5 {
+						user, _ := strconv.ParseFloat(fields[1], 64)
+						nice, _ := strconv.ParseFloat(fields[2], 64)
+						system, _ := strconv.ParseFloat(fields[3], 64)
+						idle, _ := strconv.ParseFloat(fields[4], 64)
+						iowait := 0.0
+						if len(fields) > 5 {
+							iowait, _ = strconv.ParseFloat(fields[5], 64)
+						}
+						irq := 0.0
+						if len(fields) > 6 {
+							irq, _ = strconv.ParseFloat(fields[6], 64)
+						}
+						softirq := 0.0
+						if len(fields) > 7 {
+							softirq, _ = strconv.ParseFloat(fields[7], 64)
+						}
+						steal := 0.0
+						if len(fields) > 8 {
+							steal, _ = strconv.ParseFloat(fields[8], 64)
+						}
+
+						total := user + nice + system + idle + iowait + irq + softirq + steal
+
+						if !foundFirst {
+							total1 = total
+							idle1 = idle
+							foundFirst = true
+						} else {
+							total2 = total
+							idle2 = idle
+						}
+					}
+				}
+			}
+
+			if total2 > total1 {
+				totalDelta := total2 - total1
+				idleDelta := idle2 - idle1
+				cpuUsage = ((totalDelta - idleDelta) / totalDelta) * 100
+			}
 		}
 	}
 
