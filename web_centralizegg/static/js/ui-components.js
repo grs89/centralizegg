@@ -89,11 +89,12 @@ export function renderHostNodes(containerId = 'host-nodes-container', config = {
         const rawStatus = host.status || host.service_status || host.docker_service_status || host.podman_service_status || (serverConfig ? serverConfig.status : null);
         const isOnline = isStatusOnline(rawStatus);
 
-        let arch = '';
-        const fullInfo = ((host.cpu_model || '') + ' ' + (host.os_name || '')).toLowerCase();
-        if (fullInfo.includes('amd64') || fullInfo.includes('x86_64')) arch = 'x86_64';
-        else if (fullInfo.includes('arm') || fullInfo.includes('aarch64')) arch = 'ARM';
-        else if (host.tool_type === 'kubernetes') arch = 'Cluster Resources';
+        let arch = host.architecture || '';
+        if (!arch) {
+            const fullInfo = ((host.cpu_model || '') + ' ' + (host.os_name || '')).toLowerCase();
+            if (fullInfo.includes('amd64') || fullInfo.includes('x86_64')) arch = 'x86_64';
+            else if (fullInfo.includes('arm') || fullInfo.includes('aarch64')) arch = 'ARM';
+        }
 
         return `
         <div class="host-node-card glass-panel ${isActive}" onclick="window.${onHostClick}(${host.id})">

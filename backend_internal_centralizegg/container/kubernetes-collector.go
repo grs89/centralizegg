@@ -19,9 +19,26 @@ import (
 type NodeSummary struct {
 	Node struct {
 		NodeName string `json:"nodeName"`
-		Network  struct {
-			RxBytes uint64 `json:"rxBytes"`
-			TxBytes uint64 `json:"txBytes"`
+		CPU      struct {
+			UsageNanoCores       uint64 `json:"usageNanoCores"`
+			UsageCoreNanoSeconds uint64 `json:"usageCoreNanoSeconds"`
+		} `json:"cpu"`
+		Memory struct {
+			AvailableBytes  uint64 `json:"availableBytes"`
+			UsageBytes      uint64 `json:"usageBytes"`
+			WorkingSetBytes uint64 `json:"workingSetBytes"`
+			RssBytes        uint64 `json:"rssBytes"`
+			PageFaults      uint64 `json:"pageFaults"`
+			MajorPageFaults uint64 `json:"majorPageFaults"`
+		} `json:"memory"`
+		Network struct {
+			RxBytes    uint64 `json:"rxBytes"`
+			TxBytes    uint64 `json:"txBytes"`
+			Interfaces []struct {
+				Name    string `json:"name"`
+				RxBytes uint64 `json:"rxBytes"`
+				TxBytes uint64 `json:"txBytes"`
+			} `json:"interfaces"`
 		} `json:"network"`
 		Fs struct {
 			CapacityBytes uint64 `json:"capacityBytes"`
@@ -33,6 +50,13 @@ type NodeSummary struct {
 			Name      string `json:"name"`
 			Namespace string `json:"namespace"`
 		} `json:"podRef"`
+		CPU struct {
+			UsageNanoCores uint64 `json:"usageNanoCores"`
+		} `json:"cpu"`
+		Memory struct {
+			UsageBytes      uint64 `json:"usageBytes"`
+			WorkingSetBytes uint64 `json:"workingSetBytes"`
+		} `json:"memory"`
 		Network struct {
 			RxBytes uint64 `json:"rxBytes"`
 			TxBytes uint64 `json:"txBytes"`
@@ -187,6 +211,7 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 					KubeletVersion          string `json:"kubeletVersion"`
 					OSImage                 string `json:"osImage"`
 					KernelVersion           string `json:"kernelVersion"`
+					Architecture            string `json:"architecture"`
 					ContainerRuntimeVersion string `json:"containerRuntimeVersion"`
 				} `json:"nodeInfo"`
 				Addresses []struct {
@@ -215,15 +240,50 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 	lines := strings.Split(strings.TrimSpace(nodeMetricsRaw), "\n")
 	for _, line := range lines {
 		fields := strings.Fields(line)
-		if len(fields) >= 3 {
+		if len(fields) >= 2 {
 			name := fields[0]
-			cpuPercent := 0.0
-			fmt.Sscanf(strings.TrimSuffix(fields[2], "%"), "%f", &cpuPercent)
-			memBytes := kc.parseK8sQuantity(fields[3])
+			cpuUsage := 0.0
+			memUsage := uint64(0)
+
+			// Dynamically find CPU and Memory fields by looking at suffixes
+			for i := 1; i < len(fields); i++ {
+				f := fields[i]
+				if strings.HasSuffix(f, "m") || (f == "0") {
+					// Likely CPU nanocores or millicores
+					// Note: parseK8sQuantity handles 'm'
+					if cpuUsage == 0 {
+						cpuUsage = float64(kc.parseK8sQuantity(f))
+					}
+				} else if strings.Contains(f, "%") {
+					// Some versions show percentage in 'top'
+					if cpuUsage == 0 {
+						fmt.Sscanf(strings.TrimSuffix(f, "%"), "%f", &cpuUsage)
+					}
+				} else if strings.HasSuffix(strings.ToLower(f), "i") || strings.HasSuffix(strings.ToLower(f), "b") {
+					// Likely Memory (Ki, Mi, Gi or bytes)
+					if memUsage == 0 {
+						memUsage = kc.parseK8sQuantity(f)
+					}
+				}
+			}
+
+			// If we got millicores, we'll convert to percentage later in fallback if needed,
+			// but here metricsMap expects what was previously 'cpuPercent'.
+			// Wait, the previous logic used FIELDS[2] as cpuPercent.
+			// Let's refine: metricsMap[name].CPUUsage should be percentage if possible.
+			// If we can't find percentage, we'll rely on the Summary API fallback which is more accurate.
+
+			// Re-parse fields[2] and fields[3] for compatibility if they fit
+			compCPU := 0.0
+			fmt.Sscanf(strings.TrimSuffix(fields[len(fields)-3], "%"), "%f", &compCPU)
+
 			metricsMap[name] = struct {
 				CPUUsage float64
 				MemUsage uint64
-			}{CPUUsage: cpuPercent, MemUsage: memBytes}
+			}{
+				CPUUsage: compCPU, // We still use fields[len-3] if it looks like a number
+				MemUsage: memUsage,
+			}
 		}
 	}
 
@@ -281,7 +341,16 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 				diskUsed = summary.Node.Fs.UsedBytes
 				netRX = summary.Node.Network.RxBytes
 				netTX = summary.Node.Network.TxBytes
-				// log.Printf("[KubernetesCollector] Node %s Summary: Disk=%d NetworkRX=%d", name, diskTotal, netRX)
+
+				// Robustness: If main network stats are 0, sum individual interfaces
+				if netRX == 0 && len(summary.Node.Network.Interfaces) > 0 {
+					for _, iface := range summary.Node.Network.Interfaces {
+						if iface.Name != "lo" {
+							netRX += iface.RxBytes
+							netTX += iface.TxBytes
+						}
+					}
+				}
 
 				// Collect Pod Network Stats and aggregate for node fallback
 				var aggRx, aggTx uint64
@@ -295,12 +364,31 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 					aggTx += p.Network.TxBytes
 				}
 
-				// If node stats are missing (common in Talos/Cilium), use aggregated pod stats
+				// If node stats are still 0 (common in some CNI/Kernel configs), use aggregated pod stats
 				if netRX == 0 {
 					netRX = aggRx
 				}
 				if netTX == 0 {
 					netTX = aggTx
+				}
+
+				// Fallback for CPU/Mem metrics if metrics-server is missing or failing
+				nodeName := item.Metadata.Name
+				if _, exists := metricsMap[nodeName]; !exists || metricsMap[nodeName].CPUUsage == 0 {
+					// Use Summary API data: WorkingSetBytes for RAM, and derive CPU usage if possible
+					// For CPU, Summary API gives nanocores. We need to convert to percentage.
+					cpuUsagePercent := 0.0
+					if cpuCores > 0 {
+						cpuUsagePercent = (float64(summary.Node.CPU.UsageNanoCores) / 1000000000.0) / float64(cpuCores) * 100.0
+					}
+
+					metricsMap[nodeName] = struct {
+						CPUUsage float64
+						MemUsage uint64
+					}{
+						CPUUsage: cpuUsagePercent,
+						MemUsage: summary.Node.Memory.WorkingSetBytes,
+					}
 				}
 			}
 		}
@@ -337,6 +425,7 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 			Version:          item.Status.NodeInfo.KubeletVersion,
 			OSName:           item.Status.NodeInfo.OSImage,
 			KernelVer:        item.Status.NodeInfo.KernelVersion,
+			Architecture:     item.Status.NodeInfo.Architecture,
 			ContainerRuntime: item.Status.NodeInfo.ContainerRuntimeVersion,
 			CPUCores:         cpuCores,
 			TotalMemory:      totalMem,
@@ -586,6 +675,9 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 	var totalNetRX, totalNetTX uint64
 	nodeCount := len(nodeListView.Items)
 
+	var dominantArch string
+	archMap := make(map[string]int)
+
 	for _, item := range nodeListView.Items {
 		name := item.Metadata.Name
 		m := metricsMap[name]
@@ -593,15 +685,11 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 		clusterTotalMemory += kc.parseK8sQuantity(item.Status.Capacity.Memory)
 		clusterFreeMemory += (kc.parseK8sQuantity(item.Status.Capacity.Memory) - m.MemUsage)
 
-		// Aggregate Network Stats (using previously collected prevNetStats or similar logic?)
-		// We have UpsertKubernetesNode which had access to netRX/netTX.
-		// But here we are iterating nodeListView.Items again.
-		// We should probably rely on what we just collected.
-		// Let's use the prevNetStats map which we updated in the previous loop?
-		// Actually, we did the update in a loop over nodeListView.Items (lines 235-371).
-		// That loop was separate? No, that loop was "1. Get Nodes".
-		// This loop (lines 588+) is "4. Aggregate cluster stats".
-		// We can just re-access prevNetStats for the current values
+		arch := item.Status.NodeInfo.Architecture
+		if arch != "" {
+			archMap[arch]++
+		}
+
 		if stats, ok := kc.prevNetStats[name]; ok {
 			totalNetRX += stats.RxBytes
 			totalNetTX += stats.TxBytes
@@ -616,12 +704,24 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 		}
 	}
 
+	// Determine dominant architecture
+	maxArchCount := 0
+	for arch, count := range archMap {
+		if count > maxArchCount {
+			maxArchCount = count
+			dominantArch = arch
+		}
+	}
+	if dominantArch == "" {
+		dominantArch = "Cluster Resources"
+	}
+
 	avgCPUUsage := 0.0
 	if nodeCount > 0 {
 		avgCPUUsage = totalCPUUsage / float64(nodeCount)
 	}
 
-	err = kc.DB.UpdateGenericServerStats("kubernetes", s.ID, avgCPUUsage, totalCores, clusterTotalMemory, clusterFreeMemory, clusterUsedStorage, clusterTotalStorage, "Kubernetes Cluster", "Cluster Resources")
+	err = kc.DB.UpdateGenericServerStats("kubernetes", s.ID, avgCPUUsage, totalCores, clusterTotalMemory, clusterFreeMemory, clusterUsedStorage, clusterTotalStorage, dominantArch, "Cluster Resources")
 	if err != nil {
 		log.Printf("[KubernetesCollector] Failed to update cluster stats: %v", err)
 	}
@@ -1017,7 +1117,7 @@ func (kc *KubernetesCollector) runCommand(client *ssh.Client, cmd string, kubeco
 }
 
 func (kc *KubernetesCollector) parseK8sQuantity(s string) uint64 {
-	// Simple parser for K8s quantities (e.g. 8Gi, 512Mi, 40000ki, 500m)
+	// Simple parser for K8s quantities (e.g. 8Gi, 512Mi, 40000ki, 500m, 100n)
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return 0
@@ -1026,27 +1126,39 @@ func (kc *KubernetesCollector) parseK8sQuantity(s string) uint64 {
 	var val float64
 	var unit string
 
-	// Check for Ki, Mi, Gi, etc.
-	if strings.HasSuffix(s, "Ki") {
-		fmt.Sscanf(strings.TrimSuffix(s, "Ki"), "%f", &val)
+	// Extract numerical part and unit part correctly
+	// Find where digits end
+	idx := 0
+	for idx < len(s) && ((s[idx] >= '0' && s[idx] <= '9') || s[idx] == '.') {
+		idx++
+	}
+	fmt.Sscanf(s[:idx], "%f", &val)
+	unit = strings.ToLower(strings.TrimSpace(s[idx:]))
+
+	switch unit {
+	case "ki":
 		return uint64(val * 1024)
-	}
-	if strings.HasSuffix(s, "Mi") {
-		fmt.Sscanf(strings.TrimSuffix(s, "Mi"), "%f", &val)
+	case "mi":
 		return uint64(val * 1024 * 1024)
-	}
-	if strings.HasSuffix(s, "Gi") {
-		fmt.Sscanf(strings.TrimSuffix(s, "Gi"), "%f", &val)
+	case "gi":
 		return uint64(val * 1024 * 1024 * 1024)
-	}
-	if strings.HasSuffix(s, "m") {
-		// Millicores or similar, return as is or scale if needed
-		fmt.Sscanf(strings.TrimSuffix(s, "m"), "%f", &val)
+	case "ti":
+		return uint64(val * 1024 * 1024 * 1024 * 1024)
+	case "m":
+		// Millicores (1/1000)
 		return uint64(val)
+	case "n":
+		// Nanocores (1/1,000,000,000) - used in some top pods/nodes outputs
+		// For our display purposes, if it's less than 1 millicore, we can treat it as very small
+		return uint64(val / 1000000)
+	case "k":
+		return uint64(val * 1000)
+	case "m_decimal": // avoid shadowing unit 'm'
+		return uint64(val * 1000 * 1000)
+	case "g":
+		return uint64(val * 1000 * 1000 * 1000)
 	}
 
-	// Default to just number
-	fmt.Sscanf(s, "%f%s", &val, &unit)
 	return uint64(val)
 }
 

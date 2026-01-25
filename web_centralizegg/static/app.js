@@ -1747,7 +1747,7 @@ async function renderKubernetesServerDetails(serverId) {
                                     <span>${memTotalGB}GB RAM</span>
                                 </div>
                                 <div style="font-size: 0.65rem; color: var(--text-secondary); opacity: 0.6; margin-top: 2px;">
-                                    IP: ${node.ip_address || 'N/A'}
+                                    IP: ${node.ip_address || 'N/A'} • Arch: ${node.architecture || 'N/A'}
                                 </div>
                             </div>
                         </div>

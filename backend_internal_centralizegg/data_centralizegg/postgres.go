@@ -176,6 +176,7 @@ type KubernetesNode struct {
 	OSName           string  `json:"os_name"`
 	KernelVer        string  `json:"kernel_version"`
 	ContainerRuntime string  `json:"container_runtime"`
+	Architecture     string  `json:"architecture"`
 	PodsCount        int     `json:"pods_count"`
 	DiskTotal        uint64  `json:"disk_total"`
 	DiskUsed         uint64  `json:"disk_used"`
@@ -410,6 +411,7 @@ func NewPostgresDB(connStr string) (*DB, error) {
 	_, _ = db.Exec("ALTER TABLE kubernetes.nodes ADD COLUMN IF NOT EXISTS net_tx BIGINT DEFAULT 0")
 	_, _ = db.Exec("ALTER TABLE kubernetes.nodes ADD COLUMN IF NOT EXISTS net_rx_rate BIGINT DEFAULT 0")
 	_, _ = db.Exec("ALTER TABLE kubernetes.nodes ADD COLUMN IF NOT EXISTS net_tx_rate BIGINT DEFAULT 0")
+	_, _ = db.Exec("ALTER TABLE kubernetes.nodes ADD COLUMN IF NOT EXISTS architecture VARCHAR(50) DEFAULT ''")
 
 	// Pod Metrics
 	_, _ = db.Exec("ALTER TABLE kubernetes.pods ADD COLUMN IF NOT EXISTS image TEXT DEFAULT ''")
@@ -1990,12 +1992,12 @@ func (d *DB) UpsertKubernetesNode(n KubernetesNode) (int64, error) {
 	err := d.Conn.QueryRow("SELECT id FROM kubernetes.nodes WHERE server_id = $1 AND hostname = $2", n.ServerID, n.Hostname).Scan(&id)
 	if err == sql.ErrNoRows {
 		err = d.Conn.QueryRow(`
-			INSERT INTO kubernetes.nodes (server_id, hostname, status, roles, version, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, kernel_version, container_runtime, pods_count, disk_total, disk_used, net_rx, net_tx, net_rx_rate, net_tx_rate, ip_address)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21) RETURNING id`,
-			n.ServerID, n.Hostname, n.Status, n.Roles, n.Version, n.CPUModel, n.CPUCores, n.TotalMemory, n.FreeMemory, n.CPUUsage, n.OSName, n.KernelVer, n.ContainerRuntime, n.PodsCount, n.DiskTotal, n.DiskUsed, n.NetRX, n.NetTX, n.NetRXRate, n.NetTXRate, n.IPAddress).Scan(&id)
+			INSERT INTO kubernetes.nodes (server_id, hostname, status, roles, version, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, kernel_version, container_runtime, pods_count, disk_total, disk_used, net_rx, net_tx, net_rx_rate, net_tx_rate, ip_address, architecture)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22) RETURNING id`,
+			n.ServerID, n.Hostname, n.Status, n.Roles, n.Version, n.CPUModel, n.CPUCores, n.TotalMemory, n.FreeMemory, n.CPUUsage, n.OSName, n.KernelVer, n.ContainerRuntime, n.PodsCount, n.DiskTotal, n.DiskUsed, n.NetRX, n.NetTX, n.NetRXRate, n.NetTXRate, n.IPAddress, n.Architecture).Scan(&id)
 	} else if err == nil {
-		_, err = d.Conn.Exec(`UPDATE kubernetes.nodes SET status=$1, roles=$2, version=$3, cpu_model=$4, cpu_cores=$5, total_memory=$6, free_memory=$7, cpu_usage=$8, os_name=$9, kernel_version=$10, container_runtime=$11, pods_count=$12, disk_total=$13, disk_used=$14, net_rx=$15, net_tx=$16, net_rx_rate=$17, net_tx_rate=$18, ip_address=$19 WHERE id=$20`,
-			n.Status, n.Roles, n.Version, n.CPUModel, n.CPUCores, n.TotalMemory, n.FreeMemory, n.CPUUsage, n.OSName, n.KernelVer, n.ContainerRuntime, n.PodsCount, n.DiskTotal, n.DiskUsed, n.NetRX, n.NetTX, n.NetRXRate, n.NetTXRate, n.IPAddress, id)
+		_, err = d.Conn.Exec(`UPDATE kubernetes.nodes SET status=$1, roles=$2, version=$3, cpu_model=$4, cpu_cores=$5, total_memory=$6, free_memory=$7, cpu_usage=$8, os_name=$9, kernel_version=$10, container_runtime=$11, pods_count=$12, disk_total=$13, disk_used=$14, net_rx=$15, net_tx=$16, net_rx_rate=$17, net_tx_rate=$18, ip_address=$19, architecture=$20 WHERE id=$21`,
+			n.Status, n.Roles, n.Version, n.CPUModel, n.CPUCores, n.TotalMemory, n.FreeMemory, n.CPUUsage, n.OSName, n.KernelVer, n.ContainerRuntime, n.PodsCount, n.DiskTotal, n.DiskUsed, n.NetRX, n.NetTX, n.NetRXRate, n.NetTXRate, n.IPAddress, n.Architecture, id)
 	}
 	return id, err
 }
@@ -2019,7 +2021,7 @@ func (d *DB) UpsertKubernetesPod(p KubernetesPod) error {
 
 func (d *DB) GetKubernetesNodes() ([]KubernetesNode, error) {
 	rows, err := d.Conn.Query(`
-		SELECT n.id, n.server_id, n.hostname, n.status, n.roles, n.version, n.cpu_model, n.cpu_cores, n.total_memory, n.free_memory, n.cpu_usage, n.os_name, n.kernel_version, n.container_runtime, n.pods_count, n.disk_total, n.disk_used, n.net_rx, n.net_tx, n.net_rx_rate, n.net_tx_rate, ks.name, n.ip_address
+		SELECT n.id, n.server_id, n.hostname, n.status, n.roles, n.version, n.cpu_model, n.cpu_cores, n.total_memory, n.free_memory, n.cpu_usage, n.os_name, n.kernel_version, n.container_runtime, n.pods_count, n.disk_total, n.disk_used, n.net_rx, n.net_tx, n.net_rx_rate, n.net_tx_rate, ks.name, n.ip_address, n.architecture
 		FROM kubernetes.nodes n
 		JOIN kubernetes.kubernetes_servers ks ON n.server_id = ks.id`)
 	if err != nil {
@@ -2030,7 +2032,7 @@ func (d *DB) GetKubernetesNodes() ([]KubernetesNode, error) {
 	var nodes []KubernetesNode
 	for rows.Next() {
 		var n KubernetesNode
-		if err := rows.Scan(&n.ID, &n.ServerID, &n.Hostname, &n.Status, &n.Roles, &n.Version, &n.CPUModel, &n.CPUCores, &n.TotalMemory, &n.FreeMemory, &n.CPUUsage, &n.OSName, &n.KernelVer, &n.ContainerRuntime, &n.PodsCount, &n.DiskTotal, &n.DiskUsed, &n.NetRX, &n.NetTX, &n.NetRXRate, &n.NetTXRate, &n.ServerName, &n.IPAddress); err != nil {
+		if err := rows.Scan(&n.ID, &n.ServerID, &n.Hostname, &n.Status, &n.Roles, &n.Version, &n.CPUModel, &n.CPUCores, &n.TotalMemory, &n.FreeMemory, &n.CPUUsage, &n.OSName, &n.KernelVer, &n.ContainerRuntime, &n.PodsCount, &n.DiskTotal, &n.DiskUsed, &n.NetRX, &n.NetTX, &n.NetRXRate, &n.NetTXRate, &n.ServerName, &n.IPAddress, &n.Architecture); err != nil {
 			return nil, err
 		}
 		nodes = append(nodes, n)
