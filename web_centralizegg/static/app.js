@@ -2290,7 +2290,90 @@ async function renderKubernetesServerDetails(serverId) {
                                             </div>
                                             <span style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">${counts.cronjobs || 0}</span>
                                         </div>
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                                                <i class="fa-solid fa-arrow-right-to-bracket" style="font-size: 0.8rem; opacity: 0.7;"></i> 
+                                                <span>Ingresses</span>
+                                            </div>
+                                            <span style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">${counts.ingresses || 0}</span>
+                                        </div>
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                                                <i class="fa-solid fa-file-code" style="font-size: 0.8rem; opacity: 0.7;"></i> 
+                                                <span>ConfigMaps</span>
+                                            </div>
+                                            <span style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">${counts.configmaps || 0}</span>
+                                        </div>
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                                                <i class="fa-solid fa-key" style="font-size: 0.8rem; opacity: 0.7;"></i> 
+                                                <span>Secrets</span>
+                                            </div>
+                                            <span style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">${counts.secrets || 0}</span>
+                                        </div>
                 `;
+            })()}
+                                    </div>
+                                </div>
+
+                                <!-- Network & Exposure Card -->
+                                <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 12px;">
+                                    <div style="font-weight: 600; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 8px;">Red y Exposición</div>
+                                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                                        ${(() => {
+                let topo = {};
+                try { topo = JSON.parse(server.network_topology || '{}'); } catch (e) { }
+                const ingresses = (topo.nodes || []).filter(n => n.type === 'ingress');
+                const services = (topo.nodes || []).filter(n => n.type === 'service');
+                const links = topo.links || [];
+
+                // Find exposed services (linked from internet)
+                const exposedSvcs = services.filter(s => links.some(l => l.source === 'internet' && l.target === s.id));
+
+                if (ingresses.length === 0 && exposedSvcs.length === 0) {
+                    return '<div style="font-size: 0.75rem; color: var(--text-secondary); text-align: center;">No hay recursos expuestos detectados</div>';
+                }
+
+                let html = '';
+
+                if (ingresses.length > 0) {
+                    html += `
+                                                <div style="display: flex; flex-direction: column; gap: 6px;">
+                                                    <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 6px;">
+                                                        <i class="fa-solid fa-arrow-right-to-bracket" style="font-size: 0.7rem;"></i> Ingress Rules
+                                                    </div>
+                                                    <div style="display: flex; flex-direction: column; gap: 4px; max-height: 150px; overflow-y: auto; padding-right: 4px;" class="custom-scrollbar">
+                                                        ${ingresses.map(ing => `
+                                                            <div style="padding: 6px; background: rgba(255,255,255,0.02); border-radius: 4px; border: 1px solid rgba(255,255,255,0.03);">
+                                                                <div style="font-size: 0.75rem; color: #f97316; font-weight: 500; word-break: break-all;">${ing.ip || '*'}</div>
+                                                                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 2px;">
+                                                                    <div style="font-size: 0.65rem; color: var(--text-secondary);">${ing.namespace}/${ing.name}</div>
+                                                                </div>
+                                                            </div>
+                                                        `).join('')}
+                                                    </div>
+                                                </div>`;
+                }
+
+                if (exposedSvcs.length > 0) {
+                    html += `
+                                                <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
+                                                    <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 6px;">
+                                                        <i class="fa-solid fa-network-wired" style="font-size: 0.7rem;"></i> Port Forwards (LB/NodePort)
+                                                    </div>
+                                                    <div style="display: flex; flex-direction: column; gap: 4px; max-height: 150px; overflow-y: auto; padding-right: 4px;" class="custom-scrollbar">
+                                                        ${exposedSvcs.map(svc => `
+                                                            <div style="padding: 6px; background: rgba(255,255,255,0.02); border-radius: 4px; border: 1px solid rgba(255,255,255,0.03);">
+                                                                <div style="font-size: 0.75rem; color: #a855f7; font-weight: 500;">${svc.name}</div>
+                                                                <div style="font-size: 0.65rem; color: var(--text-secondary); margin-top: 1px;">
+                                                                    ${svc.namespace} • <span style="color: var(--text-primary);">${svc.ip}</span>
+                                                                </div>
+                                                            </div>
+                                                        `).join('')}
+                                                    </div>
+                                                </div>`;
+                }
+                return html;
             })()}
                                     </div>
                                 </div>

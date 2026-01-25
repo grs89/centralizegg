@@ -911,6 +911,9 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 		{"replicationcontrollers", "get replicationcontrollers --all-namespaces -o json"},
 		{"jobs", "get jobs --all-namespaces -o json"},
 		{"cronjobs", "get cronjobs --all-namespaces -o json"},
+		{"ingresses", "get ingress -A -o json"},
+		{"configmaps", "get configmaps -A -o json"},
+		{"secrets", "get secrets -A -o json"},
 	}
 
 	for _, res := range resources {
@@ -938,12 +941,15 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 	// 8. Collect Network Topology (Services and Endpoints)
 	var svcJSON string
 	var epJSON string
+	var ingJSON string
 	if isLocal {
 		svcJSON, _ = kc.runLocalCommand(kubectlCmd + " get svc -A -o json")
 		epJSON, _ = kc.runLocalCommand(kubectlCmd + " get endpoints -A -o json")
+		ingJSON, _ = kc.runLocalCommand(kubectlCmd + " get ingress -A -o json")
 	} else {
 		svcJSON, _ = kc.runCommand(client, kubectlCmd+" get svc -A -o json", "")
 		epJSON, _ = kc.runCommand(client, kubectlCmd+" get endpoints -A -o json", "")
+		ingJSON, _ = kc.runCommand(client, kubectlCmd+" get ingress -A -o json", "")
 	}
 
 	if svcJSON != "" && epJSON != "" {
@@ -1038,9 +1044,58 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 							for _, sub := range ep.Subsets {
 								for _, addr := range sub.Addresses {
 									podID := "pod-" + svc.Metadata.Namespace + "-" + addr.IP
-									// Note: We use IP in ID because Pod name isn't always obvious from endpoints without more lookups
-									// app.js will handle mapping if needed or just show the IP
 									links = append(links, MapLink{Source: svcID, Target: podID, Type: "internal"})
+								}
+							}
+						}
+					}
+				}
+
+				// 3. Process Ingresses
+				if ingJSON != "" {
+					var ingList struct {
+						Items []struct {
+							Metadata struct {
+								Name      string `json:"name"`
+								Namespace string `json:"namespace"`
+							} `json:"metadata"`
+							Spec struct {
+								Rules []struct {
+									Host string `json:"host"`
+									HTTP struct {
+										Paths []struct {
+											Path    string `json:"path"`
+											Backend struct {
+												Service struct {
+													Name string `json:"name"`
+													Port struct {
+														Number int `json:"number"`
+													} `json:"port"`
+												} `json:"service"`
+											} `json:"backend"`
+										} `json:"paths"`
+									} `json:"http"`
+								} `json:"rules"`
+							} `json:"spec"`
+						} `json:"items"`
+					}
+					if err := json.Unmarshal([]byte(ingJSON), &ingList); err == nil {
+						for _, ing := range ingList.Items {
+							ingID := "ing-" + ing.Metadata.Namespace + "-" + ing.Metadata.Name
+							nodes = append(nodes, MapNode{
+								ID:        ingID,
+								Name:      ing.Metadata.Name,
+								Type:      "ingress",
+								Namespace: ing.Metadata.Namespace,
+								IP:        "",        // Ingress usually points to hosts
+								Color:     "#f97316", // Orange for Ingress
+							})
+							links = append(links, MapLink{Source: "internet", Target: ingID, Type: "external"})
+
+							for _, rule := range ing.Spec.Rules {
+								for _, path := range rule.HTTP.Paths {
+									svcID := "svc-" + ing.Metadata.Namespace + "-" + path.Backend.Service.Name
+									links = append(links, MapLink{Source: ingID, Target: svcID, Type: "route"})
 								}
 							}
 						}
