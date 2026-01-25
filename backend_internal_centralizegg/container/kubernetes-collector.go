@@ -1022,6 +1022,17 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 						if svcIP == "" {
 							svcIP = svc.Status.LoadBalancer.Ingress[0].Hostname
 						}
+					} else if svc.Spec.Type == "NodePort" {
+						// For NodePort, append the port
+						ports := []string{}
+						for _, p := range svc.Spec.Ports {
+							if p.NodePort > 0 {
+								ports = append(ports, fmt.Sprintf("%d", p.NodePort))
+							}
+						}
+						if len(ports) > 0 {
+							svcIP = fmt.Sprintf("NodePort: %s", strings.Join(ports, ","))
+						}
 					}
 
 					nodes = append(nodes, MapNode{
