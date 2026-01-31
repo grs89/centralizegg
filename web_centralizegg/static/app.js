@@ -6253,8 +6253,8 @@ async function renderHistory() {
     initHistoryMetrics();
     populateHistoryServers();
 
-    const timelineContainer = document.getElementById('history-timeline');
-    if (!timelineContainer) return;
+    const summaryGrid = document.getElementById('history-summary-grid');
+    if (!summaryGrid) return;
 
     try {
         const response = await fetch('/api/history');
@@ -6262,41 +6262,96 @@ async function renderHistory() {
         const history = await response.json();
 
         if (!history || history.length === 0) {
-            timelineContainer.innerHTML = `
-                <div class="empty-state" style="padding: 40px; text-align: center; opacity: 0.5;">
-                    <i class="fa-solid fa-clock-rotate-left" style="font-size: 3rem; margin-bottom: 1rem;"></i>
-                    <p>No hay eventos registrados en el historial.</p>
+            summaryGrid.innerHTML = `
+                <div style="grid-column: 1/-1; text-align: center; padding: 40px; opacity: 0.5;">
+                    <i class="fa-solid fa-check-circle" style="font-size: 3rem; margin-bottom: 1rem; color: #10b981;"></i>
+                    <p>Sin actividad reciente.</p>
                 </div>
             `;
             return;
         }
 
-        let html = '<div class="timeline">';
-        history.forEach(event => {
-            const time = new Date(event.timestamp).toLocaleString();
-            const relTime = getRelativeTime(event.timestamp);
-            const severityClass = event.severity.toLowerCase();
-            const icon = event.event_type === 'status_change' ? 'fa-shuffle' : 'fa-circle-exclamation';
+        // --- Calculate Stats ---
+        const totalEvents = history.length;
 
-            html += `
-                <div class="timeline-item ${severityClass}">
-                    <div class="timeline-icon"><i class="fa-solid ${icon}"></i></div>
-                    <div class="timeline-content">
-                        <div class="timeline-header">
-                            <span class="timeline-source">${event.source}</span>
-                            <span class="timeline-time" title="${time}">${relTime}</span>
-                        </div>
-                        <div class="timeline-message">${event.message}</div>
-                        <div class="timeline-footer">
-                            <span class="badge ${event.category}">${event.category}</span>
-                            <span class="badge ${severityClass}">${event.severity}</span>
-                        </div>
-                    </div>
-                </div>
-            `;
+        let criticalCount = 0;
+        let warningCount = 0;
+        const sourceCounts = {};
+
+        history.forEach(e => {
+            const s = e.severity.toLowerCase();
+            if (s.includes('err') || s.includes('crit') || s.includes('fail')) criticalCount++;
+            if (s.includes('warn')) warningCount++;
+
+            // Normalize source?
+            const src = e.source || 'Unknown';
+            sourceCounts[src] = (sourceCounts[src] || 0) + 1;
         });
-        html += '</div>';
-        timelineContainer.innerHTML = html;
+
+        // Top Source
+        let topSrcName = 'N/A';
+        let topSrcCount = 0;
+        Object.entries(sourceCounts).forEach(([name, count]) => {
+            if (count > topSrcCount) {
+                topSrcCount = count;
+                topSrcName = name;
+            }
+        });
+
+        // Clean source name
+        if (topSrcName.includes('virtualization.kvm')) topSrcName = 'KVM';
+        else if (topSrcName.includes('container')) topSrcName = 'Containers';
+        else if (topSrcName.includes('storage')) topSrcName = 'Storage';
+
+        // Last Event Time
+        const lastTime = history[0] ? new Date(history[0].timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--';
+
+        // --- Render Cards ---
+        summaryGrid.innerHTML = `
+            <!-- Total Events -->
+            <div class="glass-panel" style="padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 16px; display:flex; align-items:center; gap: 15px;">
+                <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(56, 189, 248, 0.1); display:flex; align-items:center; justify-content:center; color: #38bdf8; font-size: 1.2rem;">
+                    <i class="fa-solid fa-layer-group"></i>
+                </div>
+                <div>
+                    <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary); line-height: 1;">${totalEvents}</div>
+                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">Eventos Totales</div>
+                </div>
+            </div>
+
+            <!-- Critical -->
+            <div class="glass-panel" style="padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 16px; display:flex; align-items:center; gap: 15px;">
+                <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(239, 68, 68, 0.1); display:flex; align-items:center; justify-content:center; color: #ef4444; font-size: 1.2rem;">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                </div>
+                <div>
+                    <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary); line-height: 1;">${criticalCount}</div>
+                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">Críticos/Errores</div>
+                </div>
+            </div>
+
+            <!-- Top Source -->
+            <div class="glass-panel" style="padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 16px; display:flex; align-items:center; gap: 15px;">
+                <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(168, 85, 247, 0.1); display:flex; align-items:center; justify-content:center; color: #a855f7; font-size: 1.2rem;">
+                    <i class="fa-solid fa-server"></i>
+                </div>
+                <div>
+                    <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); line-height: 1.2;">${topSrcName}</div>
+                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">Fuente Principal</div>
+                </div>
+            </div>
+
+             <!-- Last Active -->
+            <div class="glass-panel" style="padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 16px; display:flex; align-items:center; gap: 15px;">
+                <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(34, 197, 94, 0.1); display:flex; align-items:center; justify-content:center; color: #22c55e; font-size: 1.2rem;">
+                    <i class="fa-regular fa-clock"></i>
+                </div>
+                <div>
+                    <div style="font-size: 1.2rem; font-weight: 700; color: var(--text-primary); line-height: 1;">${lastTime}</div>
+                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">Último Evento</div>
+                </div>
+            </div>
+        `;
 
         // Update Map
         if (!historyToolMap) {
