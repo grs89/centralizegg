@@ -9,26 +9,45 @@ const CATEGORY_ICONS = {
     'Red (pfSense)': 'fa-shield-halved'
 };
 
+let summaryInterval = null;
+
 export async function initSummaryDashboard() {
     const grid = document.getElementById('summary-health-grid');
     const alertsList = document.getElementById('summary-alerts-list');
 
     if (!grid || !alertsList) return;
 
-    try {
-        const resp = await fetch('/api/health/summary');
-        if (!resp.ok) throw new Error('API response not ok');
-        const data = await resp.json();
-
-        renderHealthGrid(data.overall_health || []);
-        renderAlerts(data.recent_alerts || []);
-    } catch (err) {
-        console.error('Failed to load health summary:', err);
-        grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 50px; color: #ef4444;">
-            <i class="fa-solid fa-circle-exclamation" style="font-size: 2rem;"></i>
-            <p>Error al cargar el estado de salud: ${err.message}</p>
-        </div>`;
+    // Clear existing interval if any
+    if (summaryInterval) {
+        clearInterval(summaryInterval);
+        summaryInterval = null;
     }
+
+    const loadData = async () => {
+        try {
+            const resp = await fetch('/api/health/summary');
+            if (!resp.ok) throw new Error('API response not ok');
+            const data = await resp.json();
+
+            renderHealthGrid(data.overall_health || []);
+            renderAlerts(data.recent_alerts || []);
+        } catch (err) {
+            console.error('Failed to load health summary:', err);
+            // Only show error on empty grid to avoid flickering existing data
+            if (grid.children.length === 0) {
+                grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 50px; color: #ef4444;">
+                    <i class="fa-solid fa-circle-exclamation" style="font-size: 2rem;"></i>
+                    <p>Error al cargar el estado de salud: ${err.message}</p>
+                </div>`;
+            }
+        }
+    };
+
+    // Initial load
+    await loadData();
+
+    // Auto-refresh every 10 seconds
+    summaryInterval = setInterval(loadData, 10000);
 }
 
 function renderHealthGrid(health) {
@@ -132,22 +151,74 @@ function renderAlerts(alerts) {
     list.innerHTML = '';
     alerts.forEach((alert, idx) => {
         const item = document.createElement('div');
-        item.className = 'alert-item glass-panel'; // added glass-panel for better hover effect if defined in css
-        item.style.padding = '16px 20px'; // slightly increased padding
-        item.style.marginBottom = '10px';
+        item.className = 'alert-item glass-panel';
+        // Reduced padding and margin for compact view
+        item.style.padding = '10px 14px';
+        item.style.marginBottom = '6px';
         item.style.background = 'rgba(255,255,255,0.02)';
-        item.style.borderRadius = '12px';
-        item.style.border = '1px solid var(--glass-border)'; // default border
+        item.style.borderRadius = '10px'; // Slightly smaller radius
+        item.style.border = '1px solid var(--glass-border)';
         item.style.display = 'flex';
-        item.style.gap = '15px';
+        item.style.gap = '12px'; // Reduced gap
         item.style.alignItems = 'center';
         item.style.animation = `fadeInUp 0.3s ease-out forwards ${idx * 0.05}s`;
-        item.style.opacity = '0'; // For animation
-        item.style.transition = 'transform 0.2s ease, background 0.2s ease';
+        item.style.opacity = '0';
+        item.style.cursor = 'pointer'; // Indicate clickable
+        item.style.transition = 'transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease';
 
-        // Hover effect helper in inline loop (ideally in CSS)
-        item.onmouseenter = () => { item.style.background = 'rgba(255,255,255,0.04)'; item.style.transform = 'translateY(-2px)'; };
-        item.onmouseleave = () => { item.style.background = 'rgba(255,255,255,0.02)'; item.style.transform = 'translateY(0)'; };
+        // Hover effect 
+        item.onmouseenter = () => {
+            item.style.background = 'rgba(255,255,255,0.05)';
+            item.style.transform = 'translateY(-2px)';
+            item.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
+        };
+        item.onmouseleave = () => {
+            item.style.background = 'rgba(255,255,255,0.02)';
+            item.style.transform = 'translateY(0)';
+            item.style.boxShadow = 'none';
+        };
+
+        // Parse Metadata & Tool Heuristics
+        let meta = {};
+        try {
+            meta = JSON.parse(alert.metadata || '{}');
+        } catch (e) {
+            console.warn('Failed to parse alert metadata', e);
+        }
+
+        let tool = 'kvm'; // Default
+        const srcRaw = alert.source || '';
+        const src = srcRaw.toLowerCase();
+        let sourceIcon = 'fa-server';
+
+        // Check for specific categories or raw table names and map to friendly names
+        let friendlySource = alert.source;
+
+        // Map raw DB table names to friendly names if needed
+        if (src.includes('containers.podman')) { friendlySource = 'Podman'; tool = 'podman'; sourceIcon = 'fa-solid fa-otter'; }
+        else if (src.includes('containers.docker')) { friendlySource = 'Docker'; tool = 'docker'; sourceIcon = 'fa-brands fa-docker'; }
+        else if (src.includes('kubernetes')) { friendlySource = 'Kubernetes'; tool = 'kubernetes'; sourceIcon = 'fa-solid fa-dharmachakra'; }
+        else if (src.includes('virtualization.proxmox')) { friendlySource = 'Proxmox'; tool = 'proxmox'; sourceIcon = 'fa-solid fa-server'; }
+        else if (src.includes('virtualization.kvm')) { friendlySource = 'KVM'; tool = 'kvm'; sourceIcon = 'fa-solid fa-microchip'; }
+        else if (src.includes('storage.nas')) { friendlySource = 'NAS'; tool = 'nas'; sourceIcon = 'fa-solid fa-hdd'; }
+        else if (src.includes('storage.ceph')) { friendlySource = 'Ceph'; tool = 'ceph'; sourceIcon = 'fa-solid fa-cubes'; }
+        else if (src.includes('firewall') || src.includes('pfsense')) { friendlySource = 'Firewall'; tool = 'pfsense'; sourceIcon = 'fa-solid fa-shield-halved'; }
+        else if (CATEGORY_ICONS[alert.source]) {
+            // Already a friendly category name that matches our icon map
+            sourceIcon = CATEGORY_ICONS[alert.source];
+        }
+
+        // Click Handler
+        item.onclick = () => {
+            // Heuristic for ID: check server_id, host_id, id, node_id
+            const hostId = meta.server_id || meta.host_id || meta.id || meta.node_id;
+            if (window.applySuggestion) {
+                // Use title as alert source for now
+                window.applySuggestion('host', hostId, friendlySource, tool);
+            } else {
+                console.warn('Navigation function applySuggestion not found');
+            }
+        };
 
         const severity = alert.severity.toLowerCase();
         const isError = severity === 'error' || severity.includes('fail') || severity.includes('crit');
@@ -171,53 +242,30 @@ function renderAlerts(alerts) {
             item.style.borderLeft = `3px solid ${alertColor}`;
         }
 
+        // Removed gradient for cleaner look per "smaller" request, or keep subtle
         item.style.background = `linear-gradient(90deg, ${bgGlow} 0%, rgba(255,255,255,0.02) 100%)`;
 
-        // Determine Source Icon
-        let sourceIcon = 'fa-server';
-        // Try to match exact category first
-        if (CATEGORY_ICONS[alert.source]) {
-            sourceIcon = CATEGORY_ICONS[alert.source];
-        } else {
-            // Fallback heuristics
-            const src = alert.source.toLowerCase();
-            if (src.includes('docker')) sourceIcon = 'fa-brands fa-docker';
-            else if (src.includes('podman')) sourceIcon = 'fa-otter';
-            else if (src.includes('kube')) sourceIcon = 'fa-dharmachakra';
-            else if (src.includes('kvm')) sourceIcon = 'fa-microchip';
-            else if (src.includes('storage') || src.includes('nas')) sourceIcon = 'fa-hdd';
-            else if (src.includes('net') || src.includes('firewall')) sourceIcon = 'fa-shield-halved';
-        }
-
-        // Metadata & Link logic (basic)
-        let linkHtml = '';
-        if (alert.id > 0) {
-            linkHtml = `
-            <div style="opacity: 0.3; transform: translateX(3px); cursor: pointer;" title="Ver detalles">
-                <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 0.8rem;"></i>
-            </div>`;
-        }
-
-
         item.innerHTML = `
-            <div style="color: ${alertColor}; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; width: 42px; height: 42px; background: rgba(0,0,0,0.2); border-radius: 10px; flex-shrink: 0; border: 1px solid ${alertColor}20; position:relative;">
-                <i class="fa-solid ${sourceIcon}" style="position: absolute; font-size: 0.7rem; top: 8px; right: 8px; opacity: 0.7; color: var(--text-secondary);"></i>    
+            <div style="color: ${alertColor}; font-size: 0.9rem; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: rgba(0,0,0,0.2); border-radius: 8px; flex-shrink: 0; border: 1px solid ${alertColor}20; position:relative;">
+                <i class="fa-solid ${sourceIcon}" style="position: absolute; font-size: 0.6rem; top: 4px; right: 4px; opacity: 0.7; color: var(--text-secondary);"></i>    
                 <i class="fa-solid ${alertIcon}"></i>
             </div>
             <div style="flex: 1; min-width: 0;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <strong style="color: var(--text-primary); font-size: 0.95rem;">${alert.source}</strong>
-                        <span style="font-size: 0.65rem; padding: 2px 8px; border-radius: 4px; background: ${alertColor}15; color: ${alertColor}; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; border: 1px solid ${alertColor}10;">${alert.severity}</span>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <strong style="color: var(--text-primary); font-size: 0.85rem;">${friendlySource}</strong>
+                        <span style="font-size: 0.6rem; padding: 1px 6px; border-radius: 4px; background: ${alertColor}15; color: ${alertColor}; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; border: 1px solid ${alertColor}10;">${alert.severity}</span>
                     </div>
-                    <span style="font-size: 0.75rem; opacity: 0.4; font-family: 'JetBrains Mono', monospace; display:flex; align-items:center; gap:5px;">
-                        <i class="fa-regular fa-clock"></i> ${formatTime(alert.time)}
+                    <span style="font-size: 0.7rem; opacity: 0.4; display:flex; align-items:center; gap:4px;">
+                        <i class="fa-regular fa-clock" style="font-size:0.65rem"></i> ${formatTime(alert.time)}
                     </span>
                 </div>
-                <div style="font-size: 0.9rem; color: var(--text-secondary); line-height: 1.5;">${alert.message}</div>
-                ${alert.metadata && alert.metadata !== '{}' ? `<div style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.5; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${alert.metadata}</div>` : ''}
+                <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.3;">${alert.message}</div>
+                ${(meta.name || meta.hostname) ? `<div style="font-size: 0.7rem; color: var(--text-secondary); opacity: 0.5; margin-top: 2px;"><i class="fa-solid fa-quote-left"></i> ${meta.name || meta.hostname}</div>` : ''}
             </div>
-            ${linkHtml}
+            <div style="opacity: 0.2; transform: translateX(0px);">
+                <i class="fa-solid fa-chevron-right" style="font-size: 0.7rem;"></i>
+            </div>
         `;
         list.appendChild(item);
     });
