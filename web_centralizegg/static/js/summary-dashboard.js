@@ -132,17 +132,22 @@ function renderAlerts(alerts) {
     list.innerHTML = '';
     alerts.forEach((alert, idx) => {
         const item = document.createElement('div');
-        item.className = 'alert-item';
-        item.style.padding = '14px 20px';
-        item.style.marginBottom = '8px';
-        item.style.background = 'rgba(255,255,255,0.015)';
+        item.className = 'alert-item glass-panel'; // added glass-panel for better hover effect if defined in css
+        item.style.padding = '16px 20px'; // slightly increased padding
+        item.style.marginBottom = '10px';
+        item.style.background = 'rgba(255,255,255,0.02)';
         item.style.borderRadius = '12px';
-        item.style.border = '1px solid var(--glass-border)';
+        item.style.border = '1px solid var(--glass-border)'; // default border
         item.style.display = 'flex';
         item.style.gap = '15px';
         item.style.alignItems = 'center';
         item.style.animation = `fadeInUp 0.3s ease-out forwards ${idx * 0.05}s`;
         item.style.opacity = '0'; // For animation
+        item.style.transition = 'transform 0.2s ease, background 0.2s ease';
+
+        // Hover effect helper in inline loop (ideally in CSS)
+        item.onmouseenter = () => { item.style.background = 'rgba(255,255,255,0.04)'; item.style.transform = 'translateY(-2px)'; };
+        item.onmouseleave = () => { item.style.background = 'rgba(255,255,255,0.02)'; item.style.transform = 'translateY(0)'; };
 
         const severity = alert.severity.toLowerCase();
         const isError = severity === 'error' || severity.includes('fail') || severity.includes('crit');
@@ -150,32 +155,69 @@ function renderAlerts(alerts) {
 
         let alertColor = '#38bdf8'; // Info
         let alertIcon = 'fa-circle-info';
+        let bgGlow = 'rgba(56, 189, 248, 0.05)';
 
         if (isError) {
             alertColor = '#ef4444';
             alertIcon = 'fa-circle-xmark';
+            item.style.borderLeft = `3px solid ${alertColor}`;
+            bgGlow = 'rgba(239, 68, 68, 0.1)';
         } else if (isWarning) {
             alertColor = '#f59e0b';
-            alertIcon = 'fa-circle-exclamation';
+            alertIcon = 'fa-triangle-exclamation';
+            item.style.borderLeft = `3px solid ${alertColor}`;
+            bgGlow = 'rgba(245, 158, 11, 0.1)';
+        } else {
+            item.style.borderLeft = `3px solid ${alertColor}`;
         }
 
+        item.style.background = `linear-gradient(90deg, ${bgGlow} 0%, rgba(255,255,255,0.02) 100%)`;
+
+        // Determine Source Icon
+        let sourceIcon = 'fa-server';
+        // Try to match exact category first
+        if (CATEGORY_ICONS[alert.source]) {
+            sourceIcon = CATEGORY_ICONS[alert.source];
+        } else {
+            // Fallback heuristics
+            const src = alert.source.toLowerCase();
+            if (src.includes('docker')) sourceIcon = 'fa-brands fa-docker';
+            else if (src.includes('podman')) sourceIcon = 'fa-otter';
+            else if (src.includes('kube')) sourceIcon = 'fa-dharmachakra';
+            else if (src.includes('kvm')) sourceIcon = 'fa-microchip';
+            else if (src.includes('storage') || src.includes('nas')) sourceIcon = 'fa-hdd';
+            else if (src.includes('net') || src.includes('firewall')) sourceIcon = 'fa-shield-halved';
+        }
+
+        // Metadata & Link logic (basic)
+        let linkHtml = '';
+        if (alert.id > 0) {
+            linkHtml = `
+            <div style="opacity: 0.3; transform: translateX(3px); cursor: pointer;" title="Ver detalles">
+                <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 0.8rem;"></i>
+            </div>`;
+        }
+
+
         item.innerHTML = `
-            <div style="color: ${alertColor}; font-size: 1rem; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; background: ${alertColor}10; border-radius: 10px; flex-shrink: 0; border: 1px solid ${alertColor}15;">
+            <div style="color: ${alertColor}; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; width: 42px; height: 42px; background: rgba(0,0,0,0.2); border-radius: 10px; flex-shrink: 0; border: 1px solid ${alertColor}20; position:relative;">
+                <i class="fa-solid ${sourceIcon}" style="position: absolute; font-size: 0.7rem; top: 8px; right: 8px; opacity: 0.7; color: var(--text-secondary);"></i>    
                 <i class="fa-solid ${alertIcon}"></i>
             </div>
             <div style="flex: 1; min-width: 0;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <strong style="color: var(--text-primary); font-size: 0.88rem;">${alert.source}</strong>
-                        <span style="font-size: 0.65rem; padding: 1px 6px; border-radius: 4px; background: ${alertColor}15; color: ${alertColor}; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">${alert.severity}</span>
+                        <strong style="color: var(--text-primary); font-size: 0.95rem;">${alert.source}</strong>
+                        <span style="font-size: 0.65rem; padding: 2px 8px; border-radius: 4px; background: ${alertColor}15; color: ${alertColor}; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; border: 1px solid ${alertColor}10;">${alert.severity}</span>
                     </div>
-                    <span style="font-size: 0.7rem; opacity: 0.3; font-family: 'JetBrains Mono', monospace;">${formatTime(alert.time)}</span>
+                    <span style="font-size: 0.75rem; opacity: 0.4; font-family: 'JetBrains Mono', monospace; display:flex; align-items:center; gap:5px;">
+                        <i class="fa-regular fa-clock"></i> ${formatTime(alert.time)}
+                    </span>
                 </div>
-                <div style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${alert.message}">${alert.message}</div>
+                <div style="font-size: 0.9rem; color: var(--text-secondary); line-height: 1.5;">${alert.message}</div>
+                ${alert.metadata && alert.metadata !== '{}' ? `<div style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.5; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${alert.metadata}</div>` : ''}
             </div>
-            <div style="opacity: 0.15; transform: translateX(3px);">
-                <i class="fa-solid fa-chevron-right" style="font-size: 0.7rem;"></i>
-            </div>
+            ${linkHtml}
         `;
         list.appendChild(item);
     });

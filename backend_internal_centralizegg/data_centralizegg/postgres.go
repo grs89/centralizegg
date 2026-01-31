@@ -330,10 +330,12 @@ type HealthSummary struct {
 }
 
 type InfrastructureAlert struct {
+	ID       int64     `json:"id"`
 	Severity string    `json:"severity"`
 	Source   string    `json:"source"`
 	Message  string    `json:"message"`
 	Time     time.Time `json:"time"`
+	Metadata string    `json:"metadata"`
 }
 
 type InfrastructureHistoryEvent struct {
@@ -2451,31 +2453,35 @@ func (d *DB) GetInfrastructureHealth() (*GlobalHealthData, error) {
 		})
 	}
 
-	// 2. Fetch Recent Kubernetes Events as alerts
-	eventRows, err := d.Conn.Query(`
-		SELECT type, reason || ': ' || message, last_seen 
-		FROM kubernetes.events 
-		WHERE type != 'Normal'
-		ORDER BY last_seen DESC LIMIT 10`)
+	// 2. Fetch Recent Events from GLOBAL HISTORY (Centralized Feed)
+	// This now captures Kubernetes, System, and any other logged events.
+	historyEvents, err := d.GetHistory(15) // Fetch last 15 events
 	if err == nil {
-		defer eventRows.Close()
-		for eventRows.Next() {
-			var alert InfrastructureAlert
-			alert.Source = "Kubernetes"
-			if err := eventRows.Scan(&alert.Severity, &alert.Message, &alert.Time); err == nil {
-				data.RecentAlerts = append(data.RecentAlerts, alert)
-			}
+		for _, e := range historyEvents {
+			data.RecentAlerts = append(data.RecentAlerts, InfrastructureAlert{
+				ID:       e.ID,
+				Severity: e.Severity,
+				Source:   e.Source,
+				Message:  e.Message,
+				Time:     e.Timestamp,
+				Metadata: e.Metadata,
+			})
 		}
 	}
 
-	// 3. Add alerts for offline categories
+	// 3. Add synthetic alerts for offline categories (Critical Status Checks)
 	for _, h := range data.OverallHealth {
 		if h.Offline > 0 {
+			msg := fmt.Sprintf("%d hosts están fuera de línea o con problemas", h.Offline)
+			// Only add if not recently logged as an event (naive check, or just always add as a summary)
+			// We always add it as a "System Warning"
 			data.RecentAlerts = append(data.RecentAlerts, InfrastructureAlert{
+				ID:       0, // Synthetic
 				Severity: "Warning",
 				Source:   h.Category,
-				Message:  fmt.Sprintf("%d hosts están fuera de línea o con problemas", h.Offline),
+				Message:  msg,
 				Time:     time.Now(),
+				Metadata: "{}",
 			})
 		}
 	}
