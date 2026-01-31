@@ -253,6 +253,12 @@ function renderAlerts(alerts) {
         else if (srcLower.includes('ceph')) friendlySource = 'Ceph';
         else if (srcLower.includes('pfsense')) friendlySource = 'Firewall';
 
+        // Use friendly source if the hostName is effectively the raw source because of missing metadata
+        let displayTitle = group.hostName;
+        if (displayTitle === group.source || displayTitle === srcLower) {
+            displayTitle = `${friendlySource} Host`;
+        }
+
         // Header HTML
         const headerDiv = document.createElement('div');
         headerDiv.style.padding = '12px 16px';
@@ -269,7 +275,7 @@ function renderAlerts(alerts) {
                    <i class="fa-solid ${headerIcon}" style="color: ${headerColor};"></i>
                 </div>
                 <div>
-                     <div style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary);">${group.hostName === friendlySource ? group.hostName : group.hostName}</div>
+                     <div style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary);">${displayTitle}</div>
                      <div style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.7;">
                         <span style="font-weight:600; color: ${headerColor};">${group.alerts.length}</span> evento(s) en ${friendlySource}
                      </div>
