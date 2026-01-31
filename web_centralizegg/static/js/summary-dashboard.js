@@ -9,6 +9,17 @@ const CATEGORY_ICONS = {
     'Red (pfSense)': 'fa-shield-halved'
 };
 
+const CATEGORY_TO_TOOL = {
+    'Virtualización (KVM)': 'kvm',
+    'Virtualización (Proxmox)': 'proxmox',
+    'Contenedores (Docker)': 'docker',
+    'Contenedores (Podman)': 'podman',
+    'Kubernetes (Nodos)': 'kubernetes',
+    'Almacenamiento (NAS)': 'nas',
+    'Almacenamiento (Ceph)': 'ceph',
+    'Red (pfSense)': 'pfsense'
+};
+
 let summaryInterval = null;
 
 export async function initSummaryDashboard() {
@@ -69,6 +80,19 @@ function renderHealthGrid(health) {
         card.style.overflow = 'hidden';
         card.style.transition = 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
         card.style.border = '1px solid var(--glass-border)';
+
+        // Add pointer cursor + click handler if tool exists
+        const toolKey = CATEGORY_TO_TOOL[item.category];
+        if (toolKey) {
+            card.style.cursor = 'pointer';
+            card.onclick = () => {
+                if (window.switchTool) {
+                    window.switchTool(toolKey);
+                } else {
+                    console.warn('switchTool not found globally');
+                }
+            };
+        }
 
         const hasNoHosts = item.total === 0;
         const isCritical = item.offline > 0;
