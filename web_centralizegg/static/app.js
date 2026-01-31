@@ -6459,14 +6459,30 @@ async function loadHistoryMetrics() {
     const [category, id] = select.value.split(':');
     const duration = timeRange.value;
 
-    // Show loading state?
+    // Find host to get Total Memory
+    let totalMemory = 0;
+    let host = null;
+    if (typeof state !== 'undefined') {
+        if (category === 'kvm' && state.allKVMHostsCache) host = state.allKVMHostsCache.find(h => h.id == id);
+        else if (category === 'docker' && state.allDockerHostsCache) host = state.allDockerHostsCache.find(h => h.id == id);
+        else if (category === 'podman' && state.allPodmanHostsCache) host = state.allPodmanHostsCache.find(h => h.id == id);
+        else if (category === 'pfsense' && state.allFirewallHostsCache) host = state.allFirewallHostsCache.find(h => h.id == id);
+        else if (category === 'proxmox' && state.allProxmoxHostsCache) host = state.allProxmoxHostsCache.find(h => h.id == id);
+        else if (category === 'kubernetes' && state.allKubernetesHostsCache) host = state.allKubernetesHostsCache.find(h => h.id == id);
+        else if (category === 'nas' && state.allNasHostsCache) host = state.allNasHostsCache.find(h => h.id == id);
+    }
+
+    if (host) {
+        // Try common property names
+        totalMemory = host.total_memory || host.TotalMemory || host.memory_total || 0;
+    }
 
     try {
         const res = await fetch(`/api/metrics/${category}/${id}?duration=${duration}`);
         if (!res.ok) throw new Error('Failed to fetch metrics');
         const metrics = await res.json();
 
-        updateCharts(metrics);
+        updateCharts(metrics, false, totalMemory);
     } catch (e) {
         console.error("Error loading metrics", e);
     }
@@ -6486,7 +6502,7 @@ function initNetInterfaceSelector() {
     }
 }
 
-function updateCharts(metrics, keepDropdown = false) {
+function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
     if (!metrics) metrics = [];
     currentHistoryMetrics = metrics; // Cache for selector
 
@@ -6712,7 +6728,54 @@ function updateCharts(metrics, keepDropdown = false) {
     };
     ramOptions.scales.y.ticks.callback = (value) => formatBytes(value);
 
-    ramChart = createOrUpdateChart(ramChart, 'ramChart', 'line', 'RAM Usage', sortedRam, '#a855f7', true, null, ramOptions);
+    // Reuse RAM options for formatBytes on Y and Tooltip
+    // Enable legend for RAM
+    ramOptions.plugins.legend = {
+        display: true,
+        labels: { color: '#94a3b8', usePointStyle: true, boxWidth: 8 }
+    };
+
+    const ramData = {
+        labels: netLabels, // Use same aligned labels
+        datasets: [
+            {
+                label: 'RAM Usage',
+                data: sortedRam,
+                borderColor: '#a855f7',
+                backgroundColor: getGradient(document.getElementById('ramChart').getContext('2d'), '#a855f7'),
+                borderWidth: 2,
+                fill: true,
+                tension: 0.4,
+                pointRadius: 0
+            }
+        ]
+    };
+
+    if (totalMemory > 0) {
+        ramData.datasets.push({
+            label: 'Total Memory',
+            data: metrics.map(() => totalMemory),
+            borderColor: '#9ca3b8', // Grey
+            backgroundColor: 'transparent',
+            borderWidth: 2,
+            borderDash: [5, 5],
+            fill: false,
+            pointRadius: 0,
+            tension: 0
+        });
+    }
+
+    if (ramChart) {
+        ramChart.data = ramData;
+        ramChart.update('none');
+    } else {
+        const ctxRam = document.getElementById('ramChart').getContext('2d');
+        ramChart = new Chart(ctxRam, {
+            type: 'line',
+            data: ramData,
+            options: ramOptions
+        });
+    }
 
     // Disk Chart (Storage)
     const canvasDisk = document.getElementById('diskChart');
