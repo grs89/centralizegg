@@ -21,6 +21,8 @@ type DiskStat struct {
 	Device     string `json:"device"`
 	Capacity   uint64 `json:"capacity"`
 	Allocation uint64 `json:"allocation"`
+	ReadIO     uint64 `json:"read_io"`
+	WriteIO    uint64 `json:"write_io"`
 }
 
 type BridgeStat struct {
@@ -500,25 +502,35 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 
 	// New session for Host Disk I/O Stats (Read/Write Bytes)
 	var totalDiskRead, totalDiskWrite uint64
+	diskIOMap := make(map[string]map[string]uint64)
 	sessionDiskIO, err := sshClient.NewSession()
 	if err == nil {
 		defer sessionDiskIO.Close()
-		// Get sectors read ($3) and sectors written ($7) from /proc/diskstats for common physical devices
-		// Filter for loop/ram/dm devices usually? We want physical.
-		// grep -E 'sd[a-z]+|nvme[0-9]n[0-9]+|vd[a-z]+|xvd[a-z]+' | awk '{read += $6; write += $10} END {print read, write}'  <-- Correct fields typically:
-		// Field 1: major, 2: minor, 3: device name
-		// Field 4: reads completed successfully
-		// Field 6: sectors read (512 bytes?) usually field 6 (index 5 from 0 in C, field 6 in awk 1-based?)
-		// Documentation: https://www.kernel.org/doc/Documentation/iostats.txt
-		// Field 6: sectors read
-		// Field 10: sectors written
-		cmd := `awk '/(sd[a-z]+|nvme[0-9]n[0-9]+|vd[a-z]+|xvd[a-z]+)$/ {r+=$6; w+=$10} END {print r, w}' /proc/diskstats`
+		// Get sectors read ($6) and sectors written ($10) from /proc/diskstats for common physical devices
+		cmd := `awk '/(sd[a-z]+|nvme[0-9]n[0-9]+|vd[a-z]+|xvd[a-z]+)$/ {print $3, $6, $10}' /proc/diskstats`
 		ioOutput, err := sessionDiskIO.Output(cmd)
 		if err == nil {
-			var rSectors, wSectors uint64
-			fmt.Sscanf(string(ioOutput), "%d %d", &rSectors, &wSectors)
-			totalDiskRead = rSectors * 512
-			totalDiskWrite = wSectors * 512
+			lines := strings.Split(strings.TrimSpace(string(ioOutput)), "\n")
+			for _, line := range lines {
+				parts := strings.Fields(line)
+				if len(parts) >= 3 {
+					dev := parts[0]
+					var rSect, wSect uint64
+					fmt.Sscanf(parts[1], "%d", &rSect)
+					fmt.Sscanf(parts[2], "%d", &wSect)
+
+					rBytes := rSect * 512
+					wBytes := wSect * 512
+
+					totalDiskRead += rBytes
+					totalDiskWrite += wBytes
+
+					diskIOMap[dev] = map[string]uint64{
+						"read":  rBytes,
+						"write": wBytes,
+					}
+				}
+			}
 		}
 	}
 
@@ -529,6 +541,13 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 		for _, d := range parsedDisks {
 			totalDiskUsage += d.Allocation
 			totalDiskCapacity += d.Capacity
+		}
+	}
+
+	disksDataJSON := "{}"
+	if len(diskIOMap) > 0 {
+		if ds, err := json.Marshal(diskIOMap); err == nil {
+			disksDataJSON = string(ds)
 		}
 	}
 
@@ -546,6 +565,7 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 		DiskUsage:      totalDiskUsage,
 		DiskTotal:      totalDiskCapacity,
 		InterfacesData: interfacesJSON,
+		DisksData:      disksDataJSON,
 	}
 	if err := mc.DB.InsertServerMetrics(metric); err != nil {
 		log.Printf("[KVMCollector] Failed to insert metrics for %s: %v", s.Name, err)

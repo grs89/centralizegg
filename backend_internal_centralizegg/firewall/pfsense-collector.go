@@ -455,6 +455,38 @@ func (mc *PfsenseCollector) collectOne(s data_centralizegg.PFSenseServer) error 
 		}
 	}
 
+	// Host Disk I/O Stats (Read/Write Bytes)
+	diskIOMap := make(map[string]map[string]uint64)
+	var totalDiskRead, totalDiskWrite uint64
+	diskIOOut, err := runCommand(client, "iostat -xI")
+	if err == nil {
+		lines := strings.Split(strings.TrimSpace(diskIOOut), "\n")
+		// skip first two header lines
+		for i := 2; i < len(lines); i++ {
+			fields := strings.Fields(lines[i])
+			if len(fields) >= 5 {
+				dev := fields[0]
+				kr, _ := strconv.ParseFloat(fields[3], 64)
+				kw, _ := strconv.ParseFloat(fields[4], 64)
+				rBytes := uint64(kr * 1024)
+				wBytes := uint64(kw * 1024)
+				totalDiskRead += rBytes
+				totalDiskWrite += wBytes
+				diskIOMap[dev] = map[string]uint64{
+					"read":  rBytes,
+					"write": wBytes,
+				}
+			}
+		}
+	}
+
+	disksDataJSON := "{}"
+	if len(diskIOMap) > 0 {
+		if b, err := json.Marshal(diskIOMap); err == nil {
+			disksDataJSON = string(b)
+		}
+	}
+
 	// Insert Historical Metrics
 	metric := data_centralizegg.ServerMetric{
 		ServerID:       hostID,
@@ -464,9 +496,12 @@ func (mc *PfsenseCollector) collectOne(s data_centralizegg.PFSenseServer) error 
 		MemoryUsage:    memTotal - memFree,
 		NetRX:          netRXTotal,
 		NetTX:          netTXTotal,
+		DiskRead:       totalDiskRead,
+		DiskWrite:      totalDiskWrite,
 		DiskUsage:      diskUsage,
 		DiskTotal:      diskTotal,
 		InterfacesData: interfacesJSON,
+		DisksData:      disksDataJSON,
 	}
 	if err := mc.DB.InsertServerMetrics(metric); err != nil {
 		log.Printf("[PFSenseCollector] Failed to insert metrics: %v", err)

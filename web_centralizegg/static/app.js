@@ -6394,6 +6394,7 @@ let cpuChart = null;
 let ramChart = null;
 let netChart = null;
 let diskChart = null;
+let diskIOChart = null;
 
 function initHistoryMetrics() {
     if (historyMetricsInitialized) return;
@@ -6502,6 +6503,17 @@ function initNetInterfaceSelector() {
     }
 }
 
+let diskSelectorInitialized = false;
+function initDiskSelector() {
+    const selector = document.getElementById('disk-selector');
+    if (selector && !diskSelectorInitialized) {
+        selector.addEventListener('change', () => {
+            updateCharts(currentHistoryMetrics, true);
+        });
+        diskSelectorInitialized = true;
+    }
+}
+
 
 function formatBits(bits, decimals = 2) {
     if (bits <= 0) return '0 bps';
@@ -6518,6 +6530,7 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
     currentHistoryMetrics = metrics; // Cache for selector
 
     initNetInterfaceSelector();
+    initDiskSelector();
 
     // Sort by timestamp
     metrics.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
@@ -6531,6 +6544,12 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
     let selectedIface = "total";
     if (selector) {
         selectedIface = selector.value;
+    }
+
+    const diskSelector = document.getElementById('disk-selector');
+    let selectedDisk = "total";
+    if (diskSelector) {
+        selectedDisk = diskSelector.value;
     }
 
     // Collect all available interfaces from history
@@ -6572,12 +6591,44 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
         }
     }
 
+    // Collect all available disks from history
+    if (!keepDropdown && diskSelector) {
+        const disksSet = new Set();
+        metrics.forEach(m => {
+            if (m.disks_data && m.disks_data !== "{}" && m.disks_data !== "[]") {
+                try {
+                    const diskMap = JSON.parse(m.disks_data);
+                    Object.keys(diskMap).forEach(k => disksSet.add(k));
+                } catch (e) { }
+            }
+        });
+
+        const prevDiskSelection = diskSelector.value;
+        diskSelector.innerHTML = '<option value="total">Total</option>';
+        Array.from(disksSet).sort().forEach(disk => {
+            const opt = document.createElement('option');
+            opt.value = disk;
+            opt.textContent = disk;
+            diskSelector.appendChild(opt);
+        });
+
+        if (disksSet.has(prevDiskSelection)) {
+            diskSelector.value = prevDiskSelection;
+            selectedDisk = prevDiskSelection;
+        } else {
+            diskSelector.value = "total";
+            selectedDisk = "total";
+        }
+    }
+
     const ratesRx = [];
     const ratesTx = [];
     const netCapacities = [];
     const diskUsages = [];
     const diskTotals = [];
     const netLabels = [];
+    const ratesDiskRead = [];
+    const ratesDiskWrite = [];
 
     // Calculate network and disk rates based on selected interface
     for (let i = 1; i < metrics.length; i++) {
@@ -6640,12 +6691,42 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
             diskUsages.push(metrics[i].disk_usage || 0);
             diskTotals.push(metrics[i].disk_total || 0);
 
+            // Disk I/O Rates
+            let r1 = metrics[i - 1].disk_read || 0;
+            let w1 = metrics[i - 1].disk_write || 0;
+            let r2 = metrics[i].disk_read || 0;
+            let w2 = metrics[i].disk_write || 0;
+
+            if (selectedDisk !== "total") {
+                r1 = 0; w1 = 0; r2 = 0; w2 = 0;
+                try {
+                    const dmap1 = JSON.parse(metrics[i - 1].disks_data || "{}");
+                    const dmap2 = JSON.parse(metrics[i].disks_data || "{}");
+                    if (dmap1[selectedDisk]) {
+                        r1 = dmap1[selectedDisk].read || 0;
+                        w1 = dmap1[selectedDisk].write || 0;
+                    }
+                    if (dmap2[selectedDisk]) {
+                        r2 = dmap2[selectedDisk].read || 0;
+                        w2 = dmap2[selectedDisk].write || 0;
+                    }
+                } catch (e) { }
+            }
+
+            let dr = r2 - r1;
+            let dw = w2 - w1;
+            if (dr < 0) dr = r2;
+            if (dw < 0) dw = w2;
+
+            ratesDiskRead.push(dr / sec);
+            ratesDiskWrite.push(dw / sec);
+
         } else {
             ratesRx.push(0);
             ratesTx.push(0);
             netCapacities.push(0);
-            diskUsages.push(0);
-            diskTotals.push(0);
+            ratesDiskRead.push(0);
+            ratesDiskWrite.push(0);
         }
     }
 
@@ -6947,6 +7028,61 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
                     ]
                 },
                 options: netOptions
+            });
+        }
+    }
+
+    // Disk I/O Chart
+    const canvasDiskIO = document.getElementById('diskIOChart');
+    if (canvasDiskIO) {
+        if (diskIOChart) {
+            diskIOChart.data.labels = netLabels;
+            diskIOChart.data.datasets[0].data = ratesDiskRead;
+            diskIOChart.data.datasets[1].data = ratesDiskWrite;
+            diskIOChart.update('none');
+        } else {
+            const ctxDiskIO = canvasDiskIO.getContext('2d');
+            const gradRead = getGradient(ctxDiskIO, '#f97316');
+            const gradWrite = getGradient(ctxDiskIO, '#8b5cf6');
+
+            const dioOptions = JSON.parse(JSON.stringify(ramOptions));
+            dioOptions.scales.y.ticks.callback = (value) => formatBytes(value) + '/s';
+            dioOptions.plugins.tooltip.callbacks = {
+                label: (context) => ' ' + context.dataset.label + ': ' + formatBytes(context.raw) + '/s'
+            };
+            dioOptions.plugins.legend = {
+                display: true,
+                labels: { color: '#94a3b8', usePointStyle: true, boxWidth: 8 }
+            };
+
+            diskIOChart = new Chart(ctxDiskIO, {
+                type: 'line',
+                data: {
+                    labels: netLabels,
+                    datasets: [
+                        {
+                            label: 'Lectura',
+                            data: ratesDiskRead,
+                            borderColor: '#f97316',
+                            backgroundColor: gradRead,
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 0
+                        },
+                        {
+                            label: 'Escritura',
+                            data: ratesDiskWrite,
+                            borderColor: '#8b5cf6',
+                            backgroundColor: gradWrite,
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 0
+                        }
+                    ]
+                },
+                options: dioOptions
             });
         }
     }

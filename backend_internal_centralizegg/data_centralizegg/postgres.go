@@ -27,6 +27,7 @@ type ServerMetric struct {
 	DiskUsage      uint64    `json:"disk_usage"`
 	DiskTotal      uint64    `json:"disk_total"`
 	InterfacesData string    `json:"interfaces_data"` // JSON map of interface stats
+	DisksData      string    `json:"disks_data"`      // JSON map of disk I/O stats
 }
 
 type VM struct {
@@ -2493,9 +2494,9 @@ func (d *DB) GetInfrastructureHealth() (*GlobalHealthData, error) {
 
 func (d *DB) InsertServerMetrics(m ServerMetric) error {
 	_, err := d.Conn.Exec(`
-		INSERT INTO server_metrics_history (server_id, category, timestamp, cpu_usage, memory_usage, net_rx, net_tx, disk_read, disk_write, interfaces_data, disk_usage, disk_total)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-		m.ServerID, m.Category, m.Timestamp, m.CPUUsage, m.MemoryUsage, m.NetRX, m.NetTX, m.DiskRead, m.DiskWrite, m.InterfacesData, m.DiskUsage, m.DiskTotal)
+		INSERT INTO server_metrics_history (server_id, category, timestamp, cpu_usage, memory_usage, net_rx, net_tx, disk_read, disk_write, interfaces_data, disk_usage, disk_total, disks_data)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+		m.ServerID, m.Category, m.Timestamp, m.CPUUsage, m.MemoryUsage, m.NetRX, m.NetTX, m.DiskRead, m.DiskWrite, m.InterfacesData, m.DiskUsage, m.DiskTotal, m.DisksData)
 	return err
 }
 
@@ -2522,13 +2523,12 @@ func (d *DB) GetServerHistory(serverID int64, category string, duration string) 
 		interval = "24 hours"
 	}
 
-	query := fmt.Sprintf(`
-		SELECT id, server_id, category, timestamp, cpu_usage, memory_usage, net_rx, net_tx, disk_read, disk_write, COALESCE(interfaces_data, '{}'), COALESCE(disk_usage, 0), COALESCE(disk_total, 0)
+	rows, err := d.Conn.Query(`
+		SELECT id, server_id, category, timestamp, cpu_usage, memory_usage, net_rx, net_tx, disk_read, disk_write, COALESCE(interfaces_data, '{}'), COALESCE(disk_usage, 0), COALESCE(disk_total, 0), COALESCE(disks_data, '{}')
 		FROM server_metrics_history
-		WHERE server_id = $1 AND category = $2 AND timestamp > NOW() - INTERVAL '%s'
-		ORDER BY timestamp ASC`, interval)
-
-	rows, err := d.Conn.Query(query, serverID, category)
+		WHERE server_id = $1 AND category = $2 AND timestamp > NOW() - CAST($3 AS INTERVAL)
+		ORDER BY timestamp ASC`,
+		serverID, category, interval)
 	if err != nil {
 		return nil, err
 	}
@@ -2537,7 +2537,7 @@ func (d *DB) GetServerHistory(serverID int64, category string, duration string) 
 	var metrics []ServerMetric
 	for rows.Next() {
 		var m ServerMetric
-		if err := rows.Scan(&m.ID, &m.ServerID, &m.Category, &m.Timestamp, &m.CPUUsage, &m.MemoryUsage, &m.NetRX, &m.NetTX, &m.DiskRead, &m.DiskWrite, &m.InterfacesData, &m.DiskUsage, &m.DiskTotal); err != nil {
+		if err := rows.Scan(&m.ID, &m.ServerID, &m.Category, &m.Timestamp, &m.CPUUsage, &m.MemoryUsage, &m.NetRX, &m.NetTX, &m.DiskRead, &m.DiskWrite, &m.InterfacesData, &m.DiskUsage, &m.DiskTotal, &m.DisksData); err != nil {
 			return nil, err
 		}
 		metrics = append(metrics, m)

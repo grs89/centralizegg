@@ -441,12 +441,37 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 
 	// Host Disk I/O Stats (Read/Write Bytes)
 	var totalDiskRead, totalDiskWrite uint64
-	diskIORaw, err := pc.runCommand(client, `awk '/(sd[a-z]+|nvme[0-9]n[0-9]+|vd[a-z]+|xvd[a-z]+)$/ {r+=$6; w+=$10} END {print r, w}' /proc/diskstats`)
+	diskIOMap := make(map[string]map[string]uint64)
+	diskIORaw, err := pc.runCommand(client, `awk '/(sd[a-z]+|nvme[0-9]n[0-9]+|vd[a-z]+|xvd[a-z]+)$/ {print $3, $6, $10}' /proc/diskstats`)
 	if err == nil {
-		var rSectors, wSectors uint64
-		fmt.Sscanf(strings.TrimSpace(diskIORaw), "%d %d", &rSectors, &wSectors)
-		totalDiskRead = rSectors * 512
-		totalDiskWrite = wSectors * 512
+		lines := strings.Split(strings.TrimSpace(diskIORaw), "\n")
+		for _, line := range lines {
+			parts := strings.Fields(line)
+			if len(parts) >= 3 {
+				dev := parts[0]
+				var rSect, wSect uint64
+				fmt.Sscanf(parts[1], "%d", &rSect)
+				fmt.Sscanf(parts[2], "%d", &wSect)
+
+				rBytes := rSect * 512
+				wBytes := wSect * 512
+
+				totalDiskRead += rBytes
+				totalDiskWrite += wBytes
+
+				diskIOMap[dev] = map[string]uint64{
+					"read":  rBytes,
+					"write": wBytes,
+				}
+			}
+		}
+	}
+
+	disksDataJSON := "{}"
+	if len(diskIOMap) > 0 {
+		if b, err := json.Marshal(diskIOMap); err == nil {
+			disksDataJSON = string(b)
+		}
 	}
 
 	hostID, err := pc.DB.UpsertPodmanHost(data_centralizegg.PodmanHost{
@@ -487,6 +512,7 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 			DiskUsage:      storageUsed,
 			DiskTotal:      storageTotal,
 			InterfacesData: interfacesJSON,
+			DisksData:      disksDataJSON,
 		}
 		if err := pc.DB.InsertServerMetrics(metric); err != nil {
 			// log.Printf("[PodmanCollector] Failed to insert metrics: %v", err)
