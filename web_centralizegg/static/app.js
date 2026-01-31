@@ -6502,6 +6502,17 @@ function initNetInterfaceSelector() {
     }
 }
 
+
+function formatBits(bits, decimals = 2) {
+    if (bits <= 0) return '0 bps';
+    const k = 1000;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['bps', 'Kbps', 'Mbps', 'Gbps', 'Tbps', 'Pbps'];
+    const i = Math.floor(Math.log(bits) / Math.log(k));
+    const index = Math.max(0, Math.min(i, sizes.length - 1));
+    return parseFloat((bits / Math.pow(k, index)).toFixed(dm)) + ' ' + sizes[index];
+}
+
 function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
     if (!metrics) metrics = [];
     currentHistoryMetrics = metrics; // Cache for selector
@@ -6563,6 +6574,7 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
 
     const ratesRx = [];
     const ratesTx = [];
+    const netCapacities = [];
     const diskUsages = [];
     const diskTotals = [];
     const netLabels = [];
@@ -6583,6 +6595,8 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
             let tx2 = metrics[i].net_tx;
 
             // Override if specific interface selected
+            // Override if specific interface selected
+            let capacity = 0;
             if (selectedIface !== "total") {
                 rx1 = 0; tx1 = 0; rx2 = 0; tx2 = 0;
                 try {
@@ -6595,10 +6609,17 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
                     if (map2[selectedIface]) {
                         rx2 = map2[selectedIface].rx || 0;
                         tx2 = map2[selectedIface].tx || 0;
+                        capacity = map2[selectedIface].speed || 0;
                     }
                 } catch (e) {
                     // error
                 }
+            } else {
+                // Total: Sum all speeds
+                try {
+                    const map2 = JSON.parse(metrics[i].interfaces_data || "{}");
+                    Object.values(map2).forEach(v => capacity += (v.speed || 0));
+                } catch (e) { }
             }
 
             let dRx = rx2 - rx1;
@@ -6608,8 +6629,11 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
             if (dRx < 0) dRx = rx2; // Assume reset to 0
             if (dTx < 0) dTx = tx2;
 
-            ratesRx.push((dRx / sec) * 8 / (1000 * 1000)); // Mbps
-            ratesTx.push((dTx / sec) * 8 / (1000 * 1000)); // Mbps
+            // Store as bits per second (raw)
+            ratesRx.push((dRx / sec) * 8);
+            ratesTx.push((dTx / sec) * 8);
+            // Capacity is Mbps -> bits
+            netCapacities.push(capacity * 1000 * 1000);
 
             // Disk Usage (Gauge)
             // Use values from metrics[i] to match timestamp
@@ -6619,6 +6643,7 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
         } else {
             ratesRx.push(0);
             ratesTx.push(0);
+            netCapacities.push(0);
             diskUsages.push(0);
             diskTotals.push(0);
         }
@@ -6682,7 +6707,7 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
             instance.data.labels = labelsOverride || labels;
             instance.data.datasets[0].data = data;
             // Update gradient on resize/update if needed, but usually static is fine
-            // instance.data.datasets[0].backgroundColor = gradient; 
+            // instance.data.datasets[0].backgroundColor = gradient;
             instance.update('none');
             return instance;
         }
@@ -6844,14 +6869,38 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
             netChart.data.labels = netLabels;
             netChart.data.datasets[0].data = ratesRx;
             netChart.data.datasets[1].data = ratesTx;
+            netChart.data.datasets[0].label = 'RX';
+            netChart.data.datasets[1].label = 'TX';
+            // Check if capacity dataset exists, if not add it
+            if (netChart.data.datasets.length < 3) {
+                netChart.data.datasets.push({
+                    label: 'Capacity',
+                    data: netCapacities,
+                    borderColor: '#9ca3af',
+                    backgroundColor: 'transparent',
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    fill: false,
+                    tension: 0,
+                    pointRadius: 0
+                });
+            } else {
+                netChart.data.datasets[2].data = netCapacities;
+                netChart.data.datasets[2].label = 'Capacity';
+            }
             netChart.update('none');
         } else {
             const ctxNet = canvasNet.getContext('2d');
             const gradRx = getGradient(ctxNet, '#22c55e');
-            const gradTx = getGradient(ctxNet, '#f97316');
+            const gradTx = getGradient(ctxNet, '#3b82f6');
 
             // Copy options and enable legend for network
             const netOptions = JSON.parse(JSON.stringify(commonOptions));
+            netOptions.scales.y.ticks.callback = (value) => formatBits(value);
+            netOptions.plugins.tooltip.callbacks = {
+                label: (context) => ' ' + context.dataset.label + ': ' + formatBits(context.raw)
+            };
+            // Ensure legend is visible for network chart
             netOptions.plugins.legend = {
                 display: true,
                 labels: { color: '#94a3b8', usePointStyle: true, boxWidth: 8 }
@@ -6863,7 +6912,7 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
                     labels: netLabels,
                     datasets: [
                         {
-                            label: 'RX (Mbps)',
+                            label: 'RX',
                             data: ratesRx,
                             borderColor: '#22c55e',
                             backgroundColor: gradRx,
@@ -6874,15 +6923,26 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
                             pointHoverRadius: 5
                         },
                         {
-                            label: 'TX (Mbps)',
+                            label: 'TX',
                             data: ratesTx,
-                            borderColor: '#f97316',
+                            borderColor: '#3b82f6',
                             backgroundColor: gradTx,
                             borderWidth: 2,
                             fill: true,
                             tension: 0.4,
                             pointRadius: 0,
                             pointHoverRadius: 5
+                        },
+                        {
+                            label: 'Capacity',
+                            data: netCapacities,
+                            borderColor: '#9ca3af',
+                            backgroundColor: 'transparent',
+                            borderWidth: 2,
+                            borderDash: [5, 5],
+                            fill: false,
+                            tension: 0,
+                            pointRadius: 0
                         }
                     ]
                 },
