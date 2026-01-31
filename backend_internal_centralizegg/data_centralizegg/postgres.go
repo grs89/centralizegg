@@ -2491,9 +2491,9 @@ func (d *DB) GetInfrastructureHealth() (*GlobalHealthData, error) {
 
 func (d *DB) InsertServerMetrics(m ServerMetric) error {
 	_, err := d.Conn.Exec(`
-		INSERT INTO server_metrics_history (server_id, category, timestamp, cpu_usage, memory_usage, net_rx, net_tx, disk_read, disk_write)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		m.ServerID, m.Category, m.Timestamp, m.CPUUsage, m.MemoryUsage, m.NetRX, m.NetTX, m.DiskRead, m.DiskWrite)
+		INSERT INTO server_metrics_history (server_id, category, timestamp, cpu_usage, memory_usage, net_rx, net_tx, disk_read, disk_write, interfaces_data)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		m.ServerID, m.Category, m.Timestamp, m.CPUUsage, m.MemoryUsage, m.NetRX, m.NetTX, m.DiskRead, m.DiskWrite, m.InterfacesData)
 	return err
 }
 
