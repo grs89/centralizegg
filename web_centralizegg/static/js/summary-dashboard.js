@@ -172,126 +172,177 @@ function renderAlerts(alerts) {
         return;
     }
 
-    list.innerHTML = '';
-    alerts.forEach((alert, idx) => {
-        const item = document.createElement('div');
-        item.className = 'alert-item glass-panel';
-        // Reduced padding and margin for compact view
-        item.style.padding = '10px 14px';
-        item.style.marginBottom = '6px';
-        item.style.background = 'rgba(255,255,255,0.02)';
-        item.style.borderRadius = '10px'; // Slightly smaller radius
-        item.style.border = '1px solid var(--glass-border)';
-        item.style.display = 'flex';
-        item.style.gap = '12px'; // Reduced gap
-        item.style.alignItems = 'center';
-        item.style.animation = `fadeInUp 0.3s ease-out forwards ${idx * 0.05}s`;
-        item.style.opacity = '0';
-        item.style.cursor = 'pointer'; // Indicate clickable
-        item.style.transition = 'transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease';
-
-        // Hover effect 
-        item.onmouseenter = () => {
-            item.style.background = 'rgba(255,255,255,0.05)';
-            item.style.transform = 'translateY(-2px)';
-            item.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
-        };
-        item.onmouseleave = () => {
-            item.style.background = 'rgba(255,255,255,0.02)';
-            item.style.transform = 'translateY(0)';
-            item.style.boxShadow = 'none';
-        };
-
-        // Parse Metadata & Tool Heuristics
+    // Group alerts by Host/Source
+    const grouped = {};
+    alerts.forEach(alert => {
         let meta = {};
-        try {
-            meta = JSON.parse(alert.metadata || '{}');
-        } catch (e) {
-            console.warn('Failed to parse alert metadata', e);
+        try { meta = JSON.parse(alert.metadata || '{}'); } catch (e) { }
+
+        // Identify unique key for the host (ID preferred, else Name, else Source)
+        const hostId = meta.server_id || meta.host_id || meta.id || meta.node_id;
+        const hostName = meta.name || meta.hostname || alert.source;
+        const groupKey = hostId ? `${alert.source}_${hostId}` : hostName;
+
+        if (!grouped[groupKey]) {
+            grouped[groupKey] = {
+                key: groupKey,
+                source: alert.source,
+                hostName: hostName,
+                hostId: hostId,
+                tool: 'kvm', // default, will refine
+                alerts: [],
+                maxSeverityVal: 0 // to sort or color code headers
+            };
+
+            // Refine Tool/Icon logic once per group
+            const src = alert.source.toLowerCase();
+            if (src.includes('podman')) grouped[groupKey].tool = 'podman';
+            else if (src.includes('docker')) grouped[groupKey].tool = 'docker';
+            else if (src.includes('kubernetes')) grouped[groupKey].tool = 'kubernetes';
+            else if (src.includes('proxmox')) grouped[groupKey].tool = 'proxmox';
+            else if (src.includes('kvm')) grouped[groupKey].tool = 'kvm';
+            else if (src.includes('nas') || src.includes('storage')) grouped[groupKey].tool = 'nas';
+            else if (src.includes('ceph')) grouped[groupKey].tool = 'ceph';
+            else if (src.includes('pfsense') || src.includes('firewall')) grouped[groupKey].tool = 'pfsense';
         }
 
-        let tool = 'kvm'; // Default
-        const srcRaw = alert.source || '';
-        const src = srcRaw.toLowerCase();
-        let sourceIcon = 'fa-server';
+        // Add alert to group
+        grouped[groupKey].alerts.push(alert);
 
-        // Check for specific categories or raw table names and map to friendly names
-        let friendlySource = alert.source;
+        // Track max severity for the group badge
+        const sev = alert.severity.toLowerCase();
+        let currentSevVal = 1; // Info
+        if (sev === 'warning' || sev === 'warn') currentSevVal = 2;
+        if (sev.includes('error') || sev.includes('crit') || sev.includes('fail')) currentSevVal = 3;
 
-        // Map raw DB table names to friendly names if needed
-        if (src.includes('containers.podman')) { friendlySource = 'Podman'; tool = 'podman'; sourceIcon = 'fa-solid fa-otter'; }
-        else if (src.includes('containers.docker')) { friendlySource = 'Docker'; tool = 'docker'; sourceIcon = 'fa-brands fa-docker'; }
-        else if (src.includes('kubernetes')) { friendlySource = 'Kubernetes'; tool = 'kubernetes'; sourceIcon = 'fa-solid fa-dharmachakra'; }
-        else if (src.includes('virtualization.proxmox')) { friendlySource = 'Proxmox'; tool = 'proxmox'; sourceIcon = 'fa-solid fa-server'; }
-        else if (src.includes('virtualization.kvm')) { friendlySource = 'KVM'; tool = 'kvm'; sourceIcon = 'fa-solid fa-microchip'; }
-        else if (src.includes('storage.nas')) { friendlySource = 'NAS'; tool = 'nas'; sourceIcon = 'fa-solid fa-hdd'; }
-        else if (src.includes('storage.ceph')) { friendlySource = 'Ceph'; tool = 'ceph'; sourceIcon = 'fa-solid fa-cubes'; }
-        else if (src.includes('firewall') || src.includes('pfsense')) { friendlySource = 'Firewall'; tool = 'pfsense'; sourceIcon = 'fa-solid fa-shield-halved'; }
-        else if (CATEGORY_ICONS[alert.source]) {
-            // Already a friendly category name that matches our icon map
-            sourceIcon = CATEGORY_ICONS[alert.source];
+        if (currentSevVal > grouped[groupKey].maxSeverityVal) {
+            grouped[groupKey].maxSeverityVal = currentSevVal;
         }
+    });
 
-        // Click Handler
-        item.onclick = () => {
-            // Heuristic for ID: check server_id, host_id, id, node_id
-            const hostId = meta.server_id || meta.host_id || meta.id || meta.node_id;
-            if (window.applySuggestion) {
-                // Use title as alert source for now
-                window.applySuggestion('host', hostId, friendlySource, tool);
-            } else {
-                console.warn('Navigation function applySuggestion not found');
-            }
-        };
+    list.innerHTML = '';
 
-        const severity = alert.severity.toLowerCase();
-        const isError = severity === 'error' || severity.includes('fail') || severity.includes('crit');
-        const isWarning = severity === 'warning' || severity === 'warn';
+    // Render Groups
+    Object.values(grouped).forEach((group, idx) => {
+        const groupItem = document.createElement('div');
+        groupItem.className = 'glass-panel';
+        groupItem.style.marginBottom = '8px';
+        groupItem.style.overflow = 'hidden';
+        groupItem.style.borderRadius = '12px';
+        groupItem.style.border = '1px solid var(--glass-border)';
+        groupItem.style.background = 'rgba(255,255,255,0.02)';
+        groupItem.style.transition = 'all 0.3s ease';
+        groupItem.style.animation = `fadeInUp 0.3s ease-out forwards ${idx * 0.05}s`;
+        groupItem.style.opacity = '0';
 
-        let alertColor = '#38bdf8'; // Info
-        let alertIcon = 'fa-circle-info';
-        let bgGlow = 'rgba(56, 189, 248, 0.05)';
+        // Determine Header Color based on max severity
+        let headerColor = '#38bdf8';
+        let headerIcon = 'fa-circle-info';
+        if (group.maxSeverityVal === 2) { headerColor = '#f59e0b'; headerIcon = 'fa-triangle-exclamation'; }
+        if (group.maxSeverityVal === 3) { headerColor = '#ef4444'; headerIcon = 'fa-circle-xmark'; }
 
-        if (isError) {
-            alertColor = '#ef4444';
-            alertIcon = 'fa-circle-xmark';
-            item.style.borderLeft = `3px solid ${alertColor}`;
-            bgGlow = 'rgba(239, 68, 68, 0.1)';
-        } else if (isWarning) {
-            alertColor = '#f59e0b';
-            alertIcon = 'fa-triangle-exclamation';
-            item.style.borderLeft = `3px solid ${alertColor}`;
-            bgGlow = 'rgba(245, 158, 11, 0.1)';
-        } else {
-            item.style.borderLeft = `3px solid ${alertColor}`;
-        }
+        // Mapped Source Name
+        let friendlySource = group.source;
+        const srcLower = group.source.toLowerCase();
+        if (srcLower.includes('podman')) friendlySource = 'Podman';
+        else if (srcLower.includes('docker')) friendlySource = 'Docker';
+        else if (srcLower.includes('kubernetes')) friendlySource = 'Kubernetes';
+        else if (srcLower.includes('proxmox')) friendlySource = 'Proxmox';
+        else if (srcLower.includes('kvm')) friendlySource = 'KVM';
+        else if (srcLower.includes('nas')) friendlySource = 'NAS';
+        else if (srcLower.includes('ceph')) friendlySource = 'Ceph';
+        else if (srcLower.includes('pfsense')) friendlySource = 'Firewall';
 
-        // Removed gradient for cleaner look per "smaller" request, or keep subtle
-        item.style.background = `linear-gradient(90deg, ${bgGlow} 0%, rgba(255,255,255,0.02) 100%)`;
+        // Header HTML
+        const headerDiv = document.createElement('div');
+        headerDiv.style.padding = '12px 16px';
+        headerDiv.style.display = 'flex';
+        headerDiv.style.alignItems = 'center';
+        headerDiv.style.justifyContent = 'space-between';
+        headerDiv.style.cursor = 'pointer';
+        headerDiv.style.background = `linear-gradient(90deg, ${headerColor}0a 0%, transparent 100%)`;
+        headerDiv.style.borderLeft = `4px solid ${headerColor}`;
 
-        item.innerHTML = `
-            <div style="color: ${alertColor}; font-size: 0.9rem; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: rgba(0,0,0,0.2); border-radius: 8px; flex-shrink: 0; border: 1px solid ${alertColor}20; position:relative;">
-                <i class="fa-solid ${sourceIcon}" style="position: absolute; font-size: 0.6rem; top: 4px; right: 4px; opacity: 0.7; color: var(--text-secondary);"></i>    
-                <i class="fa-solid ${alertIcon}"></i>
-            </div>
-            <div style="flex: 1; min-width: 0;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
-                    <div style="display: flex; align-items: center; gap: 6px;">
-                        <strong style="color: var(--text-primary); font-size: 0.85rem;">${friendlySource}</strong>
-                        <span style="font-size: 0.6rem; padding: 1px 6px; border-radius: 4px; background: ${alertColor}15; color: ${alertColor}; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; border: 1px solid ${alertColor}10;">${alert.severity}</span>
-                    </div>
-                    <span style="font-size: 0.7rem; opacity: 0.4; display:flex; align-items:center; gap:4px;">
-                        <i class="fa-regular fa-clock" style="font-size:0.65rem"></i> ${formatTime(alert.time)}
-                    </span>
+        headerDiv.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 32px; height: 32px; background: rgba(255,255,255,0.03); border-radius: 8px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.05);">
+                   <i class="fa-solid ${headerIcon}" style="color: ${headerColor};"></i>
                 </div>
-                <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.3;">${alert.message}</div>
-                ${(meta.name || meta.hostname) ? `<div style="font-size: 0.7rem; color: var(--text-secondary); opacity: 0.5; margin-top: 2px;"><i class="fa-solid fa-quote-left"></i> ${meta.name || meta.hostname}</div>` : ''}
+                <div>
+                     <div style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary);">${group.hostName === friendlySource ? group.hostName : group.hostName}</div>
+                     <div style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.7;">
+                        <span style="font-weight:600; color: ${headerColor};">${group.alerts.length}</span> evento(s) en ${friendlySource}
+                     </div>
+                </div>
             </div>
-            <div style="opacity: 0.2; transform: translateX(0px);">
-                <i class="fa-solid fa-chevron-right" style="font-size: 0.7rem;"></i>
+            <div style="display:flex; align-items: center; gap: 10px;">
+                 ${group.hostId ? `<i class="fa-solid fa-arrow-up-right-from-square" style="font-size:0.85rem; opacity:0.4; transition: opacity 0.2s;" title="Ir al Host" id="nav-${idx}"></i>` : ''}
+                 <i class="fa-solid fa-chevron-down" style="font-size: 0.8rem; opacity: 0.3; transition: transform 0.3s ease;" id="chevron-${idx}"></i>
             </div>
         `;
-        list.appendChild(item);
+
+        // Body HTML (Hidden by default)
+        const bodyDiv = document.createElement('div');
+        bodyDiv.style.display = 'none'; // Collapsed
+        bodyDiv.style.padding = '0';
+        bodyDiv.style.background = 'rgba(0,0,0,0.1)';
+        bodyDiv.style.borderTop = '1px solid var(--glass-border)';
+
+        // Render individual alerts inside body
+        group.alerts.forEach((alert, aIdx) => {
+            const row = document.createElement('div');
+            row.style.padding = '10px 16px';
+            row.style.borderBottom = aIdx < group.alerts.length - 1 ? '1px solid rgba(255,255,255,0.03)' : 'none';
+            row.style.display = 'flex';
+            row.style.gap = '10px';
+            row.style.alignItems = 'flex-start';
+
+            // Severity dot
+            let dotColor = '#38bdf8';
+            const s = alert.severity.toLowerCase();
+            if (s === 'warning' || s === 'warn') dotColor = '#f59e0b';
+            if (s.includes('error') || s.includes('crit')) dotColor = '#ef4444';
+
+            row.innerHTML = `
+                <div style="margin-top: 5px; width: 6px; height: 6px; border-radius: 50%; background: ${dotColor}; box-shadow: 0 0 5px ${dotColor}60; flex-shrink: 0;"></div>
+                <div style="flex: 1;">
+                    <div style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">${alert.message}</div>
+                    <div style="font-size: 0.65rem; opacity: 0.35; margin-top: 2px;">
+                        ${formatTime(alert.time)} &bull; ${alert.severity}
+                    </div>
+                </div>
+            `;
+            bodyDiv.appendChild(row);
+        });
+
+        // Toggle Logic
+        let isExpanded = false;
+        headerDiv.onclick = (e) => {
+            // Prevent expansion if clicking the specific Nav icon
+            if (e.target.closest(`#nav-${idx}`)) return;
+
+            isExpanded = !isExpanded;
+            bodyDiv.style.display = isExpanded ? 'block' : 'none';
+            const chevron = headerDiv.querySelector(`#chevron-${idx}`);
+            if (chevron) chevron.style.transform = isExpanded ? 'rotate(180deg)' : 'rotate(0deg)';
+        };
+
+        // Deep Link Click Logic
+        const navBtn = headerDiv.querySelector(`#nav-${idx}`);
+        if (navBtn) {
+            navBtn.onmouseenter = () => navBtn.style.opacity = '1';
+            navBtn.onmouseleave = () => navBtn.style.opacity = '0.4';
+            navBtn.onclick = (e) => {
+                e.stopPropagation(); // Don't toggle accordion
+                if (window.applySuggestion && group.hostId) {
+                    window.applySuggestion('host', group.hostId, group.source, group.tool);
+                }
+            };
+        }
+
+        groupItem.appendChild(headerDiv);
+        groupItem.appendChild(bodyDiv);
+        list.appendChild(groupItem);
     });
 }
 
