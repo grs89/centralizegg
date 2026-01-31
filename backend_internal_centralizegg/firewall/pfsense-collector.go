@@ -404,6 +404,16 @@ func (mc *PfsenseCollector) collectOne(s data_centralizegg.PFSenseServer) error 
 		}
 	}
 
+	// 1j. Disk Usage (Root)
+	var diskUsage, diskTotal uint64
+	diskOut, err := runCommand(client, "df -k / | tail -n 1 | awk '{print $3, $2}'")
+	if err == nil {
+		var usedKB, totalKB uint64
+		fmt.Sscanf(strings.TrimSpace(diskOut), "%d %d", &usedKB, &totalKB)
+		diskUsage = usedKB * 1024
+		diskTotal = totalKB * 1024
+	}
+
 	// Store Host Data first to get the correct HostID
 	hostID, err := mc.DB.UpsertFirewallHost(data_centralizegg.FirewallHost{
 		ServerID:          s.ID,
@@ -454,10 +464,12 @@ func (mc *PfsenseCollector) collectOne(s data_centralizegg.PFSenseServer) error 
 		MemoryUsage:    memTotal - memFree,
 		NetRX:          netRXTotal,
 		NetTX:          netTXTotal,
+		DiskUsage:      diskUsage,
+		DiskTotal:      diskTotal,
 		InterfacesData: interfacesJSON,
 	}
 	if err := mc.DB.InsertServerMetrics(metric); err != nil {
-		// log.Printf("[PFSenseCollector] Failed to insert metrics: %v", err)
+		log.Printf("[PFSenseCollector] Failed to insert metrics: %v", err)
 	}
 
 	// 4. Gateway Status

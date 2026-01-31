@@ -130,8 +130,8 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 	inodesUsage := ""
 	dockerLogsSize := uint64(0)
 
-	// Usage for /var/lib/docker
-	storageRaw, _ := dc.runCommand(client, "df -B1 /var/lib/docker | tail -1 | awk '{print $3,$2}'")
+	// Usage for / (Host Root) - Changed from /var/lib/docker to represent Host Disk
+	storageRaw, _ := dc.runCommand(client, "df -B1 / | tail -1 | awk '{print $3,$2}'")
 	fmt.Sscanf(strings.TrimSpace(storageRaw), "%d %d", &storageUsed, &storageTotal)
 
 	// Inodes for /var/lib/docker
@@ -332,6 +332,8 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 			NetTX:          totalNetTX,
 			DiskRead:       totalDiskRead,
 			DiskWrite:      totalDiskWrite,
+			DiskUsage:      storageUsed,
+			DiskTotal:      storageTotal,
 			InterfacesData: interfacesJSON,
 		}
 		if err := dc.DB.InsertServerMetrics(metric); err != nil {

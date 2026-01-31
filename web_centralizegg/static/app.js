@@ -6547,8 +6547,8 @@ function updateCharts(metrics, keepDropdown = false) {
 
     const ratesRx = [];
     const ratesTx = [];
-    const ratesDiskRead = [];
-    const ratesDiskWrite = [];
+    const diskUsages = [];
+    const diskTotals = [];
     const netLabels = [];
 
     // Calculate network and disk rates based on selected interface
@@ -6595,26 +6595,16 @@ function updateCharts(metrics, keepDropdown = false) {
             ratesRx.push((dRx / sec) * 8 / (1000 * 1000)); // Mbps
             ratesTx.push((dTx / sec) * 8 / (1000 * 1000)); // Mbps
 
-            // Disk
-            let read1 = metrics[i - 1].disk_read_bytes || 0;
-            let write1 = metrics[i - 1].disk_write_bytes || 0;
-            let read2 = metrics[i].disk_read_bytes || 0;
-            let write2 = metrics[i].disk_write_bytes || 0;
-
-            let dRead = read2 - read1;
-            let dWrite = write2 - write1;
-
-            if (dRead < 0) dRead = read2;
-            if (dWrite < 0) dWrite = write2;
-
-            ratesDiskRead.push((dRead / sec) / (1024 * 1024)); // MB/s
-            ratesDiskWrite.push((dWrite / sec) / (1024 * 1024)); // MB/s
+            // Disk Usage (Gauge)
+            // Use values from metrics[i] to match timestamp
+            diskUsages.push(metrics[i].disk_usage || 0);
+            diskTotals.push(metrics[i].disk_total || 0);
 
         } else {
             ratesRx.push(0);
             ratesTx.push(0);
-            ratesDiskRead.push(0);
-            ratesDiskWrite.push(0);
+            diskUsages.push(0);
+            diskTotals.push(0);
         }
     }
 
@@ -6704,10 +6694,12 @@ function updateCharts(metrics, keepDropdown = false) {
 
     // --- Unit Formatter ---
     const formatBytes = (bytes) => {
-        if (bytes === 0) return '0 B';
+        if (bytes === 0 || isNaN(bytes) || bytes === undefined || bytes === null) return '0 B';
         const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
+        if (i < 0) return bytes + ' B';
+        if (i >= sizes.length) return parseFloat((bytes / Math.pow(k, sizes.length - 1)).toFixed(1)) + ' ' + sizes[sizes.length - 1];
         return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
     };
 
@@ -6722,20 +6714,28 @@ function updateCharts(metrics, keepDropdown = false) {
 
     ramChart = createOrUpdateChart(ramChart, 'ramChart', 'line', 'RAM Usage', sortedRam, '#a855f7', true, null, ramOptions);
 
-    // Disk Chart
+    // Disk Chart (Storage)
     const canvasDisk = document.getElementById('diskChart');
     if (canvasDisk) {
         if (typeof diskChart !== 'undefined' && diskChart) {
             diskChart.data.labels = netLabels;
-            diskChart.data.datasets[0].data = ratesDiskRead;
-            diskChart.data.datasets[1].data = ratesDiskWrite;
+            diskChart.data.datasets[0].data = diskUsages;
+            diskChart.data.datasets[1].data = diskTotals;
             diskChart.update('none');
         } else {
             const ctxDisk = canvasDisk.getContext('2d');
-            const gradRead = getGradient(ctxDisk, '#fbbf24');
-            const gradWrite = getGradient(ctxDisk, '#f59e0b');
+            const gradUsed = getGradient(ctxDisk, '#fbbf24');
+            const gradTotal = getGradient(ctxDisk, '#9ca3af'); // Grey for total
 
-            const diskOptions = JSON.parse(JSON.stringify(commonOptions));
+            // Reuse RAM options for formatBytes on Y and Tooltip
+            const diskOptions = JSON.parse(JSON.stringify(ramOptions));
+
+            // Re-apply callbacks because JSON.stringify strips functions
+            diskOptions.plugins.tooltip.callbacks = {
+                label: (context) => ' ' + formatBytes(context.raw)
+            };
+            diskOptions.scales.y.ticks.callback = (value) => formatBytes(value);
+
             diskOptions.plugins.legend = {
                 display: true,
                 labels: { color: '#94a3b8', usePointStyle: true, boxWidth: 8 }
@@ -6747,22 +6747,23 @@ function updateCharts(metrics, keepDropdown = false) {
                     labels: netLabels,
                     datasets: [
                         {
-                            label: 'Read (MB/s)',
-                            data: ratesDiskRead,
+                            label: 'Used Space',
+                            data: diskUsages,
                             borderColor: '#fbbf24',
-                            backgroundColor: gradRead,
+                            backgroundColor: gradUsed,
                             borderWidth: 2,
                             fill: true,
                             tension: 0.4,
                             pointRadius: 0
                         },
                         {
-                            label: 'Write (MB/s)',
-                            data: ratesDiskWrite,
-                            borderColor: '#f59e0b',
-                            backgroundColor: gradWrite,
+                            label: 'Total Space',
+                            data: diskTotals,
+                            borderColor: '#9ca3af',
+                            backgroundColor: gradTotal, // transparent?
                             borderWidth: 2,
-                            fill: true,
+                            borderDash: [5, 5],
+                            fill: false,
                             tension: 0.4,
                             pointRadius: 0
                         }

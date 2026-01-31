@@ -141,8 +141,8 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 	// Storage Metrics
 	storageUsed := uint64(0)
 	storageTotal := uint64(0)
-	// Use df on the rootDir
-	storageRaw, _ := pc.runCommand(client, fmt.Sprintf("df -B1 %s | tail -1 | awk '{print $3,$2}'", rootDir))
+	// Storage Metrics (Host Root)
+	storageRaw, _ := pc.runCommand(client, "df -B1 / | tail -1 | awk '{print $3,$2}'")
 	fmt.Sscanf(strings.TrimSpace(storageRaw), "%d %d", &storageUsed, &storageTotal)
 
 	// Inodes
@@ -484,6 +484,8 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 			NetTX:          totalNetTX,
 			DiskRead:       totalDiskRead,
 			DiskWrite:      totalDiskWrite,
+			DiskUsage:      storageUsed,
+			DiskTotal:      storageTotal,
 			InterfacesData: interfacesJSON,
 		}
 		if err := pc.DB.InsertServerMetrics(metric); err != nil {

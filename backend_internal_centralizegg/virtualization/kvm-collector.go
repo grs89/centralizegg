@@ -522,6 +522,16 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 		}
 	}
 
+	// Calculate Total Disk Usage
+	var totalDiskUsage, totalDiskCapacity uint64
+	var parsedDisks []DiskStat
+	if err := json.Unmarshal([]byte(disksJSON), &parsedDisks); err == nil {
+		for _, d := range parsedDisks {
+			totalDiskUsage += d.Allocation
+			totalDiskCapacity += d.Capacity
+		}
+	}
+
 	// Insert Historical Metrics
 	metric := data_centralizegg.ServerMetric{
 		ServerID:       hostID,
@@ -533,12 +543,13 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 		NetTX:          totalNetTX,
 		DiskRead:       totalDiskRead,
 		DiskWrite:      totalDiskWrite,
+		DiskUsage:      totalDiskUsage,
+		DiskTotal:      totalDiskCapacity,
 		InterfacesData: interfacesJSON,
 	}
 	if err := mc.DB.InsertServerMetrics(metric); err != nil {
-		log.Printf("Failed to insert server metrics for %s: %v", s.Name, err)
+		log.Printf("[KVMCollector] Failed to insert metrics for %s: %v", s.Name, err)
 	}
-
 	flags := libvirt.ConnectListDomainsActive | libvirt.ConnectListDomainsInactive
 	domains, _, err := l.ConnectListAllDomains(100, flags)
 	if err != nil {
