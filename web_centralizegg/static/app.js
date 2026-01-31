@@ -6393,6 +6393,7 @@ let historyMetricsInitialized = false;
 let cpuChart = null;
 let ramChart = null;
 let netChart = null;
+let diskChart = null;
 
 function initHistoryMetrics() {
     if (historyMetricsInitialized) return;
@@ -6496,7 +6497,7 @@ function updateCharts(metrics, keepDropdown = false) {
 
     const labels = metrics.map(m => new Date(m.timestamp).toLocaleString());
     const sortedCpu = metrics.map(m => m.cpu_usage);
-    const sortedRam = metrics.map(m => m.memory_usage / (1024 * 1024 * 1024));
+    const sortedRam = metrics.map(m => m.memory_usage); // Keep as bytes for dynamic formatting
 
     // Handle Network Interface Selection
     const selector = document.getElementById('net-interface-selector');
@@ -6546,9 +6547,11 @@ function updateCharts(metrics, keepDropdown = false) {
 
     const ratesRx = [];
     const ratesTx = [];
+    const ratesDiskRead = [];
+    const ratesDiskWrite = [];
     const netLabels = [];
 
-    // Calculate network rates based on selected interface
+    // Calculate network and disk rates based on selected interface
     for (let i = 1; i < metrics.length; i++) {
         const t1 = new Date(metrics[i - 1].timestamp).getTime();
         const t2 = new Date(metrics[i].timestamp).getTime();
@@ -6557,6 +6560,7 @@ function updateCharts(metrics, keepDropdown = false) {
         netLabels.push(new Date(metrics[i].timestamp).toLocaleString());
 
         if (sec > 0) {
+            // Network
             let rx1 = metrics[i - 1].net_rx;
             let tx1 = metrics[i - 1].net_tx;
             let rx2 = metrics[i].net_rx;
@@ -6588,14 +6592,29 @@ function updateCharts(metrics, keepDropdown = false) {
             if (dRx < 0) dRx = rx2; // Assume reset to 0
             if (dTx < 0) dTx = tx2;
 
-            // Sanity check: if spike is impossibly large relative to duration (e.g. > 100Gbps), clip it?
-            // For now just raw.
-
             ratesRx.push((dRx / sec) * 8 / (1000 * 1000)); // Mbps
             ratesTx.push((dTx / sec) * 8 / (1000 * 1000)); // Mbps
+
+            // Disk
+            let read1 = metrics[i - 1].disk_read_bytes || 0;
+            let write1 = metrics[i - 1].disk_write_bytes || 0;
+            let read2 = metrics[i].disk_read_bytes || 0;
+            let write2 = metrics[i].disk_write_bytes || 0;
+
+            let dRead = read2 - read1;
+            let dWrite = write2 - write1;
+
+            if (dRead < 0) dRead = read2;
+            if (dWrite < 0) dWrite = write2;
+
+            ratesDiskRead.push((dRead / sec) / (1024 * 1024)); // MB/s
+            ratesDiskWrite.push((dWrite / sec) / (1024 * 1024)); // MB/s
+
         } else {
             ratesRx.push(0);
             ratesTx.push(0);
+            ratesDiskRead.push(0);
+            ratesDiskWrite.push(0);
         }
     }
 
@@ -6645,7 +6664,7 @@ function updateCharts(metrics, keepDropdown = false) {
     };
 
     // Helper to create or update chart
-    const createOrUpdateChart = (instance, id, type, label, data, color, fill = true, labelsOverride = null) => {
+    const createOrUpdateChart = (instance, id, type, label, data, color, fill = true, labelsOverride = null, customOptions = null) => {
         const canvas = document.getElementById(id);
         if (!canvas) return null;
 
@@ -6679,12 +6698,29 @@ function updateCharts(metrics, keepDropdown = false) {
                     pointBorderColor: '#fff'
                 }]
             },
-            options: commonOptions
+            options: customOptions || commonOptions
         });
     };
 
+    // --- Unit Formatter ---
+    const formatBytes = (bytes) => {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    };
+
     cpuChart = createOrUpdateChart(cpuChart, 'cpuChart', 'line', 'CPU Usage (%)', sortedCpu, '#38bdf8');
-    ramChart = createOrUpdateChart(ramChart, 'ramChart', 'line', 'RAM Usage (GB)', sortedRam, '#a855f7');
+
+    // Custom Options for RAM
+    const ramOptions = JSON.parse(JSON.stringify(commonOptions));
+    ramOptions.plugins.tooltip.callbacks = {
+        label: (context) => ' ' + formatBytes(context.raw)
+    };
+    ramOptions.scales.y.ticks.callback = (value) => formatBytes(value);
+
+    ramChart = createOrUpdateChart(ramChart, 'ramChart', 'line', 'RAM Usage', sortedRam, '#a855f7', true, null, ramOptions);
 
     // Disk Chart
     const canvasDisk = document.getElementById('diskChart');
