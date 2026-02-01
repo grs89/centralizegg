@@ -6780,9 +6780,10 @@ function initHistoryMetrics() {
         timeRange.addEventListener('change', loadHistoryMetrics);
     }
 
-    // Initialize Compact Mode, Anomaly Detection, and Auto-Refresh
+    // Initialize Compact Mode, Anomaly Detection, Capacity Planning, and Auto-Refresh
     initCompactMode();
     initAnomalyDetection();
+    initCapacityPlanning();
     initAutoRefresh();
 
     historyMetricsInitialized = true;
@@ -7308,6 +7309,111 @@ function applyAnomaliesToChart(chart, type) {
 
     chart.update('none'); // Update without animation for performance
 }
+
+// ========================================
+// CAPACITY PLANNING SYSTEM
+// ========================================
+
+let forecastEnabled = false;
+
+function initCapacityPlanning() {
+    const toggle = document.getElementById('show-forecast-toggle');
+    if (!toggle) return;
+
+    // Load saved preference
+    const saved = localStorage.getItem('history-show-forecast');
+    if (saved === 'true') {
+        forecastEnabled = true;
+        toggle.checked = true;
+    }
+
+    toggle.addEventListener('change', () => {
+        forecastEnabled = toggle.checked;
+        localStorage.setItem('history-show-forecast', forecastEnabled);
+        updateForecastVisualization();
+    });
+}
+
+function calculateLinearRegression(values) {
+    if (!values || values.length < 5) return null;
+
+    const n = values.length;
+    let sumX = 0;
+    let sumY = 0;
+    let sumXY = 0;
+    let sumXX = 0;
+
+    // Use index as X to simplify timestamp handling
+    for (let i = 0; i < n; i++) {
+        const x = i;
+        const y = values[i];
+
+        if (y === null || y === undefined || isNaN(y)) continue;
+
+        sumX += x;
+        sumY += y;
+        sumXY += x * y;
+        sumXX += x * x;
+    }
+
+    const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+    const intercept = (sumY - slope * sumX) / n;
+
+    return { slope, intercept };
+}
+
+function updateForecastVisualization() {
+    // Apply forecasting primarily to Disk Usage, as it's the most relevant for capacity planning
+    applyForecastToChart(diskChart, 'disk');
+
+    // Optionally apply to others if useful
+    // applyForecastToChart(cpuChart, 'cpu');
+    // applyForecastToChart(ramChart, 'ram');
+}
+
+function applyForecastToChart(chart, type) {
+    if (!chart || !chart.data || !chart.data.datasets) return;
+
+    // Remove existing forecast dataset
+    chart.data.datasets = chart.data.datasets.filter(ds => ds.label !== 'Proyección');
+
+    if (forecastEnabled) {
+        // Find main dataset
+        const mainDataset = chart.data.datasets[0];
+        if (!mainDataset || !mainDataset.data || mainDataset.data.length < 5) return;
+
+        const mainData = mainDataset.data;
+        const regression = calculateLinearRegression(mainData);
+
+        if (regression) {
+            // Generate trend line points
+            const trendData = mainData.map((_, i) => {
+                const val = regression.slope * i + regression.intercept;
+                return Math.max(0, val); // Clamp to positive
+            });
+
+            // Projection: Extend 20% into future (visual effect only for now)
+            // Note: Chart.js X-axis would need extension to show future properly.
+            // For now, we overlay the trend on existing data to show direction.
+
+            chart.data.datasets.push({
+                label: 'Proyección',
+                data: trendData,
+                type: 'line',
+                borderColor: '#ffffff',
+                borderWidth: 2,
+                borderDash: [5, 5],
+                pointRadius: 0,
+                fill: false,
+                order: 0,
+                tension: 0
+            });
+        }
+    }
+
+    chart.update('none');
+}
+
 
 function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
     if (!metrics) metrics = [];
@@ -8183,6 +8289,9 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
 
     // Update anomalies if enabled
     updateAnomalyVisualization();
+
+    // Update forecast if enabled
+    updateForecastVisualization();
 }
 
 
