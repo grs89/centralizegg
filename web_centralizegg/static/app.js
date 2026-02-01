@@ -5272,9 +5272,15 @@ class NetworkMap {
 
         if (Math.abs(hLat - rLat) < 0.0001 && Math.abs(hLon - rLon) < 0.0001) return;
 
+        // Validate coordinates to prevent NaN errors
+        if (!isFinite(rLat) || !isFinite(rLon) || !isFinite(hLat) || !isFinite(hLon)) {
+            console.warn('[NetworkMap] Invalid coordinates, skipping line:', { rLat, rLon, hLat, hLon });
+            return;
+        }
+
         const isInbound = conn.inbound > conn.outbound;
         const color = isInbound ? '#ef4444' : '#22c55e';
-        const pulse = isInbound ? '#fca5a5' : '#86efac'; // Lighter shades for pulse
+        const pulse = isInbound ? '#fca5a5' : '#86efac';
 
         // Generate Curved Path (Bezier)
         const latlngs = this.getCurvedPath([rLat, rLon], [hLat, hLon], isInbound);
@@ -6858,9 +6864,14 @@ async function loadHistoryMetrics() {
 async function loadHostLogs(category, id) {
     const logsContainer = document.getElementById('history-logs-container');
     const logsContent = document.getElementById('history-host-logs');
-    if (!logsContainer || !logsContent) return;
+    if (!logsContainer || !logsContent) {
+        console.log('Log containers not found');
+        return;
+    }
 
+    // Ensure card is visible
     logsContainer.classList.remove('hidden');
+    logsContainer.style.display = 'block';
     logsContent.innerHTML = '<div style="opacity: 0.5;"><i class="fa-solid fa-circle-notch fa-spin"></i> Obteniendo logs del host...</div>';
 
     try {
@@ -6873,23 +6884,90 @@ async function loadHostLogs(category, id) {
             return;
         }
 
-        // Elegant rendering with simple highlighting
-        const lines = data.logs.split('\n').map(line => {
-            let color = '#a1a1aa';
-            if (line.toLowerCase().includes('error') || line.toLowerCase().includes('failed') || line.toLowerCase().includes('crit')) color = '#f87171';
-            else if (line.toLowerCase().includes('warn')) color = '#fbbf24';
-            else if (line.toLowerCase().includes('info') || line.toLowerCase().includes('success')) color = '#60a5fa';
+        // Store all logs globally for search filtering
+        const logLines = data.logs.split('\n').filter(line => line.trim());
+        window.allHostLogs = logLines;
 
-            return `<div style="color: ${color}; margin-bottom: 2px;">${line}</div>`;
-        }).join('');
+        // Display logs (initially all)
+        displayFilteredLogs(logLines);
 
-        logsContent.innerHTML = lines;
+        // Setup search if not already done
+        setupLogSearch();
+
         // Auto-scroll to bottom
         logsContent.scrollTop = logsContent.scrollHeight;
 
     } catch (err) {
         logsContent.innerHTML = `<div style="color: #f87171;">Error: ${err.message}</div>`;
     }
+}
+
+// Store all logs for filtering
+window.allHostLogs = [];
+
+// Display filtered logs with highlighting
+function displayFilteredLogs(logs) {
+    const logsContent = document.getElementById('history-host-logs');
+    if (!logsContent) return;
+
+    if (!logs || logs.length === 0) {
+        logsContent.innerHTML = '<div style="opacity: 0.5;">No hay logs disponibles</div>';
+        return;
+    }
+
+    const searchTerm = document.getElementById('log-search-input')?.value.toLowerCase() || '';
+
+    // Filter logs based on search term
+    const filteredLogs = searchTerm
+        ? logs.filter(log => log.toLowerCase().includes(searchTerm))
+        : logs;
+
+    if (filteredLogs.length === 0) {
+        logsContent.innerHTML = '<div style="opacity: 0.5; color: #f59e0b;">No se encontraron logs con ese término</div>';
+        return;
+    }
+
+    // Build HTML with color coding and highlighting
+    let html = '';
+    filteredLogs.forEach(log => {
+        let color = '#a1a1aa';
+        if (log.toLowerCase().includes('error') || log.toLowerCase().includes('failed') || log.toLowerCase().includes('crit')) color = '#f87171';
+        else if (log.toLowerCase().includes('warn')) color = '#fbbf24';
+        else if (log.toLowerCase().includes('info') || log.toLowerCase().includes('success')) color = '#60a5fa';
+
+        let displayLog = log;
+
+        // Highlight search term if present
+        if (searchTerm) {
+            const regex = new RegExp(`(${escapeRegex(searchTerm)})`, 'gi');
+            displayLog = displayLog.replace(regex, '<span style="background: #f59e0b; color: #000; padding: 1px 3px; border-radius: 2px; font-weight: bold;">$1</span>');
+        }
+
+        html += `<div style="color: ${color}; margin-bottom: 2px;">${displayLog}</div>`;
+    });
+
+    logsContent.innerHTML = html;
+}
+
+// Escape regex special characters
+function escapeRegex(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Setup search event listener (once)
+let searchSetup = false;
+function setupLogSearch() {
+    if (searchSetup) return;
+    searchSetup = true;
+
+    const searchInput = document.getElementById('log-search-input');
+    if (!searchInput) return;
+
+    searchInput.addEventListener('input', () => {
+        if (window.allHostLogs && window.allHostLogs.length > 0) {
+            displayFilteredLogs(window.allHostLogs);
+        }
+    });
 }
 
 let currentHistoryMetrics = [];
