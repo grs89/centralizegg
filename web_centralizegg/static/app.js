@@ -6627,6 +6627,85 @@ window.resetThresholds = function () {
 // END THRESHOLDS MANAGEMENT SYSTEM
 // ========================================
 
+// ========================================
+// TREND ANALYSIS & PREDICTIONS
+// ========================================
+
+// Linear regression for trend analysis
+function linearRegression(xValues, yValues) {
+    const n = xValues.length;
+    if (n < 2) return null;
+
+    let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+
+    for (let i = 0; i < n; i++) {
+        sumX += xValues[i];
+        sumY += yValues[i];
+        sumXY += xValues[i] * yValues[i];
+        sumXX += xValues[i] * xValues[i];
+    }
+
+    const denominator = (n * sumXX - sumX * sumX);
+    if (denominator === 0) return null;
+
+    const slope = (n * sumXY - sumX * sumY) / denominator;
+    const intercept = (sumY - slope * sumX) / n;
+
+    return { slope, intercept };
+}
+
+// Generate trend line and predictions
+function calculateTrendLine(dataPoints, futurePoints = 5) {
+    // Filter out null values and create indexed data
+    const validData = dataPoints
+        .map((value, index) => ({ x: index, y: value }))
+        .filter(p => p.y != null && !isNaN(p.y) && isFinite(p.y));
+
+    if (validData.length < 3) return null; // Need at least 3 points
+
+    const regression = linearRegression(
+        validData.map(p => p.x),
+        validData.map(p => p.y)
+    );
+
+    if (!regression) return null;
+
+    const { slope, intercept } = regression;
+
+    // Generate trend line for existing data
+    const trendLine = dataPoints.map((_, index) => {
+        const y = slope * index + intercept;
+        return y >= 0 ? y : null; // No negative values
+    });
+
+    // Generate future predictions
+    const lastIndex = dataPoints.length - 1;
+    const predictions = [];
+
+    for (let i = 1; i <= futurePoints; i++) {
+        const x = lastIndex + i;
+        const y = slope * x + intercept;
+        predictions.push(y >= 0 ? y : 0);
+    }
+
+    return {
+        trendLine,
+        predictions,
+        slope,
+        growthRate: slope // Growth per time unit
+    };
+}
+
+// Check if trends should be shown
+function shouldShowTrends() {
+    const toggle = document.getElementById('show-trends-toggle');
+    return toggle ? toggle.checked : false;
+}
+
+// ========================================
+// END TREND ANALYSIS
+// ========================================
+
 // Reset zoom for all charts
 function resetAllChartsZoom() {
     [cpuChart, ramChart, diskChart, netChart, diskIOChart].forEach(chart => {
@@ -6657,6 +6736,25 @@ function initHistoryMetrics() {
     const resetZoomBtn = document.getElementById('reset-zoom-btn');
     if (resetZoomBtn) {
         resetZoomBtn.addEventListener('click', resetAllChartsZoom);
+    }
+
+    // Trends toggle
+    const trendsToggle = document.getElementById('show-trends-toggle');
+    if (trendsToggle) {
+        // Load saved preference
+        const savedPref = localStorage.getItem('show-trends');
+        if (savedPref === 'true') {
+            trendsToggle.checked = true;
+        }
+
+        trendsToggle.addEventListener('change', (e) => {
+            localStorage.setItem('show-trends', e.target.checked);
+            // Reload charts with/without trends
+            const selectedServer = document.getElementById('history-server-select')?.value;
+            if (selectedServer) {
+                loadHistoryMetrics();
+            }
+        });
     }
 
     if (serverSelect) {
@@ -7241,10 +7339,90 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
     };
 
-    // CPU Chart with thresholds
+    // CPU Chart with thresholds and trends
     const cpuOptions = JSON.parse(JSON.stringify(commonOptions));
     cpuOptions.plugins.annotation = getThresholdAnnotations('cpu', 100);
-    cpuChart = createOrUpdateChart(cpuChart, 'cpuChart', 'line', 'CPU Usage (%)', sortedCpu, '#38bdf8', true, null, cpuOptions);
+
+    // Check if trends should be shown
+    if (shouldShowTrends()) {
+        const trendData = calculateTrendLine(sortedCpu, 5);
+        if (trendData) {
+            // Prepare datasets
+            const cpuDatasets = [
+                {
+                    label: 'CPU Usage (%)',
+                    data: sortedCpu,
+                    borderColor: '#38bdf8',
+                    backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 6,
+                    spanGaps: false
+                },
+                {
+                    label: 'Tendencia',
+                    data: trendData.trendLine,
+                    borderColor: 'rgba(56, 189, 248, 0.5)',
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    fill: false,
+                    pointRadius: 0,
+                    tension: 0
+                }
+            ];
+
+            // Add predictions with extended labels
+            const extendedLabels = [...netLabels];
+            if (netLabels.length > 0) {
+                const lastTime = new Date(netLabels[netLabels.length - 1]);
+                for (let i = 1; i <= trendData.predictions.length; i++) {
+                    const futureTime = new Date(lastTime.getTime() + i * 3600000); // +1 hour
+                    extendedLabels.push(futureTime.toLocaleTimeString());
+                }
+
+                const predictionData = new Array(sortedCpu.length).fill(null).concat(trendData.predictions);
+                cpuDatasets.push({
+                    label: 'Predicción',
+                    data: predictionData,
+                    borderColor: 'rgba(251, 191, 36, 0.7)',
+                    borderWidth: 2,
+                    borderDash: [2, 2],
+                    fill: false,
+                    pointRadius: 0,
+                    tension: 0
+                });
+            }
+
+            // Enable legend when showing trends
+            cpuOptions.plugins.legend = {
+                display: true,
+                labels: { color: '#94a3b8', usePointStyle: true, boxWidth: 8 }
+            };
+
+            // Create/update chart with multiple datasets
+            const cpuCanvas = document.getElementById('cpuChart');
+            if (cpuCanvas) {
+                const ctx = cpuCanvas.getContext('2d');
+                if (cpuChart) cpuChart.destroy();
+                cpuChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: extendedLabels.length > netLabels.length ? extendedLabels : netLabels,
+                        datasets: cpuDatasets
+                    },
+                    options: cpuOptions
+                });
+            }
+        } else {
+            // Not enough data for trends, fallback to regular chart
+            cpuChart = createOrUpdateChart(cpuChart, 'cpuChart', 'line', 'CPU Usage (%)', sortedCpu, '#38bdf8', true, null, cpuOptions);
+        }
+    } else {
+        // Trends disabled, show regular chart
+        cpuChart = createOrUpdateChart(cpuChart, 'cpuChart', 'line', 'CPU Usage (%)', sortedCpu, '#38bdf8', true, null, cpuOptions);
+    }
 
     // Custom Options for RAM
     const ramOptions = JSON.parse(JSON.stringify(commonOptions));
