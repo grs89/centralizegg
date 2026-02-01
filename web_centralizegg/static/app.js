@@ -6017,6 +6017,7 @@ class KubernetesTopologyMap {
             return;
         }
 
+
         // Structure changed, update cache and redraw
         this.lastNodeIds = currentNodeIds;
         this.lastPodIds = currentPodIds;
@@ -8862,5 +8863,10 @@ async function showContainerLogs(type, serverId, containerId, containerName, cpu
         contentEl.textContent = `Error: ${e.message}`;
         contentEl.style.color = '#ef4444';
     }
+}
+
+// Expose NetworkMap globally for history-map.js
+if (typeof NetworkMap !== 'undefined') {
+    window.NetworkMap = NetworkMap;
 }
 

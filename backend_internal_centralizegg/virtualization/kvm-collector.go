@@ -460,26 +460,69 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 		}
 	}
 
-	h := data_centralizegg.Host{
-		ServerID:         s.ID,
-		Hostname:         hostName,
-		CPUModel:         int8ToString(model[:]),
-		CPUCores:         int(cpus),
-		TotalMemory:      uint64(memory) * 1024,
-		FreeMemory:       freeMem,
-		CPUUsage:         cpuUsage,
-		OSName:           osName,
-		PublicIP:         publicIP,
-		DNSServers:       dnsServers,
-		Uptime:           uptime,
-		UpdateStatus:     updateStatus,
-		Temperature:      temperature,
-		Disks:            disksJSON,
-		BridgeInterfaces: bridgesJSON,
-		OOMEvents:        oomJSON,
-		HostEvents:       hostEventsJSON,
+	// Active Connections
+	activeConnsJSON := "[]"
+	connsOutput, err := mc.runCommand(sshClient, `ss -tunp state established 2>/dev/null | grep -vE '127\.0\.0\.1|::1|169\.254\.' | awk 'NR>1 {print $5}'`)
+	if err == nil {
+		type ConnStat struct {
+			RemoteIP string `json:"remote_ip"`
+			Inbound  int    `json:"inbound"`
+			Outbound int    `json:"outbound"`
+		}
+		statsMap := make(map[string]*ConnStat)
+		lines := strings.Split(strings.TrimSpace(connsOutput), "\n")
+		for _, line := range lines {
+			remoteAddr := strings.TrimSpace(line)
+			if remoteAddr == "" {
+				continue
+			}
+			lastColon := strings.LastIndex(remoteAddr, ":")
+			if lastColon > 0 {
+				remoteIP := remoteAddr[:lastColon]
+				remoteIP = strings.TrimPrefix(strings.TrimSuffix(remoteIP, "]"), "[")
+				// Filter private, etc. (reuse logic if desired, or simple aggregation)
+				// Basic private IP filtering
+				isPrivate := strings.HasPrefix(remoteIP, "10.") ||
+					strings.HasPrefix(remoteIP, "192.168.") ||
+					strings.HasPrefix(remoteIP, "127.") ||
+					strings.HasPrefix(remoteIP, "::1")
+
+				if !isPrivate {
+					if _, exists := statsMap[remoteIP]; !exists {
+						statsMap[remoteIP] = &ConnStat{RemoteIP: remoteIP}
+					}
+					statsMap[remoteIP].Outbound++ // Assuming established outbound primarily or mixed. SS doesn't strictly distinguish direction easily without more flags, but we treat as activity.
+				}
+			}
+		}
+		var statsList []ConnStat
+		for _, s := range statsMap {
+			statsList = append(statsList, *s)
+		}
+		b, _ := json.Marshal(statsList)
+		activeConnsJSON = string(b)
 	}
 
+	h := data_centralizegg.Host{
+		ServerID:          s.ID,
+		Hostname:          hostName,
+		CPUModel:          int8ToString(model[:]),
+		CPUCores:          int(cpus),
+		TotalMemory:       uint64(memory) * 1024,
+		FreeMemory:        freeMem,
+		CPUUsage:          cpuUsage,
+		OSName:            osName,
+		PublicIP:          publicIP,
+		DNSServers:        dnsServers,
+		Uptime:            uptime,
+		UpdateStatus:      updateStatus,
+		Temperature:       temperature,
+		Disks:             disksJSON,
+		BridgeInterfaces:  bridgesJSON,
+		OOMEvents:         oomJSON,
+		HostEvents:        hostEventsJSON,
+		ActiveConnections: activeConnsJSON,
+	}
 	hostID, err := mc.DB.UpsertHost(h)
 	if err != nil {
 		return fmt.Errorf("upsert host: %w", err)
@@ -812,6 +855,18 @@ func (mc *MultiCollector) GetHostLogs(id int64) (string, error) {
 		return string(output), err
 	}
 	return string(output), nil
+}
+
+// runCommand executes a command on the remote host via SSH
+func (mc *MultiCollector) runCommand(client *ssh.Client, cmd string) (string, error) {
+	session, err := client.NewSession()
+	if err != nil {
+		return "", err
+	}
+	defer session.Close()
+
+	output, err := session.CombinedOutput(cmd)
+	return string(output), err
 }
 
 func (mc *MultiCollector) getSSHClient(s data_centralizegg.KVMServer) (*ssh.Client, error) {

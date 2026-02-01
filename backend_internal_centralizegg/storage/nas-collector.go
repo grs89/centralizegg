@@ -89,18 +89,62 @@ func (nc *NasCollector) collectOne(s data_centralizegg.GenericServer) error {
 		osName = "Unknown Linux"
 	}
 
+	// Active Connections
+	activeConnsJSON := "[]"
+	connsOutput, err := nc.runCommand(client, `ss -tunp state established 2>/dev/null | grep -vE '127\.0\.0\.1|::1|169\.254\.' | awk 'NR>1 {print $5}'`)
+	if err == nil {
+		type ConnStat struct {
+			RemoteIP string `json:"remote_ip"`
+			Inbound  int    `json:"inbound"`
+			Outbound int    `json:"outbound"`
+		}
+		statsMap := make(map[string]*ConnStat)
+		lines := strings.Split(strings.TrimSpace(connsOutput), "\n")
+		for _, line := range lines {
+			remoteAddr := strings.TrimSpace(line)
+			if remoteAddr == "" {
+				continue
+			}
+			lastColon := strings.LastIndex(remoteAddr, ":")
+			if lastColon > 0 {
+				remoteIP := remoteAddr[:lastColon]
+				remoteIP = strings.TrimPrefix(strings.TrimSuffix(remoteIP, "]"), "[")
+
+				// Filter private, etc.
+				isPrivate := strings.HasPrefix(remoteIP, "10.") ||
+					strings.HasPrefix(remoteIP, "192.168.") ||
+					strings.HasPrefix(remoteIP, "127.") ||
+					strings.HasPrefix(remoteIP, "::1")
+
+				if !isPrivate {
+					if _, exists := statsMap[remoteIP]; !exists {
+						statsMap[remoteIP] = &ConnStat{RemoteIP: remoteIP}
+					}
+					statsMap[remoteIP].Outbound++
+				}
+			}
+		}
+		var statsList []ConnStat
+		for _, s := range statsMap {
+			statsList = append(statsList, *s)
+		}
+		b, _ := json.Marshal(statsList)
+		activeConnsJSON = string(b)
+	}
+
 	hostID, err := nc.DB.UpsertNasHost(data_centralizegg.NasHost{
-		ServerID:    s.ID,
-		Hostname:    strings.TrimSpace(hostname),
-		Status:      "online",
-		CPUModel:    strings.TrimSpace(cpuModelRaw),
-		CPUCores:    cpuCores,
-		TotalMemory: memTotal,
-		FreeMemory:  memFree,
-		CPUUsage:    cpuUsage,
-		OSName:      strings.TrimSpace(osName),
-		KernelVer:   strings.TrimSpace(uname),
-		Uptime:      strings.TrimSpace(uptime),
+		ServerID:          s.ID,
+		Hostname:          strings.TrimSpace(hostname),
+		Status:            "online",
+		CPUModel:          strings.TrimSpace(cpuModelRaw),
+		CPUCores:          int(cpuCores),
+		TotalMemory:       memTotal,
+		FreeMemory:        memFree,
+		CPUUsage:          cpuUsage,
+		OSName:            strings.TrimSpace(osName),
+		KernelVer:         strings.TrimSpace(uname),
+		Uptime:            strings.TrimSpace(uptime),
+		ActiveConnections: activeConnsJSON,
 	})
 	if err != nil {
 		return err

@@ -432,26 +432,30 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 			"disk_total": diskTotal,
 		}
 
+		// Active Connections Collection
+		activeConnsJSON := "[]" // Placeholder for now, as direct kubectl top doesn't provide this easily.
+
 		nodeID, err := kc.DB.UpsertKubernetesNode(data_centralizegg.KubernetesNode{
-			ServerID:         s.ID,
-			Hostname:         name,
-			IPAddress:        ip,
-			Status:           status,
-			Version:          item.Status.NodeInfo.KubeletVersion,
-			OSName:           item.Status.NodeInfo.OSImage,
-			KernelVer:        item.Status.NodeInfo.KernelVersion,
-			Architecture:     item.Status.NodeInfo.Architecture,
-			ContainerRuntime: item.Status.NodeInfo.ContainerRuntimeVersion,
-			CPUCores:         cpuCores,
-			TotalMemory:      totalMem,
-			CPUUsage:         m.CPUUsage,
-			FreeMemory:       totalMem - m.MemUsage,
-			DiskTotal:        diskTotal,
-			DiskUsed:         diskUsed,
-			NetRX:            netRX,
-			NetTX:            netTX,
-			NetRXRate:        rxRate,
-			NetTXRate:        txRate,
+			ServerID:          s.ID,
+			Hostname:          name,
+			IPAddress:         ip,
+			Status:            status,
+			Version:           item.Status.NodeInfo.KubeletVersion,
+			OSName:            item.Status.NodeInfo.OSImage,
+			KernelVer:         item.Status.NodeInfo.KernelVersion,
+			Architecture:      item.Status.NodeInfo.Architecture,
+			ContainerRuntime:  item.Status.NodeInfo.ContainerRuntimeVersion,
+			CPUCores:          cpuCores,
+			TotalMemory:       totalMem,
+			CPUUsage:          m.CPUUsage,
+			FreeMemory:        totalMem - m.MemUsage,
+			DiskTotal:         diskTotal,
+			DiskUsed:          diskUsed,
+			NetRX:             netRX,
+			NetTX:             netTX,
+			NetRXRate:         rxRate,
+			NetTXRate:         txRate,
+			ActiveConnections: activeConnsJSON,
 		})
 		if err != nil {
 			log.Printf("[KubernetesCollector] Failed to upsert node %s: %v", name, err)

@@ -318,29 +318,92 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 		}
 	}
 
+	// Active Connections Collection
+	var activeConnsJSON = "[]"
+	connsOutput, err := dc.runCommand(client, `ss -tunp state established 2>/dev/null | grep -vE '127\.0\.0\.1|::1|169\.254\.' | awk 'NR>1 {print $5}'`)
+	if err == nil {
+		type ConnStat struct {
+			RemoteIP string `json:"remote_ip"`
+			Inbound  int    `json:"inbound"`
+			Outbound int    `json:"outbound"`
+		}
+		statsMap := make(map[string]*ConnStat)
+		lines := strings.Split(strings.TrimSpace(connsOutput), "\n")
+		for _, line := range lines {
+			remoteAddr := strings.TrimSpace(line)
+			if remoteAddr == "" {
+				continue
+			}
+			lastColon := strings.LastIndex(remoteAddr, ":")
+			if lastColon > 0 {
+				remoteIP := remoteAddr[:lastColon]
+				remoteIP = strings.TrimPrefix(strings.TrimSuffix(remoteIP, "]"), "[")
+
+				// Filter private IPs
+				isPrivate := strings.HasPrefix(remoteIP, "10.") ||
+					strings.HasPrefix(remoteIP, "192.168.") ||
+					strings.HasPrefix(remoteIP, "172.16.") ||
+					strings.HasPrefix(remoteIP, "172.17.") ||
+					strings.HasPrefix(remoteIP, "172.18.") ||
+					strings.HasPrefix(remoteIP, "172.19.") ||
+					strings.HasPrefix(remoteIP, "172.2") ||
+					strings.HasPrefix(remoteIP, "172.30.") ||
+					strings.HasPrefix(remoteIP, "172.31.") ||
+					strings.HasPrefix(remoteIP, "127.") ||
+					strings.HasPrefix(remoteIP, "::1") ||
+					strings.HasPrefix(remoteIP, "fe80:")
+
+				if !isPrivate && remoteIP != "" {
+					if _, exists := statsMap[remoteIP]; !exists {
+						statsMap[remoteIP] = &ConnStat{RemoteIP: remoteIP}
+					}
+					statsMap[remoteIP].Outbound++
+				}
+			}
+		}
+		var statsList []ConnStat
+		for _, s := range statsMap {
+			statsList = append(statsList, *s)
+		}
+		// Sort by total (Outbound in this case)
+		for i := 0; i < len(statsList); i++ {
+			for j := i + 1; j < len(statsList); j++ {
+				if statsList[j].Outbound > statsList[i].Outbound {
+					statsList[i], statsList[j] = statsList[j], statsList[i]
+				}
+			}
+		}
+		if len(statsList) > 100 {
+			statsList = statsList[:100]
+		}
+		b, _ := json.Marshal(statsList)
+		activeConnsJSON = string(b)
+	}
+
 	hostID, err := dc.DB.UpsertDockerHost(data_centralizegg.DockerHost{
-		ServerID:      s.ID,
-		Hostname:      hostname,
-		CPUModel:      cpuModel,
-		CPUCores:      cpuCores,
-		TotalMemory:   memTotal,
-		FreeMemory:    memFree,
-		CPUUsage:      cpuUsage,
-		OSName:        osName,
-		Uptime:        uptime,
-		DockerVer:     dockerVer,
-		ServiceStatus: serviceStatus,
-		SocketStatus:  socketStatus,
-		APILatency:    apiLatency,
-		StorageUsed:   storageUsed,
-		StorageTotal:  storageTotal,
-		InodesUsage:   inodesUsage,
-		LogsSize:      dockerLogsSize,
-		Volumes:       volumesJSON,
-		Networks:      networksJSON,
-		GPUInfo:       gpuJSON,
-		UpdateStatus:  "Up to Date",
-		HostEvents:    hostEventsJSON,
+		ServerID:          s.ID,
+		Hostname:          hostname,
+		CPUModel:          cpuModel,
+		CPUCores:          cpuCores,
+		TotalMemory:       memTotal,
+		FreeMemory:        memFree,
+		CPUUsage:          cpuUsage,
+		OSName:            osName,
+		Uptime:            uptime,
+		DockerVer:         dockerVer,
+		ServiceStatus:     serviceStatus,
+		SocketStatus:      socketStatus,
+		APILatency:        apiLatency,
+		StorageUsed:       storageUsed,
+		StorageTotal:      storageTotal,
+		InodesUsage:       inodesUsage,
+		LogsSize:          dockerLogsSize,
+		Volumes:           volumesJSON,
+		Networks:          networksJSON,
+		GPUInfo:           gpuJSON,
+		UpdateStatus:      "Up to Date",
+		HostEvents:        hostEventsJSON,
+		ActiveConnections: activeConnsJSON,
 	})
 	if err == nil {
 		dc.DB.UpdateGenericServerHostEvents("docker", s.ID, hostEventsJSON)
