@@ -6643,14 +6643,14 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
         sortedCpu = metrics.map(m => {
             try {
                 const ndata = JSON.parse(m.nodes_data || "{}");
-                return ndata[selectedNode] ? ndata[selectedNode].cpu_usage : 0;
-            } catch (e) { return 0; }
+                return ndata[selectedNode] ? ndata[selectedNode].cpu_usage : null;
+            } catch (e) { return null; }
         });
         sortedRam = metrics.map(m => {
             try {
                 const ndata = JSON.parse(m.nodes_data || "{}");
-                return ndata[selectedNode] ? ndata[selectedNode].mem_usage : 0;
-            } catch (e) { return 0; }
+                return ndata[selectedNode] ? ndata[selectedNode].mem_usage : null;
+            } catch (e) { return null; }
         });
     }
 
@@ -6798,11 +6798,11 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
                 // For Kubernetes nodes, rxRate/txRate were stored directly in nodes_data as rates
                 try {
                     const nd2 = JSON.parse(metrics[i].nodes_data || "{}")[selectedNode] || {};
-                    ratesRx.push((nd2.net_rx || 0) * 8); // Convert to bits
-                    ratesTx.push((nd2.net_tx || 0) * 8);
+                    ratesRx.push(nd2.net_rx != null ? nd2.net_rx * 8 : null); // Convert to bits
+                    ratesTx.push(nd2.net_tx != null ? nd2.net_tx * 8 : null);
                 } catch (e) {
-                    ratesRx.push(0);
-                    ratesTx.push(0);
+                    ratesRx.push(null);
+                    ratesTx.push(null);
                 }
             } else {
                 ratesRx.push((dRx / sec) * 8);
@@ -6832,9 +6832,9 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
             if (selectedNode !== "total") {
                 // Currently Kubernetes nodes don't easily provide I/O rates in Summary API
                 // unless we enhance the collector further with SSH fallback per node.
-                // We'll show 0 for now or try to extract from ndata if we added it.
-                ratesDiskRead.push(0);
-                ratesDiskWrite.push(0);
+                // We'll show null for now or try to extract from ndata if we added it.
+                ratesDiskRead.push(null);
+                ratesDiskWrite.push(null);
             } else if (selectedDisk !== "total") {
                 r1 = 0; w1 = 0; r2 = 0; w2 = 0;
                 try {
@@ -6860,11 +6860,14 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
             ratesDiskWrite.push(dw / sec);
 
         } else {
-            ratesRx.push(0);
-            ratesTx.push(0);
-            netCapacities.push(0);
-            ratesDiskRead.push(0);
-            ratesDiskWrite.push(0);
+            // No valid time delta - push null to show gaps in charts
+            ratesRx.push(null);
+            ratesTx.push(null);
+            netCapacities.push(null);
+            diskUsages.push(null);
+            diskTotals.push(null);
+            ratesDiskRead.push(null);
+            ratesDiskWrite.push(null);
         }
     }
 
@@ -6945,7 +6948,8 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
                     fill: fill,
                     tension: 0.4,
                     pointBackgroundColor: color,
-                    pointBorderColor: '#fff'
+                    pointBorderColor: '#fff',
+                    spanGaps: false  // Don't connect lines across null values
                 }]
             },
             options: customOptions || commonOptions
@@ -6990,7 +6994,8 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
                 borderWidth: 2,
                 fill: true,
                 tension: 0.4,
-                pointRadius: 0
+                pointRadius: 0,
+                spanGaps: false  // Don't connect lines across null values
             }
         ]
     };
@@ -7005,7 +7010,8 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
             borderDash: [5, 5],
             fill: false,
             pointRadius: 0,
-            tension: 0
+            tension: 0,
+            spanGaps: false
         });
     }
 
@@ -7061,7 +7067,8 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
                             borderWidth: 2,
                             fill: true,
                             tension: 0.4,
-                            pointRadius: 0
+                            pointRadius: 0,
+                            spanGaps: false
                         },
                         {
                             label: 'Total Space',
@@ -7072,7 +7079,8 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
                             borderDash: [5, 5],
                             fill: false,
                             tension: 0.4,
-                            pointRadius: 0
+                            pointRadius: 0,
+                            spanGaps: false
                         }
                     ]
                 },
@@ -7139,7 +7147,8 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
                             fill: true,
                             tension: 0.4,
                             pointRadius: 0,
-                            pointHoverRadius: 5
+                            pointHoverRadius: 5,
+                            spanGaps: false
                         },
                         {
                             label: 'TX',
@@ -7150,7 +7159,8 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
                             fill: true,
                             tension: 0.4,
                             pointRadius: 0,
-                            pointHoverRadius: 5
+                            pointHoverRadius: 5,
+                            spanGaps: false
                         },
                         {
                             label: 'Capacity',
@@ -7161,7 +7171,8 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
                             borderDash: [5, 5],
                             fill: false,
                             tension: 0,
-                            pointRadius: 0
+                            pointRadius: 0,
+                            spanGaps: false
                         }
                     ]
                 },
@@ -7206,7 +7217,8 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
                             borderWidth: 2,
                             fill: true,
                             tension: 0.4,
-                            pointRadius: 0
+                            pointRadius: 0,
+                            spanGaps: false
                         },
                         {
                             label: 'Escritura',
@@ -7216,7 +7228,8 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
                             borderWidth: 2,
                             fill: true,
                             tension: 0.4,
-                            pointRadius: 0
+                            pointRadius: 0,
+                            spanGaps: false
                         }
                     ]
                 },
