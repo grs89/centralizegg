@@ -311,6 +311,27 @@
                                     <i class="fa-solid fa-chart-line"></i> Mostrar Tendencias
                                 </label>
                             </div>
+                            <!-- Auto-Refresh Controls -->
+                            <div style="display: flex; align-items: center; gap: 10px; margin-left: 15px;">
+                                <input type="checkbox" id="auto-refresh-toggle"
+                                    style="cursor: pointer; width: 18px; height: 18px;">
+                                <label for="auto-refresh-toggle"
+                                    style="color: var(--text-secondary); font-size: 0.9rem; cursor: pointer; user-select: none;">
+                                    <i class="fa-solid fa-arrows-rotate"></i> Auto-Refresh
+                                </label>
+                                <select id="refresh-interval" class="glass-input"
+                                    style="padding: 5px 10px; font-size: 0.85rem; width: auto;" disabled>
+                                    <option value="30">30s</option>
+                                    <option value="60" selected>1min</option>
+                                    <option value="120">2min</option>
+                                    <option value="300">5min</option>
+                                    <option value="600">10min</option>
+                                </select>
+                                <span id="refresh-countdown"
+                                    style="color: #94a3b8; font-size: 0.85rem; min-width: 60px; display: none;">
+                                    --
+                                </span>
+                            </div>
                         </div>
 
                         <div class="charts-grid"

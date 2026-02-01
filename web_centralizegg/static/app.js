@@ -6403,6 +6403,13 @@ let diskChart = null;
 let diskIOChart = null;
 let tempChart = null;
 
+// Auto-refresh state
+let autoRefreshEnabled = false;
+let autoRefreshInterval = 60; // seconds
+let autoRefreshTimer = null;
+let refreshCountdownTimer = null;
+let nextRefreshTime = null;
+
 // =======================
 // HISTORY METRICS TOOL
 // =======================
@@ -6772,8 +6779,130 @@ function initHistoryMetrics() {
         timeRange.addEventListener('change', loadHistoryMetrics);
     }
 
+    // Initialize auto-refresh
+    initAutoRefresh();
+
     historyMetricsInitialized = true;
 }
+
+// ========================================
+// AUTO-REFRESH SYSTEM
+// ========================================
+
+function initAutoRefresh() {
+    const toggle = document.getElementById('auto-refresh-toggle');
+    const intervalSelect = document.getElementById('refresh-interval');
+    const countdown = document.getElementById('refresh-countdown');
+
+    if (!toggle || !intervalSelect) return;
+
+    // Load saved preferences
+    const saved = localStorage.getItem('history-auto-refresh');
+    if (saved) {
+        try {
+            const prefs = JSON.parse(saved);
+            autoRefreshEnabled = prefs.enabled || false;
+            autoRefreshInterval = prefs.interval || 60;
+            toggle.checked = autoRefreshEnabled;
+            intervalSelect.value = autoRefreshInterval;
+        } catch (e) {
+            console.error('Error loading auto-refresh prefs:', e);
+        }
+    }
+
+    // Toggle event
+    toggle.addEventListener('change', () => {
+        autoRefreshEnabled = toggle.checked;
+        intervalSelect.disabled = !autoRefreshEnabled;
+
+        if (autoRefreshEnabled) {
+            startAutoRefresh();
+            if (countdown) countdown.style.display = 'inline';
+        } else {
+            stopAutoRefresh();
+            if (countdown) countdown.style.display = 'none';
+        }
+
+        saveAutoRefreshPrefs();
+    });
+
+    // Interval change event
+    intervalSelect.addEventListener('change', () => {
+        autoRefreshInterval = parseInt(intervalSelect.value);
+        saveAutoRefreshPrefs();
+
+        if (autoRefreshEnabled) {
+            stopAutoRefresh();
+            startAutoRefresh();
+        }
+    });
+
+    // Start if enabled
+    if (autoRefreshEnabled) {
+        intervalSelect.disabled = false;
+        startAutoRefresh();
+        if (countdown) countdown.style.display = 'inline';
+    }
+}
+
+function startAutoRefresh() {
+    stopAutoRefresh(); // Clear any existing timer
+
+    nextRefreshTime = Date.now() + (autoRefreshInterval * 1000);
+
+    // Main refresh timer
+    autoRefreshTimer = setInterval(() => {
+        loadHistoryMetrics();
+        nextRefreshTime = Date.now() + (autoRefreshInterval * 1000);
+    }, autoRefreshInterval * 1000);
+
+    // Countdown update timer (every second)
+    refreshCountdownTimer = setInterval(updateRefreshCountdown, 1000);
+    updateRefreshCountdown();
+}
+
+function stopAutoRefresh() {
+    if (autoRefreshTimer) {
+        clearInterval(autoRefreshTimer);
+        autoRefreshTimer = null;
+    }
+    if (refreshCountdownTimer) {
+        clearInterval(refreshCountdownTimer);
+        refreshCountdownTimer = null;
+    }
+    nextRefreshTime = null;
+}
+
+function updateRefreshCountdown() {
+    const countdown = document.getElementById('refresh-countdown');
+    if (!countdown || !nextRefreshTime) return;
+
+    const remaining = Math.max(0, Math.floor((nextRefreshTime - Date.now()) / 1000));
+
+    if (remaining > 60) {
+        const mins = Math.floor(remaining / 60);
+        const secs = remaining % 60;
+        countdown.textContent = `${mins}m ${secs}s`;
+    } else {
+        countdown.textContent = `${remaining}s`;
+    }
+}
+
+function saveAutoRefreshPrefs() {
+    try {
+        localStorage.setItem('history-auto-refresh', JSON.stringify({
+            enabled: autoRefreshEnabled,
+            interval: autoRefreshInterval
+        }));
+    } catch (e) {
+        console.error('Error saving auto-refresh prefs:', e);
+    }
+}
+
+// ========================================
+// END AUTO-REFRESH SYSTEM
+// ========================================
+
 
 async function populateHistoryServers() {
     const select = document.getElementById('history-server-select');
