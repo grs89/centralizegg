@@ -76,6 +76,10 @@
 *   **Mapa de Tráfico Mundial**: Visualización geográfica premium con animaciones "Flight Path" (Bezier curvos).
     - **GeoIP Proxy Integrado**: Resolución de IPs backend para privacidad y seguridad (evita Mixed Content).
     - **Animaciones Fluidas**: Líneas curvas con pulso dinámico (Rojo: Entrante, Verde: Saliente).
+    - **Heatmap de Densidad**: Visualización de "puntos calientes" de tráfico con gradiente de colores.
+    - **Filtros Interactivos**: Botones All/In/Out para segmentar conexiones por dirección.
+    - **Líneas Dinámicas**: Velocidad de animación proporcional al volumen de tráfico.
+    - **Marcadores Pulsantes**: Indicadores animados rojo/verde con popup de país y ciudad.
     - **Modo Depuración**: Overlay accesible desde la UI para diagnosticar la resolución de IPs.
 *   **Monitoreo de Gateways**: Estado en tiempo real de los gateways de pfSense (WAN/VPN).
     - **Alertas Visuales**: 
@@ -103,6 +107,13 @@
 *   **Notificaciones Audibles**: Sonido de "ping" para nuevas alertas de servidores offline.
 *   **Seguridad**: Escaneo CVE con `docker scout` y soporte para autenticación robusta (Clave/Contraseña).
 *   **Auto-refresh**: Actualización automática de datos cada 5 segundos en el frontend.
+*   **Gráficos Avanzados**:
+    - **Zoom Interactivo**: Selección de área para ampliar períodos específicos en gráficos de historial.
+    - **Umbrales Visuales**: Líneas de referencia configurables para CPU, Memoria y Red.
+    - **Tendencias y Proyecciones**: Análisis predictivo de uso de recursos.
+    - **Estimación de Días Restantes**: Cálculo automático de agotamiento de disco basado en tendencia.
+*   **Monitoreo de Ceph**: Soporte para clusters de almacenamiento distribuido Ceph vía SSH.
+    - Estado de salud del cluster, OSDs y pools.
 
 
 ### Flujo de Datos
@@ -139,10 +150,13 @@ Centralizegg expone endpoints estandarizados para el resto de herramientas:
 
 *   **NAS**: `/api/nas/hosts`, `/api/nas/volumes`, `/api/nas/disks`
 *   **Proxmox**: `/api/proxmox/hosts`, `/api/proxmox/vms`
-*   **Kubernetes**: `/api/kubernetes/nodes`, `/api/kubernetes/pods`
+*   **Kubernetes**: `/api/kubernetes/nodes`, `/api/kubernetes/pods`, `/api/kubernetes/pvs`, `/api/kubernetes/events`
 *   **Docker**: `/api/containers/hosts`, `/api/containers/containers`
 *   **Podman**: `/api/podman/hosts`, `/api/podman/containers`
-*   **Configuración Genérica**: `/api/config/{tool}` (donde tool = nas, proxmox, docker, etc.)
+*   **Ceph**: `/api/ceph/hosts`
+*   **Salud y Métricas**: `/api/health/summary`, `/api/metrics/{category}/{id}`, `/api/status`
+*   **Geolocalización**: `/api/geoip/{ip}` (Proxy a ip-api.com)
+*   **Configuración Genérica**: `/api/config/{tool}` (donde tool = nas, proxmox, docker, ceph, etc.)
 
 ## 🗄️ Base de Datos
 
@@ -172,12 +186,19 @@ Centralizegg/
 │   │   ├── podman-collector.go    # Colector Podman
 │   │   └── kubernetes-collector.go # Colector K8s
 │   └── storage/
+│       ├── ceph-collector.go      # Colector Ceph (SSH)
 │       └── nas-collector.go       # Colector NAS (SSH)
 ├── web_centralizegg/
 │   └── static/
 │       ├── index.html             # Interfaz principal
-│       ├── app.js                 # Lógica del frontend
+│       ├── app.js                 # Lógica del frontend (monolito)
 │       ├── style.css              # Estilos glassmorphism
+│       ├── js/                    # Módulos ES modulares
+│       │   ├── state.js           # Estado global
+│       │   ├── history.js         # Lógica de historial
+│       │   ├── ui-components.js   # Componentes reutilizables
+│       │   └── utils.js           # Utilidades
+│       ├── docs/                  # Documentación embebida
 │       ├── logo.png
 │       └── image/
 │           └── 1.png              # Screenshot del dashboard
@@ -387,6 +408,10 @@ Los servidores KVM se configuran a través del dashboard web:
 *   **Mapa de Tráfego Mundial**: Visualização geográfica premium com animações "Flight Path" (curvas Bezier).
     - **Proxy GeoIP Integrado**: Resolução de IPs no backend para privacidade e segurança (evita Mixed Content).
     - **Animações Fluidas**: Linhas curvas com pulso dinâmico (Vermelho: Entrada, Verde: Saída).
+    - **Heatmap de Densidade**: Visualização de "pontos quentes" de tráfego com gradiente de cores.
+    - **Filtros Interativos**: Botões All/In/Out para segmentar conexões por direção.
+    - **Linhas Dinâmicas**: Velocidade de animação proporcional ao volume de tráfego.
+    - **Marcadores Pulsantes**: Indicadores animados vermelho/verde com popup de país e cidade.
     - **Modo Debug**: Overlay acessível da UI para diagnosticar resolução de IPs.
 *   **Monitoramento de Gateways**: Estado em tempo real dos gateways pfSense (WAN/VPN).
     - **Alertas Visuais**: 
@@ -414,6 +439,13 @@ Los servidores KVM se configuran a través del dashboard web:
 *   **Notificações Audíveis**: Som de "ping" para novos alertas de servidores offline.
 *   **Segurança**: Escaneamento CVE com `docker scout` e suporte para autenticação robusta (Chave/Senha).
 *   **Auto-refresh**: Atualização automática de dados a cada 5 segundos no frontend.
+*   **Gráficos Avançados**:
+    - **Zoom Interativo**: Seleção de área para ampliar períodos específicos em gráficos de histórico.
+    - **Limites Visuais**: Linhas de referência configuráveis para CPU, Memória e Rede.
+    - **Tendências e Projeções**: Análise preditiva de uso de recursos.
+    - **Estimativa de Dias Restantes**: Cálculo automático de esgotamento de disco baseado em tendência.
+*   **Monitoramento de Ceph**: Suporte para clusters de armazenamento distribuído Ceph via SSH.
+    - Estado de saúde do cluster, OSDs e pools.
 
 ## 📁 Estrutura do Projeto
 
@@ -435,12 +467,19 @@ Centralizegg/
 │   │   ├── podman-collector.go    # Coletor Podman
 │   │   └── kubernetes-collector.go # Coletor K8s
 │   └── storage/
+│       ├── ceph-collector.go      # Coletor Ceph (SSH)
 │       └── nas-collector.go       # Coletor NAS (SSH)
 ├── web_centralizegg/
 │   └── static/
 │       ├── index.html             # Interface principal
-│       ├── app.js                 # Lógica do frontend
+│       ├── app.js                 # Lógica do frontend (monolito)
 │       ├── style.css              # Estilos glassmorphism
+│       ├── js/                    # Módulos ES modulares
+│       │   ├── state.js           # Estado global
+│       │   ├── history.js         # Lógica de histórico
+│       │   ├── ui-components.js   # Componentes reutilizáveis
+│       │   └── utils.js           # Utilidades
+│       ├── docs/                  # Documentação embebida
 │       ├── logo.png
 │       └── image/
 │           └── 1.png              # Screenshot do painel

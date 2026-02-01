@@ -122,14 +122,23 @@ graph TD
 4. **Historial Global & Logs**:
    - Visualización histórica de CPU, Memoria, Red y Disco.
    - **Historial Detallado por Nodo (Kubernetes)**: Métricas individuales para nodos de cluster.
-   - **Métricas de I/O de Disco**: Tasas de lectura/escritura por disco fícico.
+   - **Métricas de I/O de Disco**: Tasas de lectura/escritura por disco físico.
    - **Logs del Host**: Visualización de logs del sistema (`journalctl`/`clog`) en tiempo real vía SSH.
+
+5. **Mapa de Geolocalización**:
+   - Visualización de conexiones activas en un mapa mundial interactivo.
+   - **Heatmap**: Densidad de tráfico con gradiente de colores.
+   - **Filtros Interactivos**: All/Inbound/Outbound para segmentar conexiones.
+   - **Líneas Dinámicas (Ant-Path)**: Velocidad proporcional al volumen de tráfico.
+   - **Marcadores Pulsantes**: Rojo (entrante) y Verde (saliente) con popup detallado.
 
 2. **API REST**: Procesa peticiones del frontend
    - `GET /api/hosts` - Retorna hosts con información completa
    - `GET /api/vms` - Retorna todas las VMs
    - `GET /api/hosts/{category}/{id}/logs` - Obtiene logs del sistema del host
    - `GET/POST/PUT/DELETE /api/config/servers` - Gestión de servidores
+   - `GET /api/geoip/{ip}` - Proxy a ip-api.com para geolocalización
+   - `GET /api/status` - Estado del sistema (CPU, memoria, uptime)
 
 3. **Frontend**: Interfaz de usuario reactiva
    - Auto-refresh cada 5 segundos
@@ -157,12 +166,22 @@ Centralizegg/
 │   │   ├── podman-collector.go    # Colector Podman
 │   │   └── kubernetes-collector.go # Colector K8s
 │   └── storage/
+│       ├── ceph-collector.go      # Colector Ceph (SSH)
 │       └── nas-collector.go       # Colector NAS (SSH)
 ├── web_centralizegg/
 │   └── static/
 │       ├── index.html             # Interfaz principal
-│       ├── app.js                 # Lógica del frontend
+│       ├── app.js                 # Lógica del frontend (monolito)
 │       ├── style.css              # Estilos glassmorphism
+│       ├── js/                    # Módulos ES (modular)
+│       │   ├── api.js             # Funciones de fetch centralizadas
+│       │   ├── state.js           # Estado global (Single Source of Truth)
+│       │   ├── history.js         # Lógica de historial y gráficos
+│       │   ├── summary-dashboard.js # Dashboard de salud global
+│       │   ├── tool-kvm.js        # Renderizado KVM
+│       │   ├── ui-components.js   # Componentes UI reutilizables
+│       │   └── utils.js           # Utilidades (formatBytes, etc.)
+│       ├── docs/                  # Documentación embebida (Markdown)
 │       ├── logo.png
 │       └── image/
 │           └── 1.png              # Screenshot del dashboard
@@ -395,6 +414,75 @@ Agrega un nuevo servidor pfSense.
 
 #### `PUT/DELETE /api/firewall/servers/{id}`
 Actualiza o elimina servidores pfSense.
+
+---
+
+### Endpoints de Contenedores
+
+| Endpoint | Descripción |
+|----------|-------------|
+| `GET /api/containers/hosts` | Hosts Docker con métricas |
+| `GET /api/containers/containers` | Todos los contenedores Docker |
+| `GET /api/containers/{serverID}/{containerID}/logs` | Logs de un contenedor Docker |
+| `GET /api/podman/hosts` | Hosts Podman con métricas |
+| `GET /api/podman/containers` | Todos los contenedores Podman |
+| `GET /api/podman/containers/{serverID}/{containerID}/logs` | Logs de un contenedor Podman |
+
+### Endpoints de Kubernetes
+
+| Endpoint | Descripción |
+|----------|-------------|
+| `GET /api/kubernetes/nodes` | Nodos del cluster |
+| `GET /api/kubernetes/pods` | Todos los pods |
+| `GET /api/kubernetes/pvs` | Persistent Volumes |
+| `GET /api/kubernetes/events` | Eventos recientes del cluster |
+| `GET /api/kubernetes/pods/{serverID}/{namespace}/{name}/logs` | Logs de un pod específico |
+
+### Endpoints de Almacenamiento
+
+| Endpoint | Descripción |
+|----------|-------------|
+| `GET /api/nas/hosts` | Servidores NAS |
+| `GET /api/nas/volumes` | Volúmenes lógicos |
+| `GET /api/nas/disks` | Discos físicos (S.M.A.R.T) |
+| `GET /api/ceph/hosts` | Nodos del cluster Ceph |
+| `GET /api/proxmox/hosts` | Nodos Proxmox |
+| `GET /api/proxmox/vms` | VMs y LXC de Proxmox |
+
+### Endpoints de Salud y Métricas
+
+| Endpoint | Descripción |
+|----------|-------------|
+| `GET /api/health/summary` | Estado de salud global de la infraestructura |
+| `GET /api/history` | Eventos históricos (últimos 50) |
+| `GET /api/metrics/{category}/{id}?duration=24h` | Métricas históricas por servidor |
+| `GET /api/hosts/{category}/{id}/logs` | Logs del sistema del host |
+| `GET /api/status` | Estado del sistema (CPU, memoria, uptime) |
+
+### Endpoint de Geolocalización
+
+#### `GET /api/geoip/{ip}`
+
+Proxy hacia ip-api.com para obtener datos de geolocalización. Soporta `self` para obtener la IP pública del servidor.
+
+**Respuesta:**
+```json
+{
+  "status": "success",
+  "country": "Colombia",
+  "countryCode": "CO",
+  "city": "Bogotá",
+  "lat": 4.6097,
+  "lon": -74.0817
+}
+```
+
+### Endpoint de Configuración Genérica
+
+#### `GET/POST /api/config/{tool}`
+#### `PUT/DELETE /api/config/{tool}/{id}`
+
+Endpoint genérico para gestionar servidores de herramientas soportadas: `proxmox`, `nas`, `ceph`, `docker`, `podman`, `kubernetes`.
 
 ## 🗄️ Base de Datos
 
@@ -660,8 +748,13 @@ go build -o centralizegg ./cmd_centralizegg/server
     - **Frontend Libs**:
         - `Leaflet.js` - Mapas interactivos con soporte táctil
         - `leaflet-ant-path` - Animaciones de tráfico fluidas (Bezier/Flight-Path)
+        - `leaflet.heat` - Mapas de calor para densidad de tráfico
+        - `Chart.js 4.x` - Gráficos de métricas históricas
+        - `chartjs-plugin-annotation` - Líneas de umbral en gráficos
+        - `chartjs-plugin-zoom` - Zoom interactivo en gráficos
         - `Interactive SVG Engine` - Renderizado de topología de red con flujos animados
         - `Custom Sparklines` - Renderizado SVG ultraligero para métricas en tiempo real
+        - `NetworkMap Class` - Clase reutilizable para visualización de conexiones geográficas
         - `Log Viewer Terminal` - Interfaz estilo terminal con resaltado de sintaxis y auto-scroll
 
 
@@ -695,6 +788,31 @@ Se ha realizado una reestructuración profunda del frontend para garantizar una 
 * **Carga Bajo Demanda**: Las herramientas pesadas (KVM, Docker, K8s) solo procesan y renderizan su lógica cuando están activas en la vista del usuario.
 * **Sparklines y Gráficos Ultra-ligeros**: Uso de SVG puros para mini-gráficos de red, optimizados para cientos de actualizaciones concurrentes por segundo sin degradar el rendimiento.
 
+## 🚀 CI/CD
+
+### GitHub Actions
+
+El proyecto incluye un workflow automatizado en `.github/workflows/docker-publish.yml`:
+
+| Trigger | Acción |
+|---------|--------|
+| Push de tags `v*.*.*` | Build multi-arch (amd64/arm64) y push a Docker Hub |
+| Pull Request | Build de validación sin push |
+
+**Características:**
+- Build multi-arquitectura con Docker Buildx.
+- Cache de capas para builds rápidos.
+- Escaneo de seguridad con Trivy (código fuente e imagen).
+- Generación automática de SBOM.
+- Tags semánticos (`v1.0.0`, `v1.0`, `v1`, `latest`).
+
+**Secretos requeridos:**
+- `DOCKERHUB_USERNAME`: Usuario de Docker Hub.
+- `DOCKERHUB_TOKEN`: Access Token de Docker Hub.
+
+### GitLab CI
+
+Alternativa en `.gitlab-ci.yml` con etapas de `build`, `test` y `deploy`.
 
 ---
 
