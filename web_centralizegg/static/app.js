@@ -6401,6 +6401,7 @@ let ramChart = null;
 let netChart = null;
 let diskChart = null;
 let diskIOChart = null;
+let tempChart = null;
 
 // =======================
 // HISTORY METRICS TOOL
@@ -6416,7 +6417,8 @@ const DEFAULT_THRESHOLDS = {
     memory: { warning: 80, critical: 90 },
     disk: { warning: 75, critical: 85 },
     network: { warning: 80, critical: 95 },
-    diskio: { warning: 100, critical: 200 }  // MB/s
+    diskio: { warning: 100, critical: 200 },  // MB/s
+    temperature: { warning: 60, critical: 80 }  // °C
 };
 
 // Load thresholds from localStorage or use defaults
@@ -6714,7 +6716,7 @@ function shouldShowTrends() {
 
 // Reset zoom for all charts
 function resetAllChartsZoom() {
-    [cpuChart, ramChart, diskChart, netChart, diskIOChart].forEach(chart => {
+    [cpuChart, ramChart, diskChart, netChart, diskIOChart, tempChart].forEach(chart => {
         if (chart && chart.resetZoom) {
             chart.resetZoom();
         }
@@ -7066,6 +7068,8 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
     const labels = metrics.map(m => new Date(m.timestamp).toLocaleString());
     let sortedCpu = metrics.map(m => m.cpu_usage);
     let sortedRam = metrics.map(m => m.memory_usage);
+    let sortedDisk = metrics.map(m => m.disk_usage);
+    let sortedTemp = metrics.map(m => m.temperature !== undefined && m.temperature !== null ? m.temperature : null);
 
     if (selectedNode !== "total") {
         sortedCpu = metrics.map(m => {
@@ -7078,6 +7082,18 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
             try {
                 const ndata = JSON.parse(m.nodes_data || "{}");
                 return ndata[selectedNode] ? ndata[selectedNode].mem_usage : null;
+            } catch (e) { return null; }
+        });
+        sortedDisk = metrics.map(m => {
+            try {
+                const ndata = JSON.parse(m.nodes_data || "{}");
+                return ndata[selectedNode] ? ndata[selectedNode].disk_usage : null;
+            } catch (e) { return null; }
+        });
+        sortedTemp = metrics.map(m => {
+            try {
+                const ndata = JSON.parse(m.nodes_data || "{}");
+                return ndata[selectedNode] && ndata[selectedNode].temperature !== undefined ? ndata[selectedNode].temperature : null;
             } catch (e) { return null; }
         });
     }
@@ -7614,7 +7630,7 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
                             label: 'Total Space',
                             data: diskTotals,
                             borderColor: '#9ca3af',
-                            backgroundColor: gradTotal, // transparent?
+                            backgroundColor: gradTotal,
                             borderWidth: 2,
                             borderDash: [5, 5],
                             fill: false,
@@ -7627,6 +7643,93 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
                 options: diskOptions
             });
         }
+    }
+
+    // Temperature Chart with thresholds and trends
+    const tempOptions = JSON.parse(JSON.stringify(commonOptions));
+    tempOptions.plugins.annotation = getThresholdAnnotations('temperature', 100);
+    tempOptions.scales.y.ticks.callback = (value) => value + '°C';
+    tempOptions.plugins.tooltip = {
+        ...tempOptions.plugins.tooltip,
+        callbacks: {
+            label: (context) => ' ' + context.raw + '°C'
+        }
+    };
+
+    // Check if trends should be shown
+    if (shouldShowTrends()) {
+        const trendData = calculateTrendLine(sortedTemp, 5);
+        if (trendData) {
+            const tempDatasets = [
+                {
+                    label: 'Temperatura (°C)',
+                    data: sortedTemp,
+                    borderColor: '#f97316',
+                    backgroundColor: 'rgba(249, 115, 22, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 6,
+                    spanGaps: false
+                },
+                {
+                    label: 'Tendencia',
+                    data: trendData.trendLine,
+                    borderColor: 'rgba(249, 115, 22, 0.5)',
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    fill: false,
+                    pointRadius: 0,
+                    tension: 0
+                }
+            ];
+
+            // Add predictions
+            const extendedLabels = [...labels];
+            if (labels.length > 0) {
+                const lastTime = new Date(metrics[metrics.length - 1].timestamp);
+                for (let i = 1; i <= trendData.predictions.length; i++) {
+                    const futureTime = new Date(lastTime.getTime() + i * 3600000);
+                    extendedLabels.push(futureTime.toLocaleString());
+                }
+
+                const predictionData = new Array(sortedTemp.length).fill(null).concat(trendData.predictions);
+                tempDatasets.push({
+                    label: 'Predicción',
+                    data: predictionData,
+                    borderColor: 'rgba(251, 191, 36, 0.7)',
+                    borderWidth: 2,
+                    borderDash: [2, 2],
+                    fill: false,
+                    pointRadius: 0,
+                    tension: 0
+                });
+            }
+
+            tempOptions.plugins.legend = {
+                display: true,
+                labels: { color: '#94a3b8', usePointStyle: true, boxWidth: 8 }
+            };
+
+            const tempCanvas = document.getElementById('tempChart');
+            if (tempCanvas) {
+                const ctx = tempCanvas.getContext('2d');
+                if (tempChart) tempChart.destroy();
+                tempChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: extendedLabels.length > labels.length ? extendedLabels : labels,
+                        datasets: tempDatasets
+                    },
+                    options: tempOptions
+                });
+            }
+        } else {
+            tempChart = createOrUpdateChart(tempChart, 'tempChart', 'line', 'Temperatura (°C)', sortedTemp, '#f97316', true, null, tempOptions);
+        }
+    } else {
+        tempChart = createOrUpdateChart(tempChart, 'tempChart', 'line', 'Temperatura (°C)', sortedTemp, '#f97316', true, null, tempOptions);
     }
 
     // Special handling for net chart multiple datasets (Network)
