@@ -230,3 +230,29 @@ func (pc *ProxmoxCollector) runCommand(client *ssh.Client, cmd string) (string, 
 	output, err := session.CombinedOutput(cmd)
 	return string(output), err
 }
+func (pc *ProxmoxCollector) GetHostLogs(id int64) (string, error) {
+	servers, err := pc.DB.GetGenericServers("proxmox")
+	if err != nil {
+		return "", err
+	}
+	var s data_centralizegg.GenericServer
+	found := false
+	for _, srv := range servers {
+		if srv.ID == id {
+			s = srv
+			found = true
+			break
+		}
+	}
+	if !found {
+		return "", fmt.Errorf("server not found")
+	}
+
+	client, err := pc.getSSHClient(s)
+	if err != nil {
+		return "", err
+	}
+	defer client.Close()
+
+	return pc.runCommand(client, "journalctl -n 50 --no-pager")
+}

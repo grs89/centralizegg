@@ -176,3 +176,29 @@ func (cc *CephCollector) runCommand(client *ssh.Client, cmd string) (string, err
 	output, err := session.CombinedOutput(cmd)
 	return string(output), err
 }
+func (cc *CephCollector) GetHostLogs(id int64) (string, error) {
+	servers, err := cc.DB.GetGenericServers("ceph")
+	if err != nil {
+		return "", err
+	}
+	var s data_centralizegg.GenericServer
+	found := false
+	for _, srv := range servers {
+		if srv.ID == id {
+			s = srv
+			found = true
+			break
+		}
+	}
+	if !found {
+		return "", fmt.Errorf("server not found")
+	}
+
+	client, err := cc.getSSHClient(s)
+	if err != nil {
+		return "", err
+	}
+	defer client.Close()
+
+	return cc.runCommand(client, "journalctl -n 50 --no-pager")
+}

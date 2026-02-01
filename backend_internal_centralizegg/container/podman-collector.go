@@ -864,3 +864,29 @@ func (pc *PodmanCollector) GetContainerLogs(serverID int64, containerID string) 
 
 	return output, nil
 }
+func (pc *PodmanCollector) GetHostLogs(id int64) (string, error) {
+	servers, err := pc.DB.GetGenericServers("podman")
+	if err != nil {
+		return "", err
+	}
+	var s data_centralizegg.GenericServer
+	found := false
+	for _, srv := range servers {
+		if srv.ID == id {
+			s = srv
+			found = true
+			break
+		}
+	}
+	if !found {
+		return "", fmt.Errorf("server not found")
+	}
+
+	client, err := pc.getSSHClient(s)
+	if err != nil {
+		return "", err
+	}
+	defer client.Close()
+
+	return pc.runCommand(client, "journalctl -n 50 --no-pager")
+}

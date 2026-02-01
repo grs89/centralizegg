@@ -1429,3 +1429,29 @@ func (kc *KubernetesCollector) GetPodLogs(serverID int64, namespace string, podN
 
 	return output, nil
 }
+func (kc *KubernetesCollector) GetHostLogs(id int64) (string, error) {
+	servers, err := kc.DB.GetGenericServers("kubernetes")
+	if err != nil {
+		return "", err
+	}
+	var s data_centralizegg.GenericServer
+	found := false
+	for _, srv := range servers {
+		if srv.ID == id {
+			s = srv
+			found = true
+			break
+		}
+	}
+	if !found {
+		return "", fmt.Errorf("server not found")
+	}
+
+	client, err := kc.getSSHClient(s)
+	if err != nil {
+		return "", err
+	}
+	defer client.Close()
+
+	return kc.runCommand(client, "journalctl -n 50 --no-pager", "")
+}

@@ -210,3 +210,29 @@ func (nc *NasCollector) runCommand(client *ssh.Client, cmd string) (string, erro
 	output, err := session.CombinedOutput(cmd)
 	return string(output), err
 }
+func (nc *NasCollector) GetHostLogs(id int64) (string, error) {
+	servers, err := nc.DB.GetGenericServers("nas")
+	if err != nil {
+		return "", err
+	}
+	var s data_centralizegg.GenericServer
+	found := false
+	for _, srv := range servers {
+		if srv.ID == id {
+			s = srv
+			found = true
+			break
+		}
+	}
+	if !found {
+		return "", fmt.Errorf("server not found")
+	}
+
+	client, err := nc.getSSHClient(s)
+	if err != nil {
+		return "", err
+	}
+	defer client.Close()
+
+	return nc.runCommand(client, "journalctl -n 50 --no-pager")
+}

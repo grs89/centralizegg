@@ -231,6 +231,47 @@ func main() {
 		json.NewEncoder(w).Encode(metrics)
 	}).Methods("GET")
 
+	// Host Logs API
+	r.HandleFunc("/api/hosts/{category}/{id}/logs", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		category := vars["category"]
+		id, err := strconv.ParseInt(vars["id"], 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid ID", http.StatusBadRequest)
+			return
+		}
+
+		var logs string
+		var fetchErr error
+
+		switch category {
+		case "kvm":
+			logs, fetchErr = col.GetHostLogs(id)
+		case "docker":
+			logs, fetchErr = dockerCol.GetHostLogs(id)
+		case "podman":
+			logs, fetchErr = podmanCol.GetHostLogs(id)
+		case "kubernetes":
+			logs, fetchErr = k8sCol.GetHostLogs(id)
+		case "pfsense":
+			logs, fetchErr = pfCol.GetHostLogs(id)
+		case "proxmox":
+			logs, fetchErr = proxmoxCol.GetHostLogs(id)
+		case "nas":
+			logs, fetchErr = nasCol.GetHostLogs(id)
+		case "ceph":
+			logs, fetchErr = cephCol.GetHostLogs(id)
+		default:
+			fetchErr = fmt.Errorf("unsupported category for logs: %s", category)
+		}
+
+		if fetchErr != nil {
+			http.Error(w, fetchErr.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"logs": logs})
+	}).Methods("GET")
+
 	r.HandleFunc("/api/hosts", func(w http.ResponseWriter, r *http.Request) {
 		hosts, err := db.GetHosts()
 		if err != nil {

@@ -870,3 +870,30 @@ func parseAndStoreGateways(db *data_centralizegg.DB, hostID int64, output string
 		})
 	}
 }
+func (mc *PfsenseCollector) GetHostLogs(id int64) (string, error) {
+	servers, err := mc.DB.GetPFSenseServers()
+	if err != nil {
+		return "", err
+	}
+	var s data_centralizegg.PFSenseServer
+	found := false
+	for _, srv := range servers {
+		if srv.ID == id {
+			s = srv
+			found = true
+			break
+		}
+	}
+	if !found {
+		return "", fmt.Errorf("server not found")
+	}
+
+	client, err := getSSHClient(s)
+	if err != nil {
+		return "", err
+	}
+	defer client.Close()
+
+	// pfSense uses clog for its circular logs
+	return runCommand(client, "clog /var/log/system.log | tail -n 50")
+}

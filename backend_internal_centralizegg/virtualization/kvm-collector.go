@@ -776,3 +776,71 @@ func int8ToString(bs []int8) string {
 	}
 	return string(b)
 }
+
+func (mc *MultiCollector) GetHostLogs(id int64) (string, error) {
+	servers, err := mc.DB.GetServers()
+	if err != nil {
+		return "", err
+	}
+	var s data_centralizegg.KVMServer
+	found := false
+	for _, srv := range servers {
+		if srv.ID == id {
+			s = srv
+			found = true
+			break
+		}
+	}
+	if !found {
+		return "", fmt.Errorf("server not found")
+	}
+
+	client, err := mc.getSSHClient(s)
+	if err != nil {
+		return "", err
+	}
+	defer client.Close()
+
+	session, err := client.NewSession()
+	if err != nil {
+		return "", err
+	}
+	defer session.Close()
+
+	output, err := session.CombinedOutput("journalctl -n 50 --no-pager")
+	if err != nil {
+		return string(output), err
+	}
+	return string(output), nil
+}
+
+func (mc *MultiCollector) getSSHClient(s data_centralizegg.KVMServer) (*ssh.Client, error) {
+	var authMethods []ssh.AuthMethod
+	if s.Password != "" {
+		authMethods = append(authMethods, ssh.Password(s.Password))
+	}
+	if s.SSHKeyContent != "" {
+		signer, err := ssh.ParsePrivateKey([]byte(s.SSHKeyContent))
+		if err == nil {
+			authMethods = append(authMethods, ssh.PublicKeys(signer))
+		}
+	} else if s.SSHKeyPath != "" {
+		key, err := ioutil.ReadFile(s.SSHKeyPath)
+		if err == nil {
+			signer, err := ssh.ParsePrivateKey(key)
+			if err == nil {
+				authMethods = append(authMethods, ssh.PublicKeys(signer))
+			}
+		}
+	}
+
+	config := &ssh.ClientConfig{
+		User:            s.Username,
+		Auth:            authMethods,
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         5 * time.Second,
+	}
+
+	addr := fmt.Sprintf("%s:%d", s.IPAddress, s.SSHPort)
+	return ssh.Dial("tcp", addr, config)
+}

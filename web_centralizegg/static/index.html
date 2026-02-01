@@ -393,6 +393,27 @@
                         </div>
                     </div>
 
+                    <div id="history-logs-container" class="glass-panel hidden"
+                        style="margin-bottom: 20px; border-radius: 16px; padding: 20px; border: 1px solid var(--glass-border); background: rgba(0,0,0,0.3);">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <h3 style="font-size: 1rem; margin: 0; display: flex; align-items: center; gap: 8px;">
+                                <i class="fa-solid fa-terminal" style="color: var(--accent-color);"></i>
+                                Logs del Sistema del Host
+                            </h3>
+                            <div class="live-indicator"
+                                style="font-size: 0.75rem; color: #4ade80; display: flex; align-items: center; gap: 5px;">
+                                <span
+                                    style="width: 8px; height: 8px; background: #4ade80; border-radius: 50%; display: inline-block; animation: pulse 2s infinite;"></span>
+                                LIVE
+                            </div>
+                        </div>
+                        <div id="history-host-logs" class="logs-viewer-content"
+                            style="background: rgba(0,0,0,0.5); border-radius: 12px; padding: 15px; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; line-height: 1.5; height: 180px; overflow-y: auto; color: #a1a1aa; border: 1px solid rgba(255,255,255,0.05);">
+                            <div style="opacity: 0.5;">Seleccione un servidor para visualizar sus logs...</div>
+                        </div>
+                    </div>
+
                     <div class="glass-panel"
                         style="padding: 0; overflow: hidden; height: 400px; margin-bottom: 30px; border-radius: 16px; border: 1px solid var(--glass-border);">
                         <div id="history-map" style="width: 100%; height: 100%; z-index: 1;"></div>

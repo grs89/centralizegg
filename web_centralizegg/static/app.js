@@ -6483,6 +6483,9 @@ async function loadHistoryMetrics() {
         if (!res.ok) throw new Error('Failed to fetch metrics');
         const metrics = await res.json();
 
+        // Host Logs logic
+        loadHostLogs(category, id);
+
         // Show/hide node selector
         const nodeSelector = document.getElementById('history-node-selector');
         if (nodeSelector) {
@@ -6497,6 +6500,43 @@ async function loadHistoryMetrics() {
         updateCharts(metrics, false, totalMemory);
     } catch (e) {
         console.error("Error loading metrics", e);
+    }
+}
+
+async function loadHostLogs(category, id) {
+    const logsContainer = document.getElementById('history-logs-container');
+    const logsContent = document.getElementById('history-host-logs');
+    if (!logsContainer || !logsContent) return;
+
+    logsContainer.classList.remove('hidden');
+    logsContent.innerHTML = '<div style="opacity: 0.5;"><i class="fa-solid fa-circle-notch fa-spin"></i> Obteniendo logs del host...</div>';
+
+    try {
+        const res = await fetch(`/api/hosts/${category}/${id}/logs`);
+        if (!res.ok) throw new Error('Error al obtener logs');
+        const data = await res.json();
+
+        if (!data.logs || data.logs.trim() === "") {
+            logsContent.innerHTML = '<div style="opacity: 0.5;">No se han encontrado logs recientes.</div>';
+            return;
+        }
+
+        // Elegant rendering with simple highlighting
+        const lines = data.logs.split('\n').map(line => {
+            let color = '#a1a1aa';
+            if (line.toLowerCase().includes('error') || line.toLowerCase().includes('failed') || line.toLowerCase().includes('crit')) color = '#f87171';
+            else if (line.toLowerCase().includes('warn')) color = '#fbbf24';
+            else if (line.toLowerCase().includes('info') || line.toLowerCase().includes('success')) color = '#60a5fa';
+
+            return `<div style="color: ${color}; margin-bottom: 2px;">${line}</div>`;
+        }).join('');
+
+        logsContent.innerHTML = lines;
+        // Auto-scroll to bottom
+        logsContent.scrollTop = logsContent.scrollHeight;
+
+    } catch (err) {
+        logsContent.innerHTML = `<div style="color: #f87171;">Error: ${err.message}</div>`;
     }
 }
 
