@@ -6560,22 +6560,22 @@ function showThresholdsConfigModal() {
 
     const modalHTML = `
             <div id="thresholds-modal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 10000; backdrop-filter: blur(5px);">
-                <div class="glass-panel" style="max-width: 650px; width: 90%; max-height: 90vh; overflow-y: auto; padding: 30px; margin: 20px; border-radius: 20px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
-                        <h2 style="margin: 0; display: flex; align-items: center; gap: 12px; color: #e2e8f0;">
+                <div class="glass-panel" style="max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto; padding: 25px; margin: 20px; border-radius: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h2 style="margin: 0; display: flex; align-items: center; gap: 10px; color: #e2e8f0; font-size: 1.25rem;">
                             <i class="fa-solid fa-sliders" style="color: var(--accent-color);"></i> 
                             Configurar Umbrales
                         </h2>
-                        <button onclick="closeThresholdsModal()" class="glass-btn" style="padding: 8px 12px; border-radius: 8px;">
+                        <button onclick="closeThresholdsModal()" class="nav-config-btn" title="Cerrar">
                             <i class="fa-solid fa-xmark"></i>
                         </button>
                     </div>
                     
-                    <p style="color: #94a3b8; margin-bottom: 20px; font-size: 0.95rem;">
-                        Define los umbrales de advertencia y crítico para cada métrica. Las gráficas mostrarán zonas de color y líneas de referencia.
+                    <p style="color: #94a3b8; margin-bottom: 20px; font-size: 0.9rem;">
+                        Define los umbrales de advertencia y crítico para cada métrica.
                     </p>
                     
-                    <div style="display: grid; gap: 15px;">
+                    <div style="display: grid; gap: 12px;">
                         ${createThresholdInput('cpu', 'CPU', '%')}
                         ${createThresholdInput('memory', 'Memoria', '%')}
                         ${createThresholdInput('disk', 'Disco', '%')}
@@ -6584,10 +6584,10 @@ function showThresholdsConfigModal() {
                     </div>
                     
                     <div style="display: flex; gap: 10px; margin-top: 25px; justify-content: flex-end; flex-wrap: wrap;">
-                        <button onclick="resetThresholds()" class="glass-btn secondary" style="padding: 10px 20px;">
+                        <button onclick="resetThresholds()" class="nav-config-btn">
                             <i class="fa-solid fa-rotate-left"></i> Restaurar Defaults
                         </button>
-                        <button onclick="saveThresholdsConfig()" class="glass-btn primary" style="padding: 10px 20px;">
+                        <button onclick="saveThresholdsConfig()" class="nav-config-btn">
                             <i class="fa-solid fa-floppy-disk"></i> Guardar
                         </button>
                     </div>
