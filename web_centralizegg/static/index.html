@@ -286,8 +286,13 @@
                                 <option value="30d">Últimos 30d</option>
                                 <option value="1y">Último 1 año</option>
                             </select>
-                            <button id="load-history-btn" class="primary-btn"><i class="fa-solid fa-sync"></i>
-                                Actualizar</button>
+                            <select id="history-node-selector" class="glass-input hidden"
+                                style="width: 180px; background: rgba(56, 189, 248, 0.1);">
+                                <option value="total">Todos los Nodos</option>
+                            </select>
+                            <button id="load-history-btn" class="glass-btn primary" style="padding: 10px 24px;">
+                                <i class="fa-solid fa-rotate"></i> Cargar Datos
+                            </button>
                         </div>
 
                         <div class="charts-grid"

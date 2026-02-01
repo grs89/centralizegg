@@ -6483,6 +6483,17 @@ async function loadHistoryMetrics() {
         if (!res.ok) throw new Error('Failed to fetch metrics');
         const metrics = await res.json();
 
+        // Show/hide node selector
+        const nodeSelector = document.getElementById('history-node-selector');
+        if (nodeSelector) {
+            if (category === 'kubernetes') {
+                nodeSelector.classList.remove('hidden');
+            } else {
+                nodeSelector.classList.add('hidden');
+                nodeSelector.value = "total";
+            }
+        }
+
         updateCharts(metrics, false, totalMemory);
     } catch (e) {
         console.error("Error loading metrics", e);
@@ -6514,6 +6525,17 @@ function initDiskSelector() {
     }
 }
 
+let nodeSelectorInitialized = false;
+function initNodeSelector() {
+    const selector = document.getElementById('history-node-selector');
+    if (selector && !nodeSelectorInitialized) {
+        selector.addEventListener('change', () => {
+            updateCharts(currentHistoryMetrics, true);
+        });
+        nodeSelectorInitialized = true;
+    }
+}
+
 
 function formatBits(bits, decimals = 2) {
     if (bits <= 0) return '0 bps';
@@ -6531,13 +6553,64 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
 
     initNetInterfaceSelector();
     initDiskSelector();
+    initNodeSelector();
 
     // Sort by timestamp
     metrics.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
+    const nodeSelector = document.getElementById('history-node-selector');
+    let selectedNode = "total";
+    if (nodeSelector) {
+        selectedNode = nodeSelector.value;
+    }
+
+    // Populate node selector if not keeping dropdown
+    if (!keepDropdown && nodeSelector && metrics.length > 0 && metrics[0].category === 'kubernetes') {
+        const nodesSet = new Set();
+        metrics.forEach(m => {
+            if (m.nodes_data && m.nodes_data !== "{}" && m.nodes_data !== "[]") {
+                try {
+                    const nodeMap = JSON.parse(m.nodes_data);
+                    Object.keys(nodeMap).forEach(k => nodesSet.add(k));
+                } catch (e) { }
+            }
+        });
+
+        const prevNodeSelection = nodeSelector.value;
+        nodeSelector.innerHTML = '<option value="total">Cluster Total</option>';
+        Array.from(nodesSet).sort().forEach(node => {
+            const opt = document.createElement('option');
+            opt.value = node;
+            opt.textContent = node;
+            nodeSelector.appendChild(opt);
+        });
+        if (Array.from(nodesSet).includes(prevNodeSelection)) {
+            nodeSelector.value = prevNodeSelection;
+            selectedNode = prevNodeSelection;
+        } else {
+            nodeSelector.value = "total";
+            selectedNode = "total";
+        }
+    }
+
     const labels = metrics.map(m => new Date(m.timestamp).toLocaleString());
-    const sortedCpu = metrics.map(m => m.cpu_usage);
-    const sortedRam = metrics.map(m => m.memory_usage); // Keep as bytes for dynamic formatting
+    let sortedCpu = metrics.map(m => m.cpu_usage);
+    let sortedRam = metrics.map(m => m.memory_usage);
+
+    if (selectedNode !== "total") {
+        sortedCpu = metrics.map(m => {
+            try {
+                const ndata = JSON.parse(m.nodes_data || "{}");
+                return ndata[selectedNode] ? ndata[selectedNode].cpu_usage : 0;
+            } catch (e) { return 0; }
+        });
+        sortedRam = metrics.map(m => {
+            try {
+                const ndata = JSON.parse(m.nodes_data || "{}");
+                return ndata[selectedNode] ? ndata[selectedNode].mem_usage : 0;
+            } catch (e) { return 0; }
+        });
+    }
 
     // Handle Network Interface Selection
     const selector = document.getElementById('net-interface-selector');
@@ -6676,20 +6749,37 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
             let dRx = rx2 - rx1;
             let dTx = tx2 - tx1;
 
-            // Handle restart/overflow (counters reset)
-            if (dRx < 0) dRx = rx2; // Assume reset to 0
-            if (dTx < 0) dTx = tx2;
+            if (dRx < 0) dRx = 0;
+            if (dTx < 0) dTx = 0;
 
-            // Store as bits per second (raw)
-            ratesRx.push((dRx / sec) * 8);
-            ratesTx.push((dTx / sec) * 8);
-            // Capacity is Mbps -> bits
+            if (selectedNode !== "total") {
+                // For Kubernetes nodes, rxRate/txRate were stored directly in nodes_data as rates
+                try {
+                    const nd2 = JSON.parse(metrics[i].nodes_data || "{}")[selectedNode] || {};
+                    ratesRx.push((nd2.net_rx || 0) * 8); // Convert to bits
+                    ratesTx.push((nd2.net_tx || 0) * 8);
+                } catch (e) {
+                    ratesRx.push(0);
+                    ratesTx.push(0);
+                }
+            } else {
+                ratesRx.push((dRx / sec) * 8);
+                ratesTx.push((dTx / sec) * 8);
+            }
             netCapacities.push(capacity * 1000 * 1000);
 
-            // Disk Usage (Gauge)
-            // Use values from metrics[i] to match timestamp
-            diskUsages.push(metrics[i].disk_usage || 0);
-            diskTotals.push(metrics[i].disk_total || 0);
+            // Disk Chart (Storage)
+            let du2 = metrics[i].disk_usage || 0;
+            let dt2 = metrics[i].disk_total || 0;
+            if (selectedNode !== "total") {
+                try {
+                    const nd2 = JSON.parse(metrics[i].nodes_data || "{}")[selectedNode] || {};
+                    du2 = nd2.disk_used || 0;
+                    dt2 = nd2.disk_total || 0;
+                } catch (e) { }
+            }
+            diskUsages.push(du2);
+            diskTotals.push(dt2);
 
             // Disk I/O Rates
             let r1 = metrics[i - 1].disk_read || 0;
@@ -6697,7 +6787,13 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
             let r2 = metrics[i].disk_read || 0;
             let w2 = metrics[i].disk_write || 0;
 
-            if (selectedDisk !== "total") {
+            if (selectedNode !== "total") {
+                // Currently Kubernetes nodes don't easily provide I/O rates in Summary API
+                // unless we enhance the collector further with SSH fallback per node.
+                // We'll show 0 for now or try to extract from ndata if we added it.
+                ratesDiskRead.push(0);
+                ratesDiskWrite.push(0);
+            } else if (selectedDisk !== "total") {
                 r1 = 0; w1 = 0; r2 = 0; w2 = 0;
                 try {
                     const dmap1 = JSON.parse(metrics[i - 1].disks_data || "{}");

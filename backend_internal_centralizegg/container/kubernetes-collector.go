@@ -71,14 +71,16 @@ type NetStats struct {
 }
 
 type KubernetesCollector struct {
-	DB           *data_centralizegg.DB
-	prevNetStats map[string]NetStats
+	DB            *data_centralizegg.DB
+	prevNetStats  map[string]NetStats
+	prevDiskStats map[string]NetStats // Reusing NetStats struct for Read/Write
 }
 
 func NewKubernetesCollector(db *data_centralizegg.DB) *KubernetesCollector {
 	return &KubernetesCollector{
-		DB:           db,
-		prevNetStats: make(map[string]NetStats),
+		DB:            db,
+		prevNetStats:  make(map[string]NetStats),
+		prevDiskStats: make(map[string]NetStats),
 	}
 }
 
@@ -290,6 +292,7 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 
 	nodeIDMap := make(map[string]int64)
 	allPodNetStats := make(map[string]NetStats)
+	nodeStatsMap := make(map[string]map[string]interface{})
 	cpCount := 0
 	workerCount := 0
 
@@ -417,6 +420,17 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 		}
 
 		m := metricsMap[name]
+
+		// Store in nodeStatsMap for historical record
+		nodeStatsMap[name] = map[string]interface{}{
+			"cpu_usage":  m.CPUUsage,
+			"mem_usage":  summary.Node.Memory.WorkingSetBytes,
+			"mem_total":  totalMem,
+			"net_rx":     rxRate,
+			"net_tx":     txRate,
+			"disk_used":  diskUsed,
+			"disk_total": diskTotal,
+		}
 
 		nodeID, err := kc.DB.UpsertKubernetesNode(data_centralizegg.KubernetesNode{
 			ServerID:         s.ID,
@@ -776,6 +790,11 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 		NetRX:       totalNetRX,
 		NetTX:       totalNetTX,
 	}
+
+	if nodesData, err := json.Marshal(nodeStatsMap); err == nil {
+		metric.NodesData = string(nodesData)
+	}
+
 	if err := kc.DB.InsertServerMetrics(metric); err != nil {
 		// log.Printf("[KubernetesCollector] Failed to insert metrics: %v", err)
 	}
