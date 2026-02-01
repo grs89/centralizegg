@@ -6402,6 +6402,7 @@ let netChart = null;
 let diskChart = null;
 let diskIOChart = null;
 let tempChart = null;
+let uptimeChart = null;
 
 // Auto-refresh state
 let autoRefreshEnabled = false;
@@ -6723,7 +6724,7 @@ function shouldShowTrends() {
 
 // Reset zoom for all charts
 function resetAllChartsZoom() {
-    [cpuChart, ramChart, diskChart, netChart, diskIOChart, tempChart].forEach(chart => {
+    [cpuChart, ramChart, diskChart, netChart, diskIOChart, tempChart, uptimeChart].forEach(chart => {
         if (chart && chart.resetZoom) {
             chart.resetZoom();
         }
@@ -6779,8 +6780,7 @@ function initHistoryMetrics() {
         timeRange.addEventListener('change', loadHistoryMetrics);
     }
 
-    // Initialize compact mode and auto-refresh
-    initCompactMode();
+    // Initialize auto-refresh
     initAutoRefresh();
 
     historyMetricsInitialized = true;
@@ -6839,7 +6839,7 @@ function applyCompactMode(enabled) {
     }
 
     // Resize charts to fit new container size
-    [cpuChart, ramChart, diskChart, netChart, diskIOChart, tempChart].forEach(chart => {
+    [cpuChart, ramChart, diskChart, netChart, diskIOChart, tempChart, uptimeChart].forEach(chart => {
         if (chart && chart.resize) {
             setTimeout(() => chart.resize(), 100);
         }
