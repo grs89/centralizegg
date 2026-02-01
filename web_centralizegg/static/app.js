@@ -7099,7 +7099,7 @@ async function loadHostLogs(category, id) {
     }
 }
 
-function updateHostActivitySummary(logs, category) {
+function updateHostActivitySummary(logs, category, id) {
     const summaryGrid = document.getElementById('history-summary-grid');
     if (!summaryGrid) return;
 
@@ -7114,14 +7114,40 @@ function updateHostActivitySummary(logs, category) {
         l.toLowerCase().includes('alert')
     ).length;
 
-    // 3. Source Name (Pretty print)
+    // 3. Source Name & Updates Info
     let sourceName = category.charAt(0).toUpperCase() + category.slice(1);
+    let host = null;
+    let updatesAvailable = false;
+    let updatesText = "Sistema Actualizado";
+    let updatesColor = "#10b981"; // Green
+    let updatesIcon = "fa-check-circle";
+
+    // Find host object for metadata
+    if (typeof state !== 'undefined') {
+        if (category === 'kvm' && state.allKVMHostsCache) host = state.allKVMHostsCache.find(h => h.id == id);
+        else if (category === 'docker' && state.allDockerHostsCache) host = state.allDockerHostsCache.find(h => h.id == id);
+        else if (category === 'podman' && state.allPodmanHostsCache) host = state.allPodmanHostsCache.find(h => h.id == id);
+        else if (category === 'pfsense' && state.allFirewallHostsCache) host = state.allFirewallHostsCache.find(h => h.id == id);
+        else if (category === 'proxmox' && state.allProxmoxHostsCache) host = state.allProxmoxHostsCache.find(h => h.id == id);
+        else if (category === 'kubernetes' && state.allKubernetesHostsCache) host = state.allKubernetesHostsCache.find(h => h.id == id);
+        else if (category === 'nas' && state.allNasHostsCache) host = state.allNasHostsCache.find(h => h.id == id);
+    }
+
     if (category === 'kvm') sourceName = 'KVM';
     else if (category === 'pfsense') sourceName = 'PFsense';
     else if (category === 'proxmox') sourceName = 'Proxmox';
     else if (category === 'nas') sourceName = 'NAS';
 
-    // 4. Last Event Time (Extract from last log line if possible)
+    // Check for updates in Host Object
+    if (host && host.update_status && host.update_status.includes('Updates Available')) {
+        updatesAvailable = true;
+        updatesText = host.update_status.replace('Updates Available', '').trim() || "Actualizaciones Pendientes";
+        updatesColor = "#facc15"; // Yellow/Orange
+        updatesIcon = "fa-boxes-packing";
+    }
+
+
+    // 4. Last Event Time
     let lastTime = '--:--';
     if (logs.length > 0) {
         const lastLog = logs[logs.length - 1];
@@ -7156,6 +7182,17 @@ function updateHostActivitySummary(logs, category) {
             <div>
                 <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary); line-height: 1;">${criticalCount}</div>
                 <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">Críticos/Errores</div>
+            </div>
+        </div>
+
+        <!-- Updates / Patches -->
+        <div class="glass-panel" style="padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 16px; display:flex; align-items:center; gap: 15px;">
+            <div style="width: 48px; height: 48px; border-radius: 12px; background: ${updatesColor}1a; display:flex; align-items:center; justify-content:center; color: ${updatesColor}; font-size: 1.2rem;">
+                <i class="fa-solid ${updatesIcon}"></i>
+            </div>
+            <div>
+                <div style="font-size: 1.0rem; font-weight: 700; color: var(--text-primary); line-height: 1.2;">${updatesText}</div>
+                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">Estado de Parches</div>
             </div>
         </div>
 
