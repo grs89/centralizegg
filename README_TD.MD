@@ -119,14 +119,16 @@ graph TD
    - Enumera todas las VMs y recopila sus métricas
    - Calcula uso de CPU basado en tiempo acumulado
    - Almacena/actualiza datos en PostgreSQL
-4. **Monitoreo de Docker**:
-   - Inspección de redes para generar el mapa de topología.
-   - Recopilación de estadísticas de contenedores (CPU, RAM, Red, I/O).
-   - Escaneo de vulnerabilidades y monitoreo de GPU.
+4. **Historial Global & Logs**:
+   - Visualización histórica de CPU, Memoria, Red y Disco.
+   - **Historial Detallado por Nodo (Kubernetes)**: Métricas individuales para nodos de cluster.
+   - **Métricas de I/O de Disco**: Tasas de lectura/escritura por disco fícico.
+   - **Logs del Host**: Visualización de logs del sistema (`journalctl`/`clog`) en tiempo real vía SSH.
 
 2. **API REST**: Procesa peticiones del frontend
    - `GET /api/hosts` - Retorna hosts con información completa
    - `GET /api/vms` - Retorna todas las VMs
+   - `GET /api/hosts/{category}/{id}/logs` - Obtiene logs del sistema del host
    - `GET/POST/PUT/DELETE /api/config/servers` - Gestión de servidores
 
 3. **Frontend**: Interfaz de usuario reactiva
@@ -543,7 +545,13 @@ Nodos del cluster Proxmox.
        - **Almacenamiento**: Gráficos de disco (Donut Charts) y alertas OOM.
    - Indicadores de estado (online/offline)
    - Iconos de SO según distribución detectada
-* **Kubernetes (K8s)**: Estadísticas de red (RX/TX) corregidas y contadores de Pods precisos mediante agregación de tráfico de pods cuando el nodo no reporta.
+    - **Historial Global & Logs del Host**:
+        - Dashboard de historial con selección dinámica de servidores.
+        - **Logs en Vivo**: Terminal integrada para visualizar logs de sistema vía SSH (`journalctl`/`clog`).
+        - **Gráficos de Red con Umbrales**: Líneas discontinuas que indican el límite de velocidad de la interfaz.
+        - **Unidades Dinámicas**: Conversión automática a MB/GB en gráficos de memoria y disco.
+    - **Nodos Kubernetes**: Historial profundo de recursos (CPU, Mem, Red, Disco) por nodo.
+
 
 3. **Visualización de VMs**
    - Grid de tarjetas con estado visual
@@ -654,6 +662,8 @@ go build -o centralizegg ./cmd_centralizegg/server
         - `leaflet-ant-path` - Animaciones de tráfico fluidas (Bezier/Flight-Path)
         - `Interactive SVG Engine` - Renderizado de topología de red con flujos animados
         - `Custom Sparklines` - Renderizado SVG ultraligero para métricas en tiempo real
+        - `Log Viewer Terminal` - Interfaz estilo terminal con resaltado de sintaxis y auto-scroll
+
 
 ### Debugging AntPath Map
 Si el mapa no muestra líneas de tráfico:

@@ -1,42 +1,56 @@
-<div class="doc-content">
-    <h3><i class="fa-solid fa-dharmachakra"></i> Kubernetes Cluster Monitoring</h3>
+&lt;div class="doc-content"&gt;
+&lt;h3&gt;&lt;i class="fa-solid fa-dharmachakra"&gt;&lt;/i&gt; Kubernetes Cluster Monitoring&lt;/h3&gt;
 
-    <div class="doc-section">
-        <h4>🚀 Cómo Iniciar</h4>
-        <ol>
-            <li>Accede a <strong>Contenedores > Kubernetes</strong>.</li>
-            <li>En la sección de <strong>Configuración</strong>, añade un nuevo servidor.</li>
-            <li>Sube tu archivo <code>kubeconfig</code> o pega el contenido en el campo correspondiente.</li>
-            <li>Centralizegg conectará con el API server y comenzará a recolectar métricas del cluster.</li>
-        </ol>
-    </div>
+&lt;div class="doc-section"&gt;
+&lt;h4&gt;🚀 Cómo Iniciar&lt;/h4&gt;
+&lt;ol&gt;
+&lt;li&gt;Accede a &lt;strong&gt;Contenedores &gt; Kubernetes&lt;/strong&gt;.&lt;/li&gt;
+&lt;li&gt;En la sección de &lt;strong&gt;Configuración&lt;/strong&gt;, añade un nuevo servidor.&lt;/li&gt;
+&lt;li&gt;Sube tu archivo &lt;code&gt;kubeconfig&lt;/code&gt; o pega el contenido en el campo
+correspondiente.&lt;/li&gt;
+&lt;li&gt;Centralizegg conectará con el API server y comenzará a recolectar métricas del cluster.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/div&gt;
 
-    <div class="doc-section">
-        <h4>📋 Requerimientos Mínimos</h4>
-        <ul>
-            <li><strong>Acceso API:</strong> El backend debe tener conectividad con el API Server de Kubernetes.</li>
-            <li><strong>Kubeconfig:</strong> Un archivo de configuración válido con permisos de lectura para nodos, pods
-                y servicios.</li>
-            <li><strong>Metrics Server:</strong> Recomendado tener <code>metrics-server</code> instalado en el cluster
-                para métricas de recursos en tiempo real.</li>
-            <li><strong>Permisos (RBAC):</strong> ServiceAccount o usuario con permisos de <code>get</code>,
-                <code>list</code> y <code>watch</code> en el núcleo de la API.</li>
-        </ul>
-    </div>
+&lt;div class="doc-section"&gt;
+&lt;h4&gt;📋 Requerimientos Mínimos&lt;/h4&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Acceso API:&lt;/strong&gt; El backend debe tener conectividad con el API Server de
+Kubernetes.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Kubeconfig:&lt;/strong&gt; Un archivo de configuración válido con permisos de lectura para
+nodos, pods
+y servicios.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Metrics Server:&lt;/strong&gt; Recomendado tener &lt;code&gt;metrics-server&lt;/code&gt;
+instalado en el cluster
+para métricas de recursos en tiempo real.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Permisos (RBAC):&lt;/strong&gt; ServiceAccount o usuario con permisos de
+&lt;code&gt;get&lt;/code&gt;,
+&lt;code&gt;list&lt;/code&gt; y &lt;code&gt;watch&lt;/code&gt; en el núcleo de la API.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
 
-    <div class="doc-section">
-        <h4>✨ Características Principales</h4>
-        <ul>
-            <li><strong>Estado de Nodos:</strong> Visualización detallada de CPU, memoria y presión de disco por cada
-                nodo del cluster.</li>
-            <li><strong>Monitoreo de Pods:</strong> Listado de pods con estado (Running, Pending, Failed), reinicios y
-                uso de recursos.</li>
-            <li><strong>Salud de Servicios:</strong> Verificación de endpoints de servicios y balanceadores de carga.
-            </li>
-            <li><strong>Visualización de Eventos:</strong> Historial de eventos del cluster para depurar problemas de
-                despliegue o fallos de nodos.</li>
-            <li><strong>Seguridad Integrada:</strong> Gestión segura de credenciales <code>kubeconfig</code> almacenadas
-                de forma cifrada en la base de datos.</li>
-        </ul>
-    </div>
-</div>
+&lt;div class="doc-section"&gt;
+&lt;h4&gt;✨ Características Principales&lt;/h4&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Estado de Nodos:&lt;/strong&gt; Visualización detallada de CPU, memoria y presión de disco por
+cada
+nodo del cluster.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Historial Profundo por Nodo:&lt;/strong&gt; Gráficos históricos de CPU, Memoria, Red y Disco
+para cada nodo individual mediante el selector de nodos en la herramienta de Historial Global.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Monitoreo de Pods:&lt;/strong&gt; Listado de pods con estado (Running, Pending, Failed),
+reinicios y
+uso de recursos.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Salud de Servicios:&lt;/strong&gt; Verificación de endpoints de servicios y balanceadores de
+carga.
+&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Visualización de Eventos:&lt;/strong&gt; Historial de eventos del cluster para depurar problemas
+de
+despliegue o fallos de nodos.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Logs del Host en Tiempo Real:&lt;/strong&gt; Terminal integrada en Historial Global para
+visualizar logs del sistema (&lt;code&gt;journalctl&lt;/code&gt;) vía SSH desde cada nodo.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Seguridad Integrada:&lt;/strong&gt; Gestión segura de credenciales
+&lt;code&gt;kubeconfig&lt;/code&gt; almacenadas
+de forma cifrada en la base de datos.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;/div&gt;

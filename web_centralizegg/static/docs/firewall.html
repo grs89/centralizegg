@@ -1,38 +1,46 @@
-<div class="doc-content">
-    <h3><i class="fa-solid fa-shield-halved"></i> Firewall (pfSense)</h3>
+&lt;div class="doc-content"&gt;
+&lt;h3&gt;&lt;i class="fa-solid fa-shield-halved"&gt;&lt;/i&gt; Firewall (pfSense)&lt;/h3&gt;
 
-    <div class="doc-section">
-        <h4>🚀 Cómo Iniciar</h4>
-        <ol>
-            <li>Ve al menú <strong>Firewall > pfSense</strong>.</li>
-            <li>Abre la configuración <i class="fa-solid fa-gear"></i>.</li>
-            <li>Registra tu firewall con credenciales SSH (Admin o usuario con privilegios).</li>
-        </ol>
-    </div>
+&lt;div class="doc-section"&gt;
+&lt;h4&gt;🚀 Cómo Iniciar&lt;/h4&gt;
+&lt;ol&gt;
+&lt;li&gt;Ve al menú &lt;strong&gt;Firewall &gt; pfSense&lt;/strong&gt;.&lt;/li&gt;
+&lt;li&gt;Abre la configuración &lt;i class="fa-solid fa-gear"&gt;&lt;/i&gt;.&lt;/li&gt;
+&lt;li&gt;Registra tu firewall con credenciales SSH (Admin o usuario con privilegios).&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/div&gt;
 
-    <div class="doc-section">
-        <h4>📋 Requerimientos Mínimos</h4>
-        <ul>
-            <li><strong>Versión:</strong> pfSense CE 2.6+ o Plus 22.01+.</li>
-            <li><strong>SSH Habilitado:</strong> Activo desde System > Advanced > Admin Access.</li>
-            <li><strong>Permisos de Usuario:</strong> Acceso a shell (`/bin/sh` o `/bin/tcsh`) y ejecución de: `top`,
-                `sysctl`, `netstat`, `pfctl`.</li>
-            <li><strong>Gateway Monitoring:</strong> dpinger debe estar activo para ver latencia y pérdida de paquetes.
-            </li>
-        </ul>
-    </div>
+&lt;div class="doc-section"&gt;
+&lt;h4&gt;📋 Requerimientos Mínimos&lt;/h4&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Versión:&lt;/strong&gt; pfSense CE 2.6+ o Plus 22.01+.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;SSH Habilitado:&lt;/strong&gt; Activo desde System &gt; Advanced &gt; Admin Access.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Permisos de Usuario:&lt;/strong&gt; Acceso a shell (`/bin/sh` o `/bin/tcsh`) y ejecución de:
+`top`,
+`sysctl`, `netstat`, `pfctl`.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Gateway Monitoring:&lt;/strong&gt; dpinger debe estar activo para ver latencia y pérdida de
+paquetes.
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
 
-    <div class="doc-section">
-        <h4>✨ Características Principales</h4>
-        <ul>
-            <li><strong>Mapa de Tráfico:</strong> Visualización en tiempo real de conexiones externas (IPs
-                geolocalizadas) y flujo de datos.</li>
-            <li><strong>Monitoreo de Gateways:</strong> Estado detallado, latencia (ms) y pérdida de paquetes (%) por
-                cada puerta de enlace.</li>
-            <li><strong>Tablas de Estado:</strong> Seguimiento del tamaño y límite de la tabla de estados del firewall
-                (PF states).</li>
-            <li><strong>Interfaces Avanzadas:</strong> Gráficos sparkline para cada interfaz, incluyendo errores y
-                descartes de paquetes.</li>
-        </ul>
-    </div>
-</div>
+&lt;div class="doc-section"&gt;
+&lt;h4&gt;✨ Características Principales&lt;/h4&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Mapa de Tráfico:&lt;/strong&gt; Visualización en tiempo real de conexiones externas (IPs
+geolocalizadas) y flujo de datos.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Monitoreo de Gateways:&lt;/strong&gt; Estado detallado, latencia (ms) y pérdida de paquetes (%)
+por
+cada puerta de enlace.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Tablas de Estado:&lt;/strong&gt; Seguimiento del tamaño y límite de la tabla de estados del
+firewall
+(PF states).&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Interfaces Avanzadas:&lt;/strong&gt; Gráficos sparkline para cada interfaz, incluyendo errores y
+descartes de paquetes.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Historial Global:&lt;/strong&gt; Métricas históricas de CPU, Memoria, Red (con umbrales de
+velocidad de interfaz) y Disco para monitoreo a largo plazo.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Logs del Host en Tiempo Real:&lt;/strong&gt; Visualización de logs del sistema
+(&lt;code&gt;clog&lt;/code&gt;) directamente desde la interfaz de Historial Global.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;/div&gt;

@@ -82,65 +82,26 @@
         - ⚠️ Advertencia (>0% Pérdida de paquetes): Resaltado ámbar.
         - 🚨 Crítico (>10% Pérdida de paquetes): **Animación de pulso rojo** y sombras dinámicas para atención inmediata.
     - Métricas precisas de RTT y Desviación estándar.
+*   **Historial de Logs del Host**: Real-time log viewer (`journalctl` / `clog`) integrado en la herramienta de Historial Global para todos los tipos de servidores (KVM, Docker, pfSense, Proxmox, NAS, Ceph).
 *   **Monitoreo de Kubernetes (K8s)**:
     - Visualización de Nodos y Pods en tiempo real.
-    - Métricas de consumo de recursos por Namespace y estadísticas de red (RX/TX) corregidas en nodos.
-    - Contadores de Pods corregidos; tráfico de red agregado desde pods cuando el nodo no reporta.
-*   **Sparklines de Red**: Gráficos lineales en tiempo real para visualizar tendencias de tráfico RX/TX.
-*   **Filtrado Inteligente**: Selecciona un host para filtrar instantáneamente su cuadrícula de máquinas virtuales.
-*   **Búsqueda Global ("Search Everything")**:
-    - Barra de búsqueda unificada que indexa **KVM Hosts, VMs, Contenedores Docker/Podman y Volúmenes NAS**.
-    - Navegación inteligente: Al seleccionar un resultado, cambia automáticamente a la herramienta correspondiente.
-    - Acceso rápido mediante atajo de teclado o botón dedicado.
-*   **Logs Unificados**: Panel lateral deslizable para ver logs de todos los sistemas (KVM, Docker, NAS) en un solo lugar.
-*   **Orden Alfabético**: Organización automática de hosts y VMs para una navegación más rápida.
-*   **Notificaciones**: Sistema de notificaciones para servidores offline.
-*   **Navegación Optimizada**: Acceso rápido a la configuración y cambio de herramientas desde la barra superior.
-*   **Web-Based Config**: Añade, edita o elimina servidores KVM directamente desde el dashboard.
-*   **Seguridad**: Soporte para puertos SSH personalizados y autenticación robusta (Clave/Contraseña).
-*   **Auto-refresh**: Actualización automática de datos cada 5 segundos en el frontend.
-
-
-
-
-#### Tabla: `virtualization.proxmox_vms`
-VMs y Contenedores LXC alojados en Proxmox.
-*   **Monitoreo de Firewall**: Soporte completo para **pfSense** vía SSH.
-    - Métricas de sistema (CPU, Memoria, Disco)
-    - Información de interfaces de red con estadísticas de tráfico
-    - Detección de arquitectura multi-plataforma (x86_64, ARM/AArch64) con insignias visuales.
-*   **QEMU Guest Agent**: Integración avanzada para obtener telemetría detallada del sistema invitado:
-    - Nombre y versión del Sistema Operativo
-    - Direcciones IP internas
-*   **Proxmox VE**: Integración nativa con clusters Proxmox.
-    - Monitoreo de nodos, VMs y Contenedores LXC.
-    - Métricas de almacenamiento ZFS y Ceph (vía API).
-*   **Visualización Multi-Disco**: Barras de uso individuales para cada disco virtual adjunto a la VM.
-*   **Mapa de Tráfico Mundial**: Visualización geográfica premium con animaciones "Flight Path" (Bezier curvos).
-    - **GeoIP Proxy Integrado**: Resolución de IPs backend para privacidad y seguridad (evita Mixed Content).
-    - **Animaciones Fluidas**: Líneas curvas con pulso dinámico (Rojo: Entrante, Verde: Saliente).
-    - **Modo Depuración**: Overlay accesible desde la UI para diagnosticar la resolución de IPs.
-*   **Monitoreo de Gateways**: Estado en tiempo real de los gateways de pfSense (WAN/VPN).
-    - **Alertas Visuales**: 
-        - ⚠️ Advertencia (>0% Pérdida de paquetes): Resaltado ámbar.
-        - 🚨 Crítico (>10% Pérdida de paquetes): **Animación de pulso rojo** y sombras dinámicas para atención inmediata.
-    - Métricas precisas de RTT y Desviación estándar.
-*   **Monitoreo de Kubernetes (K8s)**:
-    - Visualización de Nodos y Pods en tiempo real.
-    - Métricas de consumo de recursos por Namespace.
+    - **Historial Detallado por Nodo**: Métricas históricas de CPU, Memoria, Red y Disco para cada nodo del cluster.
+    - Métricas de consumo de recursos por Namespace y estadísticas de red (RX/TX).
     - [Documentación Detallada](web_centralizegg/static/docs/kubernetes.html)
-*   **Sparklines de Red**: Gráficos lineales en tiempo real para visualizar tendencias de tráfico RX/TX.
-*   **Filtrado Inteligente**: Selecciona un host para filtrar instantáneamente su cuadrícula de máquinas virtuales.
+*   **Almacenamiento & Disco**:
+    - **NAS**: Monitoreo vía SSH de servidores Linux/NAS:
+        - Inventario de discos (`lsblk`) y particiones.
+        - **Métricas de I/O**: Historial de tasas de Lectura/Escritura por cada disco individual del host.
+    - **Visualización Multi-Disco**: Barras de uso individuales para cada disco virtual adjunto a la VM.
+*   **Historial Global Mejorado**:
+    - Gráficos de Red con **Umbrales de Tráfico** basados en la velocidad de la interfaz.
+    - Unidades dinámicas (MB/GB) para una lectura clara de métricas de Memoria y Almacenamiento.
 *   **Búsqueda Global ("Search Everything")**:
     - Barra de búsqueda unificada que indexa **KVM Hosts, VMs, Contenedores Docker/Podman y Volúmenes NAS**.
     - Navegación inteligente: Al seleccionar un resultado, cambia automáticamente a la herramienta correspondiente.
-    - Acceso rápido mediante atajo de teclado o botón dedicado.
-*   **Logs Unificados**: Panel lateral deslizable para ver logs de todos los sistemas (KVM, Docker, NAS) en un solo lugar.
-*   **Orden Alfabético**: Organización automática de hosts y VMs para una navegación más rápida.
-*   **Notificaciones**: Sistema de notificaciones para servidores offline.
-*   **Navegación Optimizada**: Acceso rápido a la configuración y cambio de herramientas desde la barra superior.
-*   **Web-Based Config**: Añade, edita o elimina servidores KVM directamente desde el dashboard.
-*   **Seguridad**: Soporte para puertos SSH personalizados y autenticación robusta (Clave/Contraseña).
+*   **Logs Unificados**: Panel lateral deslizable para ver logs de recolección de todos los sistemas en un solo lugar.
+*   **Notificaciones Audibles**: Sonido de "ping" para nuevas alertas de servidores offline.
+*   **Seguridad**: Escaneo CVE con `docker scout` y soporte para autenticación robusta (Clave/Contraseña).
 *   **Auto-refresh**: Actualización automática de datos cada 5 segundos en el frontend.
 
 

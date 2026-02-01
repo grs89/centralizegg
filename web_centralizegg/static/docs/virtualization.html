@@ -1,40 +1,50 @@
-<div class="doc-content">
-    <h3><i class="fa-solid fa-microchip"></i> Virtualización (KVM & Proxmox)</h3>
+&lt;div class="doc-content"&gt;
+&lt;h3&gt;&lt;i class="fa-solid fa-microchip"&gt;&lt;/i&gt; Virtualización (KVM &amp; Proxmox)&lt;/h3&gt;
 
-    <div class="doc-section">
-        <h4>🚀 Cómo Iniciar</h4>
-        <ol>
-            <li>Navega al menú <strong>Virtualización > KVM</strong>.</li>
-            <li>Haz clic en el botón de configuración <i class="fa-solid fa-gear"></i>.</li>
-            <li>Añade tu servidor proporcionando la IP, Usuario y Clave SSH.</li>
-        </ol>
-    </div>
+&lt;div class="doc-section"&gt;
+&lt;h4&gt;🚀 Cómo Iniciar&lt;/h4&gt;
+&lt;ol&gt;
+&lt;li&gt;Navega al menú &lt;strong&gt;Virtualización &gt; KVM&lt;/strong&gt;.&lt;/li&gt;
+&lt;li&gt;Haz clic en el botón de configuración &lt;i class="fa-solid fa-gear"&gt;&lt;/i&gt;.&lt;/li&gt;
+&lt;li&gt;Añade tu servidor proporcionando la IP, Usuario y Clave SSH.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/div&gt;
 
-    <div class="doc-section">
-        <h4>📋 Requerimientos Mínimos</h4>
-        <ul>
-            <li><strong>Sistema Operativo:</strong> Linux con Libvirt/QEMU instalado.</li>
-            <li><strong>Acceso SSH:</strong> Clave pública configurada (`authorized_keys`).</li>
-            <li><strong>Permisos:</strong> El usuario SSH debe pertenecer al grupo `libvirt` o tener acceso rw al socket
-                `/var/run/libvirt/libvirt-sock`.</li>
-            <li><strong>Guest Agent (Opcional):</strong> Instalar `qemu-guest-agent` en las VMs para ver IPs y nombres
-                de SO.</li>
-        </ul>
-    </div>
+&lt;div class="doc-section"&gt;
+&lt;h4&gt;📋 Requerimientos Mínimos&lt;/h4&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Sistema Operativo:&lt;/strong&gt; Linux con Libvirt/QEMU instalado.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Acceso SSH:&lt;/strong&gt; Clave pública configurada (`authorized_keys`).&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Permisos:&lt;/strong&gt; El usuario SSH debe pertenecer al grupo `libvirt` o tener acceso rw al
+socket
+`/var/run/libvirt/libvirt-sock`.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Guest Agent (Opcional):&lt;/strong&gt; Instalar `qemu-guest-agent` en las VMs para ver IPs y
+nombres
+de SO.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
 
-    <div class="doc-section">
-        <h4>✨ Características Visuales</h4>
-        <ul>
-            <li><strong>Layout de 2 Columnas:</strong> Información del host organizada en "Sistema y Red" (Izquierda) y
-                "Almacenamiento" (Derecha).</li>
-            <li><strong>Gráficos de Torta (Donut Charts):</strong> Visualización elegante del uso de disco en el host.
-            </li>
-            <li><strong>Monitoreo de Bridges:</strong> Estado y tráfico en tiempo real para interfaces de puente (`br0`, `virbr0`) ubicado en la columna izquierda del layout de dos columnas.</li>
-                `virbr0`).</li>
-            <li><strong>Sparklines:</strong> Gráficos de línea minimalistas para visualizar la actividad de red
-                reciente.</li>
-            <li><strong>Alertas OOM:</strong> Notificaciones visuales inmediatas si el "Out of Memory Killer" detiene
-                procesos.</li>
-            </ol>
-    </div>
-</div>
+&lt;div class="doc-section"&gt;
+&lt;h4&gt;✨ Características Visuales&lt;/h4&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Layout de 2 Columnas:&lt;/strong&gt; Información del host organizada en "Sistema y Red"
+(Izquierda) y
+"Almacenamiento" (Derecha).&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Gráficos de Torta (Donut Charts):&lt;/strong&gt; Visualización elegante del uso de disco en el
+host.
+&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Monitoreo de Bridges:&lt;/strong&gt; Estado y tráfico en tiempo real para interfaces de puente
+(`br0`,
+`virbr0`) ubicado en la columna izquierda del layout de dos columnas.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Sparklines:&lt;/strong&gt; Gráficos de línea minimalistas para visualizar la actividad de red
+reciente.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Historial Global Enriquecido:&lt;/strong&gt; Métricas históricas de CPU, Memoria, Red (con
+umbrales de velocidad de interfaz) y Disco para cada host KVM.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Logs del Host en Tiempo Real:&lt;/strong&gt; Terminal integrada en Historial Global para
+visualizar logs del sistema (&lt;code&gt;journalctl&lt;/code&gt;) vía SSH.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Alertas OOM:&lt;/strong&gt; Notificaciones visuales inmediatas si el "Out of Memory Killer"
+detiene
+procesos.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;/div&gt;
