@@ -1,49 +1,43 @@
-&lt;div class="doc-content"&gt;
-&lt;h3&gt;&lt;i class="fa-solid fa-box"&gt;&lt;/i&gt; Contenedores (Docker &amp; Podman)&lt;/h3&gt;
+<div class="doc-content">
+    <h3><i class="fa-solid fa-box"></i> Contenedores (Docker &amp; Podman)</h3>
 
-&lt;div class="doc-section"&gt;
-&lt;h4&gt;🚀 Cómo Iniciar&lt;/h4&gt;
-&lt;ol&gt;
-&lt;li&gt;Accede a &lt;strong&gt;Contenedores &gt; Docker&lt;/strong&gt;.&lt;/li&gt;
-&lt;li&gt;Configura tu host remoto proporcionando la IP y credenciales SSH.&lt;/li&gt;
-&lt;li&gt;Centralizegg escaneará automáticamente el servicio y todos los contenedores activos.&lt;/li&gt;
-&lt;/ol&gt;
-&lt;/div&gt;
+    <div class="doc-section">
+        <h4>🚀 Cómo Iniciar</h4>
+        <ol>
+            <li>Accede a <strong>Contenedores &gt; Docker</strong>.</li>
+            <li>Configura tu host remoto proporcionando la IP y credenciales SSH.</li>
+            <li>Centralizegg escaneará automáticamente el servicio y todos los contenedores activos.</li>
+        </ol>
+    </div>
 
-&lt;div class="doc-section"&gt;
-&lt;h4&gt;📋 Requerimientos Mínimos&lt;/h4&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;Docker Engine:&lt;/strong&gt; API accesible vía SSH o Socket Unix local.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Podman:&lt;/strong&gt; Servicio &lt;code&gt;podman.socket&lt;/code&gt; activo
-(systemd).&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;GPU Monitoring:&lt;/strong&gt; Drivers NVIDIA y &lt;code&gt;nvidia-smi&lt;/code&gt;
-instalados.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Permisos:&lt;/strong&gt; Usuario con permisos de ejecución de comandos Docker y herramientas de
-sistema.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/div&gt;
+    <div class="doc-section">
+        <h4>📋 Requerimientos Mínimos</h4>
+        <ul>
+            <li><strong>Docker Engine:</strong> API accesible vía SSH o Socket Unix local.</li>
+            <li><strong>Podman:</strong> Servicio <code>podman.socket</code> activo (systemd).</li>
+            <li><strong>GPU Monitoring:</strong> Drivers NVIDIA y <code>nvidia-smi</code> instalados.</li>
+            <li><strong>Permisos:</strong> Usuario con permisos de ejecución de comandos Docker y herramientas de
+                sistema.</li>
+        </ul>
+    </div>
 
-&lt;div class="doc-section"&gt;
-&lt;h4&gt;✨ Características Principales&lt;/h4&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;Topología de Red:&lt;/strong&gt; Mapa interactivo animado que muestra la relación entre redes,
-contenedores e Internet.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Monitoreo de GPU:&lt;/strong&gt; Visualización de carga, temperatura y uso de VRAM para
-aceleración
-por hardware.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Escaneo de CVE:&lt;/strong&gt; Integración con &lt;code&gt;docker scout&lt;/code&gt; para
-detectar
-vulnerabilidades críticas en imágenes.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Almacenamiento Detallado:&lt;/strong&gt; Monitoreo de uso de `/var/lib/docker`, inodos y tamaños
-de
-volúmenes individuales.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Historial Global de Host:&lt;/strong&gt; Métricas históricas de rendimiento del servidor
-Docker/Podman con gráficos de CPU, Memoria, Red y Almacenamiento.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Logs del Host en Tiempo Real:&lt;/strong&gt; Terminal integrada para visualizar logs del sistema
-(&lt;code&gt;journalctl&lt;/code&gt;) del servidor de contenedores.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Logs de Contenedores:&lt;/strong&gt; Seguimiento del tamaño de logs y estado OOM (Out of Memory)
-por
-contenedor.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/div&gt;
-&lt;/div&gt;
+    <div class="doc-section">
+        <h4>✨ Características Principales</h4>
+        <ul>
+            <li><strong>Topología de Red:</strong> Mapa interactivo animado que muestra la relación entre redes,
+                contenedores e Internet.</li>
+            <li><strong>Monitoreo de GPU:</strong> Visualización de carga, temperatura y uso de VRAM para aceleración
+                por hardware.</li>
+            <li><strong>Escaneo de CVE:</strong> Integración con <code>docker scout</code> para detectar
+                vulnerabilidades críticas en imágenes.</li>
+            <li><strong>Almacenamiento Detallado:</strong> Monitoreo de uso de `/var/lib/docker`, inodos y tamaños de
+                volúmenes individuales.</li>
+            <li><strong>Historial Global de Host:</strong> Métricas históricas de rendimiento del servidor Docker/Podman
+                con gráficos de CPU, Memoria, Red y Almacenamiento.</li>
+            <li><strong>Logs del Host en Tiempo Real:</strong> Terminal integrada para visualizar logs del sistema
+                (<code>journalctl</code>) del servidor de contenedores.</li>
+            <li><strong>Logs de Contenedores:</strong> Seguimiento del tamaño de logs y estado OOM (Out of Memory) por
+                contenedor.</li>
+        </ul>
+    </div>
+</div>
