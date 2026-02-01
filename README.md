@@ -8,7 +8,7 @@
   <img src="web_centralizegg/static/image/1.png" alt="Centralizegg Dashboard" width="800">
 </div>
 
-[🇨🇴 Español](#español) | 
+[🇨🇴 Español](#español) | [🇧🇷 Português](#português)
 
 ---
 
@@ -336,29 +336,236 @@ Los servidores KVM se configuran a través del dashboard web:
 - Verifica configuración de Libvirt en el servidor remoto
 - Revisa políticas de acceso en `/etc/libvirt/libvirt.conf`
 
-## ⚡ Optimización del Sistema
-
-### ⚙️ Optimización del Backend
-Hemos implementado varias optimizaciones en el backend para mejorar el rendimiento y la eficiencia:
-
-* **Conexiones SSH persistentes**: Reutilización de conexiones SSH para reducir la sobrecarga de establecimiento de conexión.
-* **Pool de goroutines**: Gestión eficiente de tareas concurrentes para evitar la creación excesiva de goroutines.
-* **Manejo de errores mejorado**: Captura y registro más detallado de errores para facilitar la depuración.
-* **Optimización de consultas SQL**: Ajustes en las consultas a la base de datos para una recuperación de datos más rápida.
-* **Ajustes de pool de conexiones DB**: `SetMaxOpenConns(25)` y `SetMaxIdleConns(25)` para reducir latencia.
-* **Timeouts del servidor HTTP**: `ReadTimeout`, `WriteTimeout` y `IdleTimeout` configurados a 15s/15s/60s.
-* **Compresión GZIP**: Uso de `gzip.BestSpeed` para minimizar la sobrecarga de CPU en respuestas API.
-
-### ⚡ Optimización del Frontend
-El frontend ha sido completamente refactorizado para ofrecer una experiencia ultra-fluida:
-
-* **Arquitectura Modular (ES Modules)**: División de `app.js` en módulos especializados (`state.js`, `ui.js`, `api.js`, `history.js`) para una carga y mantenimiento eficiente.
-* **Estado Centralizado**: Uso de un objeto `state` único para sincronizar datos entre todos los componentes.
-* **Smart Rendering (Memoización)**: El sistema compara los datos antes de actualizar el DOM, evitando reflows innecesarios.
-* **Sparklines Ultra-Light**: Gráficos de red SVG generados al vuelo con impacto mínimo en CPU/Memoria.
-* **Carga Bajo Demanda**: Las métricas e historial se procesan solo para la herramienta activa, reduciendo el tráfico de red.
-
 ---
+
+<a name="português"></a>
+# 🇧🇷 Centralizegg
+
+**Centralizegg** é uma solução de monitoramento leve e containerizada para múltiplos servidores KVM. Fornece um painel premium em tempo real para visualizar os recursos de seus hosts e o estado das máquinas virtuais (VMs) de forma centralizada.
+
+[![Docker Build (GitHub)](https://github.com/USUARIO/REPO/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/USUARIO/REPO/actions/workflows/docker-publish.yml)
+[![Docker Build (GitLab)](https://gitlab.com/USUARIO/REPO/badges/main/pipeline.svg)](https://gitlab.com/USUARIO/REPO/-/pipelines)
+[![Docker Hub](https://img.shields.io/docker/v/USUARIO/centralizegg?label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/USUARIO/centralizegg)
+[![Docker Pulls](https://img.shields.io/docker/pulls/USUARIO/centralizegg?logo=docker)](https://hub.docker.com/r/USUARIO/centralizegg)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+> [!TIP]
+> **CI/CD Disponível**: Este projeto inclui configuração para **GitHub Actions** e **GitLab CI**.
+> - GitHub: Ver [instruções](.github/DOCKER_HUB_SETUP.md)
+> - GitLab: Ver [instruções](.gitlab/DOCKER_HUB_SETUP.md)
+> 
+> Substitua `USUARIO/REPO` pelo seu usuário e repositório nos badges acima.
+
+## 📋 Índice
+
+- [Características Principais](#-características-principais-1)
+- [Estrutura do Projeto](#-estrutura-do-projeto-1)
+- [Instalação Rápida](#-instalação-rápida-1)
+- [Configuração](#-configuração-1)
+- [Solução de Problemas](#-solução-de-problemas)
+
+## ✨ Características Principais
+
+*   **Detecção de SO**: Identificação automática do Sistema Operacional de cada host através de `/etc/os-release` com ícones representativos (Ubuntu, Debian, Fedora, CentOS, Windows, Red Hat, SUSE).
+*   **Métricas Premium**: Janelas flutuantes (popovers) interativas para CPU e Memória com barras de progresso em tempo real.
+*   **Coletor Automático**: Coleta de métricas a cada 10 segundos de todos os servidores configurados.
+*   **Métricas Completas**: 
+    - CPU: Uso calculado com base no tempo de CPU acumulado
+    - Memória: Total, livre e utilizada
+    - Disco: Alocação, capacidade e estatísticas de I/O
+    - Rede: Tráfico RX/TX em tempo real
+*   **Monitoramento de Firewall**: Suporte completo para **pfSense** via SSH.
+    - Métricas de sistema (CPU, Memória, Disco)
+    - Informações de interfaces de rede com estatísticas de tráfego
+    - Detecção de arquitetura multiplataforma (x86_64, ARM/AArch64) com badges visuais.
+*   **QEMU Guest Agent**: Integração avançada para obter telemetria detalhada do sistema convidado:
+    - Nome e versão do Sistema Operacional
+    - Endereços IP internos
+*   **Proxmox VE**: Integração nativa com clusters Proxmox.
+    - Monitoramento de nós, VMs e Containers LXC.
+    - Métricas de armazenamento ZFS e Ceph (via API).
+*   **Mapa de Tráfego Mundial**: Visualização geográfica premium com animações "Flight Path" (curvas Bezier).
+    - **Proxy GeoIP Integrado**: Resolução de IPs no backend para privacidade e segurança (evita Mixed Content).
+    - **Animações Fluidas**: Linhas curvas com pulso dinâmico (Vermelho: Entrada, Verde: Saída).
+    - **Modo Debug**: Overlay acessível da UI para diagnosticar resolução de IPs.
+*   **Monitoramento de Gateways**: Estado em tempo real dos gateways pfSense (WAN/VPN).
+    - **Alertas Visuais**: 
+        - ⚠️ Aviso (>0% Perda de pacotes): Destaque âmbar.
+        - 🚨 Crítico (>10% Perda de pacotes): **Animação de pulso vermelho** e sombras dinâmicas para atenção imediata.
+    - Métricas precisas de RTT e Desvio padrão.
+*   **Histórico de Logs do Host**: Visualizador de logs em tempo real (`journalctl` / `clog`) integrado na ferramenta de Histórico Global para todos os tipos de servidores (KVM, Docker, pfSense, Proxmox, NAS, Ceph).
+*   **Monitoramento de Kubernetes (K8s)**:
+    - Visualização de Nós e Pods em tempo real.
+    - **Histórico Detalhado por Nó**: Métricas históricas de CPU, Memória, Rede e Disco para cada nó do cluster.
+    - Métricas de consumo de recursos por Namespace e estatísticas de rede (RX/TX).
+    - [Documentação Detalhada](web_centralizegg/static/docs/kubernetes.html)
+*   **Armazenamento & Disco**:
+    - **NAS**: Monitoramento via SSH de servidores Linux/NAS:
+        - Inventário de discos (`lsblk`) e partições.
+        - **Métricas de I/O**: Histórico de taxas de Leitura/Escrita para cada disco individual do host.
+    - **Visualização Multi-Disco**: Barras de uso individuais para cada disco virtual anexado à VM.
+*   **Histórico Global Melhorado**:
+    - Gráficos de Rede com **Limites de Tráfego** baseados na velocidade da interface.
+    - Unidades dinâmicas (MB/GB) para leitura clara de métricas de Memória e Armazenamento.
+*   **Busca Global ("Search Everything")**:
+    - Barra de busca unificada que indexa **Hosts KVM, VMs, Containers Docker/Podman e Volumes NAS**.
+    - Navegação inteligente: Ao selecionar um resultado, muda automaticamente para a ferramenta correspondente.
+*   **Logs Unificados**: Painel lateral deslizante para ver logs de coleta de todos os sistemas em um só lugar.
+*   **Notificações Audíveis**: Som de "ping" para novos alertas de servidores offline.
+*   **Segurança**: Escaneamento CVE com `docker scout` e suporte para autenticação robusta (Chave/Senha).
+*   **Auto-refresh**: Atualização automática de dados a cada 5 segundos no frontend.
+
+## 📁 Estrutura do Projeto
+
+```
+Centralizegg/
+├── cmd_centralizegg/
+│   └── server/
+│       └── main.go                 # Ponto de entrada da aplicação
+├── backend_internal_centralizegg/
+│   ├── data_centralizegg/
+│   │   └── postgres.go            # Camada de acesso a dados (PostgreSQL)
+│   ├── virtualization/
+│   │   ├── kvm-collector.go       # Coletor de métricas KVM/Libvirt
+│   │   └── proxmox-collector.go   # Coletor de API Proxmox
+│   ├── firewall/
+│   │   └── pfsense-collector.go   # Coletor de métricas pfSense (SSH)
+│   ├── container/
+│   │   ├── docker-collector.go    # Coletor Docker
+│   │   ├── podman-collector.go    # Coletor Podman
+│   │   └── kubernetes-collector.go # Coletor K8s
+│   └── storage/
+│       └── nas-collector.go       # Coletor NAS (SSH)
+├── web_centralizegg/
+│   └── static/
+│       ├── index.html             # Interface principal
+│       ├── app.js                 # Lógica do frontend
+│       ├── style.css              # Estilos glassmorphism
+│       ├── logo.png
+│       └── image/
+│           └── 1.png              # Screenshot do painel
+├── deploy_centralizegg/
+│   └── postgres/
+│       └── init.sql               # Script de inicialização do BD
+├── docker-compose.yml             # Configuração de serviços
+├── Dockerfile                     # Imagem do container
+├── go.mod                         # Dependências Go
+└── README.md
+```
+
+## 🚀 Instalação Rápida
+
+### Requisitos Prévios
+
+*   Docker e Docker Compose
+*   Acesso SSH (via chave ou senha) aos servidores KVM
+*   Os servidores KVM devem ter Libvirt configurado e acessível
+*   **Opcional**: Instalar `qemu-guest-agent` nas VMs para detecção de SO e IPs.
+
+### Configuração de Segurança (SSH)
+1. Certifique-se de que sua chave esteja em `~/.ssh/id_rsa`.
+2. O container monta esse diretório como somente leitura por padrão.
+
+> [!IMPORTANT]
+> **Permissões de Arquivo**: Certifique-se de que sua chave privada tenha permissões restritas (chmod 600), ou o cliente SSH recusará usá-la por segurança.
+> ```bash
+> chmod 600 ~/.ssh/id_rsa
+> ```
+
+### Implantação
+
+```bash
+# Clonar o repositório (se aplicável)
+git clone <repository-url>
+cd Centralizegg
+
+# Iniciar serviços
+docker-compose up -d --build
+
+# Ver logs
+docker-compose logs -f app
+```
+
+Acesse o painel em: `http://localhost:8080`
+
+## ⚙️ Configuração
+
+### Variáveis de Ambiente
+
+O serviço `app` em `docker-compose.yml` utiliza as seguintes variáveis de ambiente:
+
+```yaml
+DB_HOST: db                    # Host do PostgreSQL
+DB_PORT: 5432                  # Porta do PostgreSQL
+DB_USER: centralizegg          # Usuário do banco de dados
+DB_PASS: centralizegg_secret   # Senha do banco de dados
+DB_NAME: centralizegg_db       # Nome do banco de dados
+LIBVIRT_SOCK: /var/run/libvirt/libvirt-sock  # Socket do Libvirt (local)
+```
+
+### Volumes Montados
+
+- `/var/run/libvirt/libvirt-sock:/var/run/libvirt/libvirt-sock` - Socket do Libvirt (para conexões locais)
+- `~/.ssh:/root/.ssh:ro` - Chaves SSH (somente leitura)
+
+### Configuração de Servidores
+
+Os servidores KVM são configurados através do painel web:
+
+1. Acesse `http://localhost:8080`
+2. Selecione a ferramenta "KVM" no menu
+3. Clique no botão de configuração (⚙️)
+4. Adicione um novo servidor com:
+   - **Nome**: Nome descritivo
+   - **IP Address**: Endereço IP do servidor
+   - **SSH Port**: Porta SSH (padrão: 22)
+   - **Username**: Usuário SSH
+   - **Autenticação**: Chave SSH ou senha
+   - **SSH Key Path**: Caminho para a chave (padrão: `/root/.ssh/id_rsa`)
+
+### Configuração de Firewall (pfSense)
+
+1. Selecione a ferramenta "Firewall" no menu
+2. Clique no botão de configuração (⚙️)
+3. Adicione um novo servidor com credenciais SSH (similar ao KVM).
+   - **Autenticação**: Suporta Chave SSH (RSA/Ed25519) ou Senha.
+   - **Requisitos**: O usuário deve ter acesso ao shell (`/bin/sh` ou `/bin/tcsh`) e permissões para executar `top`, `sysctl`, `netstat`, `pfctl`.
+   - **Não requer agentes**: Tudo é coletado remotamente e com segurança.
+
+## 🔧 Solução de Problemas
+
+### Problemas de Conexão SSH
+
+**Erro**: `ssh: handshake failed: ssh: unable to authenticate`
+- Verifique se a chave pública está em `~/.ssh/authorized_keys` no servidor remoto
+- Confirme permissões da chave privada: `chmod 600 ~/.ssh/id_rsa`
+- Teste conexão manual: `ssh -i ~/.ssh/id_rsa usuario@ip-servidor`
+
+**Erro**: `ssh: connect to host X.X.X.X port 22: Connection refused`
+- Verifique se o servidor SSH está rodando no host remoto
+- Confirme porta SSH (pode não ser a 22)
+- Verifique firewall/regras de segurança
+
+### Problemas de Banco de Dados
+
+**Erro**: `Could not connect to DB`
+- Verifique se o PostgreSQL está rodando: `docker-compose ps`
+- Revise as variáveis de ambiente em `docker-compose.yml`
+- Verifique os logs: `docker-compose logs db`
+
+**Erro**: `relation "virtualization.hosts" does not exist`
+- Execute o script de inicialização: `psql -f deploy_centralizegg/postgres/init.sql`
+
+### Problemas de Libvirt
+
+**Erro**: `remote libvirt socket: connection refused`
+- Verifique se o Libvirt está rodando no servidor remoto
+- Certifique-se de que o socket esteja em `/var/run/libvirt/libvirt-sock`
+- Verifique permissões do usuário SSH para acessar o socket
+
+**Erro**: `libvirt connect: authentication failed`
+- Verifique configuração do Libvirt no servidor remoto
+- Revise políticas de acesso em `/etc/libvirt/libvirt.conf`
 
 ---
 
