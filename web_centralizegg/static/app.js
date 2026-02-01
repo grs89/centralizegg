@@ -7083,6 +7083,9 @@ async function loadHostLogs(category, id) {
         const logLines = data.logs.split('\n').filter(line => line.trim());
         window.allHostLogs = logLines;
 
+        // NEW: Update Activity Summary based on these logs
+        updateHostActivitySummary(logLines, category, id);
+
         // Display logs (initially all)
         displayFilteredLogs(logLines);
 
@@ -7091,10 +7094,93 @@ async function loadHostLogs(category, id) {
 
         // Auto-scroll to bottom
         logsContent.scrollTop = logsContent.scrollHeight;
-
     } catch (err) {
         logsContent.innerHTML = `<div style="color: #f87171;">Error: ${err.message}</div>`;
     }
+}
+
+function updateHostActivitySummary(logs, category) {
+    const summaryGrid = document.getElementById('history-summary-grid');
+    if (!summaryGrid) return;
+
+    // 1. Total Events
+    const totalEvents = logs.length;
+
+    // 2. Criticals/Errors
+    const criticalCount = logs.filter(l =>
+        l.toLowerCase().includes('error') ||
+        l.toLowerCase().includes('fail') ||
+        l.toLowerCase().includes('crit') ||
+        l.toLowerCase().includes('alert')
+    ).length;
+
+    // 3. Source Name (Pretty print)
+    let sourceName = category.charAt(0).toUpperCase() + category.slice(1);
+    if (category === 'kvm') sourceName = 'KVM';
+    else if (category === 'pfsense') sourceName = 'PFsense';
+    else if (category === 'proxmox') sourceName = 'Proxmox';
+    else if (category === 'nas') sourceName = 'NAS';
+
+    // 4. Last Event Time (Extract from last log line if possible)
+    let lastTime = '--:--';
+    if (logs.length > 0) {
+        const lastLog = logs[logs.length - 1];
+        // Attempt to extract time (format depends on log, usually starts with date/time)
+        // Simple heuristic: take first 15-20 chars if they look like date
+        const match = lastLog.match(/(\d{1,2}:\d{2}:\d{2})/);
+        if (match) lastTime = match[1];
+        else {
+            // Fallback: use current time if logs just fetched
+            lastTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+    }
+
+    // Render Cards
+    summaryGrid.innerHTML = `
+        <!-- Total Events -->
+        <div class="glass-panel" style="padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 16px; display:flex; align-items:center; gap: 15px;">
+            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(56, 189, 248, 0.1); display:flex; align-items:center; justify-content:center; color: #38bdf8; font-size: 1.2rem;">
+                <i class="fa-solid fa-layer-group"></i>
+            </div>
+            <div>
+                <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary); line-height: 1;">${totalEvents}</div>
+                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">Eventos del Host</div>
+            </div>
+        </div>
+
+        <!-- Critical -->
+        <div class="glass-panel" style="padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 16px; display:flex; align-items:center; gap: 15px;">
+            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(239, 68, 68, 0.1); display:flex; align-items:center; justify-content:center; color: #ef4444; font-size: 1.2rem;">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <div>
+                <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary); line-height: 1;">${criticalCount}</div>
+                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">Críticos/Errores</div>
+            </div>
+        </div>
+
+        <!-- Source -->
+        <div class="glass-panel" style="padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 16px; display:flex; align-items:center; gap: 15px;">
+            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(168, 85, 247, 0.1); display:flex; align-items:center; justify-content:center; color: #a855f7; font-size: 1.2rem;">
+                <i class="fa-solid fa-server"></i>
+            </div>
+            <div>
+                <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); line-height: 1.2;">${sourceName}</div>
+                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">Fuente (Host)</div>
+            </div>
+        </div>
+
+        <!-- Last Active -->
+        <div class="glass-panel" style="padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 16px; display:flex; align-items:center; gap: 15px;">
+            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(16, 185, 129, 0.1); display:flex; align-items:center; justify-content:center; color: #10b981; font-size: 1.2rem;">
+                <i class="fa-regular fa-clock"></i>
+            </div>
+            <div>
+                <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); line-height: 1.2;">${lastTime}</div>
+                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">Último Evento</div>
+            </div>
+        </div>
+    `;
 }
 
 // Store all logs for filtering
