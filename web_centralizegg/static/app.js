@@ -7662,6 +7662,20 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
     initDiskSelector();
     initNodeSelector();
 
+    // Update Date Display
+    const dateDisplay = document.getElementById('history-date-display');
+    if (dateDisplay) {
+        if (metrics.length > 0) {
+            // Use last metric timestamp
+            const lastTime = new Date(metrics[metrics.length - 1].timestamp);
+            const dateStr = lastTime.toLocaleDateString();
+            dateDisplay.innerHTML = `<i class="fa-regular fa-calendar" style="color: #60a5fa;"></i> ${dateStr}`;
+            dateDisplay.style.display = 'flex';
+        } else {
+            dateDisplay.style.display = 'none';
+        }
+    }
+
     // Sort by timestamp
     metrics.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
@@ -7957,6 +7971,35 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
         return gradient;
     };
 
+    // Common X-Axis Ticks Configuration (Extracted to survive JSON clone)
+    const xAxisTicks = {
+        color: '#94a3b8',
+        font: { size: 10 },
+        maxRotation: 0, // Force horizontal
+        minRotation: 0,
+        autoSkip: true,
+        maxTicksLimit: 5, // Reduce density
+        padding: 8,
+        callback: function (value, index, values) {
+            const label = this.getLabelForValue(value);
+            // Robust time extraction
+            if (typeof label === 'string') {
+                const timeMatch = label.match(/(\d{1,2}:\d{2}(:\d{2})?)\s*(?:[APap]\.?[Mm]\.?)?/);
+                if (timeMatch) return timeMatch[0];
+
+                const parts = label.split(' ');
+                if (parts.length > 1) {
+                    const last = parts[parts.length - 1];
+                    if (last.match(/[APap]\.?[Mm]\.?/) && parts.length > 1) {
+                        return parts[parts.length - 2] + ' ' + last;
+                    }
+                    return last;
+                }
+            }
+            return label;
+        }
+    };
+
     const commonOptions = {
         responsive: true,
         maintainAspectRatio: false,
@@ -8003,7 +8046,7 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
             },
             x: {
                 grid: { display: false },
-                ticks: { color: '#94a3b8', font: { size: 10 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 6 },
+                ticks: xAxisTicks, // Use the shared config
                 border: { display: false }
             }
         },
@@ -8070,6 +8113,7 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
 
     // CPU Chart with thresholds and trends
     const cpuOptions = JSON.parse(JSON.stringify(commonOptions));
+    cpuOptions.scales.x.ticks = xAxisTicks; // Restore callback
     cpuOptions.plugins.annotation = getThresholdAnnotations('cpu', 100);
 
     // Check if trends should be shown
@@ -8155,6 +8199,7 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
 
     // Custom Options for RAM
     const ramOptions = JSON.parse(JSON.stringify(commonOptions));
+    ramOptions.scales.x.ticks = xAxisTicks; // Restore callback
     ramOptions.plugins.tooltip.callbacks = {
         label: (context) => ' ' + formatBytes(context.raw)
     };
@@ -8229,6 +8274,8 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
 
             // Reuse RAM options for formatBytes on Y and Tooltip
             const diskOptions = JSON.parse(JSON.stringify(ramOptions));
+            diskOptions.scales.x.ticks = xAxisTicks; // Restore callback
+            diskOptions.scales.x.ticks = xAxisTicks; // Restore callback
 
             // Re-apply callbacks because JSON.stringify strips functions
             diskOptions.plugins.tooltip.callbacks = {
@@ -8282,6 +8329,7 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
 
     // Temperature Chart with thresholds and trends
     const tempOptions = JSON.parse(JSON.stringify(commonOptions));
+    tempOptions.scales.x.ticks = xAxisTicks; // Restore callback
     tempOptions.plugins.annotation = getThresholdAnnotations('temperature', 100);
     tempOptions.scales.y.ticks.callback = (value) => value + '°C';
     tempOptions.plugins.tooltip = {
@@ -8401,6 +8449,7 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
 
             // Copy options and enable legend for network
             const netOptions = JSON.parse(JSON.stringify(commonOptions));
+            netOptions.scales.x.ticks = xAxisTicks; // Restore callback
             netOptions.scales.y.ticks.callback = (value) => formatBits(value);
             netOptions.plugins.tooltip.callbacks = {
                 label: (context) => ' ' + context.dataset.label + ': ' + formatBits(context.raw)
@@ -8478,6 +8527,7 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
             const gradWrite = getGradient(ctxDiskIO, '#8b5cf6');
 
             const dioOptions = JSON.parse(JSON.stringify(ramOptions));
+            dioOptions.scales.x.ticks = xAxisTicks; // Restore callback
             dioOptions.scales.y.ticks.callback = (value) => formatBytes(value) + '/s';
             dioOptions.plugins.tooltip.callbacks = {
                 label: (context) => ' ' + context.dataset.label + ': ' + formatBytes(context.raw) + '/s'
