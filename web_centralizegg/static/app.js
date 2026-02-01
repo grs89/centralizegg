@@ -6779,10 +6779,71 @@ function initHistoryMetrics() {
         timeRange.addEventListener('change', loadHistoryMetrics);
     }
 
-    // Initialize auto-refresh
+    // Initialize compact mode and auto-refresh
+    initCompactMode();
     initAutoRefresh();
 
     historyMetricsInitialized = true;
+}
+
+// ========================================
+// COMPACT MODE SYSTEM
+// ========================================
+
+let compactModeEnabled = false;
+
+function initCompactMode() {
+    const toggle = document.getElementById('compact-mode-toggle');
+    if (!toggle) return;
+
+    // Load saved preference
+    const saved = localStorage.getItem('history-compact-mode');
+    if (saved === 'true') {
+        compactModeEnabled = true;
+        toggle.checked = true;
+        applyCompactMode(true);
+    }
+
+    // Toggle event
+    toggle.addEventListener('change', () => {
+        compactModeEnabled = toggle.checked;
+        localStorage.setItem('history-compact-mode', compactModeEnabled);
+        applyCompactMode(compactModeEnabled);
+    });
+}
+
+function applyCompactMode(enabled) {
+    const chartsGrid = document.querySelector('.charts-grid');
+    const chartContainers = document.querySelectorAll('.chart-container');
+
+    if (enabled) {
+        // Compact mode: smaller charts, 3 columns
+        if (chartsGrid) {
+            chartsGrid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(250px, 1fr))';
+            chartsGrid.style.gap = '12px';
+        }
+        chartContainers.forEach(container => {
+            container.style.height = '200px';
+            container.style.padding = '12px';
+        });
+    } else {
+        // Normal mode: restore defaults
+        if (chartsGrid) {
+            chartsGrid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(300px, 1fr))';
+            chartsGrid.style.gap = '20px';
+        }
+        chartContainers.forEach(container => {
+            container.style.height = '320px';
+            container.style.padding = '20px';
+        });
+    }
+
+    // Resize charts to fit new container size
+    [cpuChart, ramChart, diskChart, netChart, diskIOChart, tempChart].forEach(chart => {
+        if (chart && chart.resize) {
+            setTimeout(() => chart.resize(), 100);
+        }
+    });
 }
 
 // ========================================
