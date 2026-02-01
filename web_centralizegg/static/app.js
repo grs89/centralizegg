@@ -6780,7 +6780,9 @@ function initHistoryMetrics() {
         timeRange.addEventListener('change', loadHistoryMetrics);
     }
 
-    // Initialize auto-refresh
+    // Initialize Compact Mode, Anomaly Detection, and Auto-Refresh
+    initCompactMode();
+    initAnomalyDetection();
     initAutoRefresh();
 
     historyMetricsInitialized = true;
@@ -7207,6 +7209,104 @@ function formatBits(bits, decimals = 2) {
     const i = Math.floor(Math.log(bits) / Math.log(k));
     const index = Math.max(0, Math.min(i, sizes.length - 1));
     return parseFloat((bits / Math.pow(k, index)).toFixed(dm)) + ' ' + sizes[index];
+}
+// ========================================
+// ANOMALY DETECTION SYSTEM
+// ========================================
+
+let anomaliesEnabled = false;
+
+function initAnomalyDetection() {
+    const toggle = document.getElementById('show-anomalies-toggle');
+    if (!toggle) return;
+
+    // Load saved preference
+    const saved = localStorage.getItem('history-show-anomalies');
+    if (saved === 'true') {
+        anomaliesEnabled = true;
+        toggle.checked = true;
+    }
+
+    toggle.addEventListener('change', () => {
+        anomaliesEnabled = toggle.checked;
+        localStorage.setItem('history-show-anomalies', anomaliesEnabled);
+        updateAnomalyVisualization();
+    });
+}
+
+function detectAnomalies(data) {
+    if (!data || data.length < 5) return [];
+
+    // Filter out null/invalid values
+    const validData = data.filter(v => v !== null && v !== undefined && !isNaN(v));
+    if (validData.length < 5) return [];
+
+    // Calculate Mean
+    const sum = validData.reduce((a, b) => a + b, 0);
+    const mean = sum / validData.length;
+
+    // Calculate StdDev
+    const squareDiffs = validData.map(v => Math.pow(v - mean, 2));
+    const avgSquareDiff = squareDiffs.reduce((a, b) => a + b, 0) / validData.length;
+    const stdDev = Math.sqrt(avgSquareDiff);
+
+    if (stdDev === 0) return [];
+
+    // Z-Score threshold (e.g., 2.5 or 3 standard deviations)
+    const THRESHOLD = 2.5;
+
+    return data.map((v, i) => {
+        if (v === null || v === undefined || isNaN(v)) return null;
+        const zScore = (v - mean) / stdDev;
+        return Math.abs(zScore) > THRESHOLD ? v : null;
+    });
+}
+
+function updateAnomalyVisualization() {
+    if (!cpuChart) return;
+
+    // Apply to all charts
+    applyAnomaliesToChart(cpuChart, 'cpu');
+    applyAnomaliesToChart(ramChart, 'ram');
+    applyAnomaliesToChart(diskChart, 'disk');
+    applyAnomaliesToChart(netChart, 'net');
+    applyAnomaliesToChart(diskIOChart, 'diskio');
+    applyAnomaliesToChart(tempChart, 'temp');
+}
+
+function applyAnomaliesToChart(chart, type) {
+    if (!chart || !chart.data || !chart.data.datasets) return;
+
+    // Remove existing anomaly dataset
+    chart.data.datasets = chart.data.datasets.filter(ds => ds.label !== 'Anomalías');
+
+    if (anomaliesEnabled) {
+        // Find main dataset (usually the first one, or specific logic)
+        const mainDataset = chart.data.datasets[0];
+        if (!mainDataset || !mainDataset.data) return;
+
+        const mainData = mainDataset.data;
+        const anomalies = detectAnomalies(mainData);
+
+        // Only add if there are anomalies
+        const hasAnomalies = anomalies.some(v => v !== null);
+
+        if (hasAnomalies) {
+            chart.data.datasets.push({
+                label: 'Anomalías',
+                data: anomalies,
+                type: 'scatter',
+                backgroundColor: '#ef4444', // Red
+                borderColor: '#ef4444',
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                pointStyle: 'circle',
+                order: 0 // Draw on top
+            });
+        }
+    }
+
+    chart.update('none'); // Update without animation for performance
 }
 
 function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
@@ -8080,6 +8180,9 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
             });
         }
     }
+
+    // Update anomalies if enabled
+    updateAnomalyVisualization();
 }
 
 
