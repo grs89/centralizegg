@@ -15,7 +15,7 @@
 <a name="español"></a>
 # 🇨🇴 Centralizegg
 
-**Centralizegg** es una solución de monitoreo ligera y containerizada para múltiples servidores KVM. Proporciona un dashboard premium en tiempo real para visualizar los recursos de tus hosts y el estado de las máquinas virtuales (VMs) de forma centralizada.
+**Centralizegg** es una solución de monitoreo ligera y containerizada para múltiples servidores y servicios. Proporciona un dashboard premium en tiempo real para visualizar los recursos de tus hosts, contenedores y Cluster K8s  permite ver el estado de los recursos de forma centralizada.
 
 [![Docker Build (GitHub)](https://github.com/USUARIO/REPO/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/USUARIO/REPO/actions/workflows/docker-publish.yml)
 [![Docker Build (GitLab)](https://gitlab.com/USUARIO/REPO/badges/main/pipeline.svg)](https://gitlab.com/USUARIO/REPO/-/pipelines)
