@@ -6424,7 +6424,9 @@ async function populateHistoryServers() {
     // Preserve selection
     const currentVal = select.value;
 
-    let options = '<option value="" disabled selected>Seleccionar Servidor</option>';
+    // Only mark default option as selected if there's no current selection
+    const defaultSelected = currentVal ? '' : ' selected';
+    let options = `<option value="" disabled${defaultSelected}>Seleccionar Servidor</option>`;
 
     const addOpts = (hosts, category, label_prefix) => {
         if (!hosts) return;
