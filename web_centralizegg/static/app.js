@@ -7064,7 +7064,14 @@ async function loadHostLogs(category, id) {
         return;
     }
 
-    // Ensure card is visible
+    // If showing global summary, hide logs
+    if (category === 'total' || category === 'global' || !id) {
+        logsContainer.classList.add('hidden');
+        logsContainer.style.display = 'none';
+        return;
+    }
+
+    // Ensure card is visible for specific hosts
     logsContainer.classList.remove('hidden');
     logsContainer.style.display = 'block';
     logsContent.innerHTML = '<div style="opacity: 0.5;"><i class="fa-solid fa-circle-notch fa-spin"></i> Obteniendo logs del host...</div>';
@@ -7531,6 +7538,115 @@ function applyForecastToChart(chart, type) {
                 order: 0,
                 tension: 0
             });
+
+            // --- Capacity Estimation (Days Remaining) ---
+            if (type === 'disk') {
+                const container = chart.canvas.parentNode;
+                let label = container.querySelector('.forecast-label');
+                if (!label) {
+                    label = document.createElement('div');
+                    label.className = 'forecast-label';
+                    label.style.position = 'absolute';
+                    label.style.top = '50px'; // Below title
+                    label.style.right = '20px';
+                    label.style.background = 'rgba(0,0,0,0.6)';
+                    label.style.backdropFilter = 'blur(4px)';
+                    label.style.border = '1px solid rgba(255,255,255,0.1)';
+                    label.style.padding = '6px 12px';
+                    label.style.borderRadius = '8px';
+                    label.style.fontSize = '0.8rem';
+                    label.style.color = '#fbbf24';
+                    label.style.pointerEvents = 'none';
+                    label.style.display = 'flex';
+                    label.style.alignItems = 'center';
+                    label.style.gap = '8px';
+                    label.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
+                    container.appendChild(label);
+                }
+
+                // Get Capacity (Total Space - Dataset 1)
+                // Assuming Dataset 1 is Total Space based on initialization order
+                const totalDataset = chart.data.datasets.find(ds => ds.label === 'Total Space') || chart.data.datasets[1];
+                let maxCapacity = 0;
+                if (totalDataset && totalDataset.data && totalDataset.data.length > 0) {
+                    maxCapacity = Math.max(...totalDataset.data.filter(v => typeof v === 'number'));
+                }
+
+                let daysText = "Calculando...";
+                let iconClass = "fa-calculator";
+                let color = "#94a3b8"; // Gray
+
+                if (regression.slope > 0 && maxCapacity > 0) {
+                    // Equation: y = mx + b  =>  max = slope * x + intercept
+                    // x_full = (max - intercept) / slope
+                    const x_full = (maxCapacity - regression.intercept) / regression.slope;
+                    const current_x = mainData.length - 1;
+                    const points_remaining = x_full - current_x;
+
+                    if (points_remaining <= 0) {
+                        daysText = "Crítico (Lleno)";
+                        color = "#ef4444";
+                        iconClass = "fa-triangle-exclamation";
+                    } else {
+                        // Calculate time per point
+                        // Use currentHistoryMetrics timestamps
+                        if (currentHistoryMetrics && currentHistoryMetrics.length > 1) {
+                            const t1 = new Date(currentHistoryMetrics[0].timestamp).getTime();
+                            const t2 = new Date(currentHistoryMetrics[currentHistoryMetrics.length - 1].timestamp).getTime();
+                            const totalTimeMs = t2 - t1;
+                            const msPerPoint = totalTimeMs / (currentHistoryMetrics.length - 1);
+
+                            const msRemaining = points_remaining * msPerPoint;
+                            const daysRemaining = msRemaining / (1000 * 60 * 60 * 24);
+
+                            if (daysRemaining > 365) {
+                                daysText = "> 1 año";
+                                color = "#10b981"; // Green
+                                iconClass = "fa-calendar-check";
+                            } else if (daysRemaining < 0) {
+                                daysText = "Crítico";
+                                color = "#ef4444";
+                                iconClass = "fa-triangle-exclamation";
+                            } else {
+                                daysText = `${daysRemaining.toFixed(1)} días`;
+                                if (daysRemaining < 7) {
+                                    color = "#ef4444"; // Red
+                                    iconClass = "fa-bell";
+                                } else if (daysRemaining < 30) {
+                                    color = "#facc15"; // Yellow
+                                    iconClass = "fa-clock";
+                                } else {
+                                    color = "#38bdf8"; // Blue
+                                    iconClass = "fa-calendar-days";
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    daysText = "Uso Estable";
+                    color = "#10b981";
+                    iconClass = "fa-check-circle";
+                }
+
+                label.style.color = color;
+                label.style.borderColor = color + '40'; // Low opacity border
+                label.style.background = color + '10'; // Low opacity bg
+                label.innerHTML = `<i class="fa-solid ${iconClass}"></i> <span>Agotamiento: <b>${daysText}</b></span>`;
+                label.style.display = 'flex';
+            }
+
+        } else if (type === 'disk') {
+            // Hide label if linear regression failed
+            const container = chart.canvas.parentNode;
+            const label = container.querySelector('.forecast-label');
+            if (label) label.style.display = 'none';
+        }
+    } else {
+        // Hide label if forecasting disabled
+        if (type === 'disk') {
+            const container = chart.canvas.parentNode;
+            const label = container.querySelector('.forecast-label');
+            if (label) label.style.display = 'none';
         }
     }
 
