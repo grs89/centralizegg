@@ -6396,6 +6396,237 @@ let netChart = null;
 let diskChart = null;
 let diskIOChart = null;
 
+// =======================
+// HISTORY METRICS TOOL
+// =======================
+
+// ========================================
+// THRESHOLDS MANAGEMENT SYSTEM
+// ========================================
+
+// Default thresholds for visual alerts
+const DEFAULT_THRESHOLDS = {
+    cpu: { warning: 70, critical: 85 },
+    memory: { warning: 80, critical: 90 },
+    disk: { warning: 75, critical: 85 },
+    network: { warning: 80, critical: 95 },
+    diskio: { warning: 100, critical: 200 }  // MB/s
+};
+
+// Load thresholds from localStorage or use defaults
+function loadThresholds() {
+    try {
+        const stored = localStorage.getItem('history-thresholds');
+        return stored ? JSON.parse(stored) : JSON.parse(JSON.stringify(DEFAULT_THRESHOLDS));
+    } catch (e) {
+        console.error('Error loading thresholds:', e);
+        return JSON.parse(JSON.stringify(DEFAULT_THRESHOLDS));
+    }
+}
+
+// Save thresholds to localStorage
+function saveThresholds(thresholds) {
+    try {
+        localStorage.setItem('history-thresholds', JSON.stringify(thresholds));
+    } catch (e) {
+        console.error('Error saving thresholds:', e);
+    }
+}
+
+// Current thresholds in use
+let currentThresholds = loadThresholds();
+
+// Generate Chart.js annotation configuration for thresholds
+function getThresholdAnnotations(metricType, max = 100) {
+    const thresholds = currentThresholds[metricType];
+    if (!thresholds) return {};
+
+    const isDiskIO = metricType === 'diskio';
+    const unit = isDiskIO ? ' MB/s' : '%';
+
+    return {
+        annotations: {
+            normalZone: {
+                type: 'box',
+                yMin: 0,
+                yMax: thresholds.warning,
+                backgroundColor: 'rgba(34, 197, 94, 0.05)',
+                borderWidth: 0,
+                z: 0
+            },
+            warningZone: {
+                type: 'box',
+                yMin: thresholds.warning,
+                yMax: thresholds.critical,
+                backgroundColor: 'rgba(245, 158, 11, 0.05)',
+                borderWidth: 0,
+                z: 0
+            },
+            criticalZone: {
+                type: 'box',
+                yMin: thresholds.critical,
+                yMax: max,
+                backgroundColor: 'rgba(239, 68, 68, 0.05)',
+                borderWidth: 0,
+                z: 0
+            },
+            warningLine: {
+                type: 'line',
+                yMin: thresholds.warning,
+                yMax: thresholds.warning,
+                borderColor: '#f59e0b',
+                borderWidth: 2,
+                borderDash: [5, 5],
+                z: 1,
+                label: {
+                    content: `Warning: ${thresholds.warning}${unit}`,
+                    enabled: true,
+                    position: 'end',
+                    backgroundColor: 'rgba(245, 158, 11, 0.9)',
+                    color: '#fff',
+                    font: { size: 10, weight: 'bold' },
+                    padding: 4
+                }
+            },
+            criticalLine: {
+                type: 'line',
+                yMin: thresholds.critical,
+                yMax: thresholds.critical,
+                borderColor: '#ef4444',
+                borderWidth: 2,
+                borderDash: [5, 5],
+                z: 1,
+                label: {
+                    content: `Critical: ${thresholds.critical}${unit}`,
+                    enabled: true,
+                    position: 'end',
+                    backgroundColor: 'rgba(239, 68, 68, 0.9)',
+                    color: '#fff',
+                    font: { size: 10, weight: 'bold' },
+                    padding: 4
+                }
+            }
+        }
+    };
+}
+
+// Create threshold input HTML for the config modal
+function createThresholdInput(key, label, unit) {
+    const thresh = currentThresholds[key];
+    const maxValue = key === 'diskio' ? 1000 : 100;
+    return `
+            <div class="glass-panel" style="padding: 15px; background: rgba(0,0,0,0.3);">
+                <h4 style="margin: 0 0 10px 0; color: #e2e8f0; font-size: 1rem;">${label}</h4>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div>
+                        <label style="font-size: 0.85rem; color: #94a3b8; display: block; margin-bottom: 5px;">
+                            <i class="fa-solid fa-triangle-exclamation" style="color: #f59e0b;"></i> Warning (${unit})
+                        </label>
+                        <input type="number" id="thresh-${key}-warning" class="glass-input" 
+                               value="${thresh.warning}" min="0" max="${maxValue}" step="1">
+                    </div>
+                    <div>
+                        <label style="font-size: 0.85rem; color: #94a3b8; display: block; margin-bottom: 5px;">
+                            <i class="fa-solid fa-circle-exclamation" style="color: #ef4444;"></i> Critical (${unit})
+                        </label>
+                        <input type="number" id="thresh-${key}-critical" class="glass-input" 
+                               value="${thresh.critical}" min="0" max="${maxValue}" step="1">
+                    </div>
+                </div>
+            </div>
+        `;
+}
+
+// Show thresholds configuration modal
+function showThresholdsConfigModal() {
+    // Close any existing modal
+    closeThresholdsModal();
+
+    const modalHTML = `
+            <div id="thresholds-modal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 10000; backdrop-filter: blur(5px);">
+                <div class="glass-panel" style="max-width: 650px; width: 90%; max-height: 90vh; overflow-y: auto; padding: 30px; margin: 20px; border-radius: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
+                        <h2 style="margin: 0; display: flex; align-items: center; gap: 12px; color: #e2e8f0;">
+                            <i class="fa-solid fa-sliders" style="color: var(--accent-color);"></i> 
+                            Configurar Umbrales
+                        </h2>
+                        <button onclick="closeThresholdsModal()" class="glass-btn" style="padding: 8px 12px; border-radius: 8px;">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                    
+                    <p style="color: #94a3b8; margin-bottom: 20px; font-size: 0.95rem;">
+                        Define los umbrales de advertencia y crítico para cada métrica. Las gráficas mostrarán zonas de color y líneas de referencia.
+                    </p>
+                    
+                    <div style="display: grid; gap: 15px;">
+                        ${createThresholdInput('cpu', 'CPU', '%')}
+                        ${createThresholdInput('memory', 'Memoria', '%')}
+                        ${createThresholdInput('disk', 'Disco', '%')}
+                        ${createThresholdInput('network', 'Red', '% capacidad')}
+                        ${createThresholdInput('diskio', 'Disk I/O', 'MB/s')}
+                    </div>
+                    
+                    <div style="display: flex; gap: 10px; margin-top: 25px; justify-content: flex-end; flex-wrap: wrap;">
+                        <button onclick="resetThresholds()" class="glass-btn secondary" style="padding: 10px 20px;">
+                            <i class="fa-solid fa-rotate-left"></i> Restaurar Defaults
+                        </button>
+                        <button onclick="saveThresholdsConfig()" class="glass-btn primary" style="padding: 10px 20px;">
+                            <i class="fa-solid fa-floppy-disk"></i> Guardar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+}
+
+// Close modal
+window.closeThresholdsModal = function () {
+    const modal = document.getElementById('thresholds-modal');
+    if (modal) {
+        modal.remove();
+    }
+};
+
+// Save threshold configuration from modal
+window.saveThresholdsConfig = function () {
+    ['cpu', 'memory', 'disk', 'network', 'diskio'].forEach(key => {
+        const warning = parseFloat(document.getElementById(`thresh-${key}-warning`).value);
+        const critical = parseFloat(document.getElementById(`thresh-${key}-critical`).value);
+
+        // Validate: critical should be >= warning
+        if (critical < warning) {
+            alert(`Error en ${key}: El umbral crítico debe ser mayor o igual al de advertencia`);
+            return;
+        }
+
+        currentThresholds[key] = { warning, critical };
+    });
+
+    saveThresholds(currentThresholds);
+    closeThresholdsModal();
+
+    // Reload charts with new thresholds
+    const selectedServer = document.getElementById('history-server-select')?.value;
+    if (selectedServer) {
+        loadHistoryMetrics();
+    }
+};
+
+// Reset to default thresholds
+window.resetThresholds = function () {
+    currentThresholds = JSON.parse(JSON.stringify(DEFAULT_THRESHOLDS));
+    saveThresholds(currentThresholds);
+    closeThresholdsModal();
+    showThresholdsConfigModal(); // Reopen with defaults
+};
+
+// ========================================
+// END THRESHOLDS MANAGEMENT SYSTEM
+// ========================================
+
 function initHistoryMetrics() {
     if (historyMetricsInitialized) return;
 
@@ -6405,6 +6636,12 @@ function initHistoryMetrics() {
 
     if (loadBtn) {
         loadBtn.addEventListener('click', loadHistoryMetrics);
+    }
+
+    // Configure thresholds button
+    const configThresholdsBtn = document.getElementById('configure-thresholds-btn');
+    if (configThresholdsBtn) {
+        configThresholdsBtn.addEventListener('click', showThresholdsConfigModal);
     }
 
     if (serverSelect) {
@@ -6967,7 +7204,10 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
     };
 
-    cpuChart = createOrUpdateChart(cpuChart, 'cpuChart', 'line', 'CPU Usage (%)', sortedCpu, '#38bdf8');
+    // CPU Chart with thresholds
+    const cpuOptions = JSON.parse(JSON.stringify(commonOptions));
+    cpuOptions.plugins.annotation = getThresholdAnnotations('cpu', 100);
+    cpuChart = createOrUpdateChart(cpuChart, 'cpuChart', 'line', 'CPU Usage (%)', sortedCpu, '#38bdf8', true, null, cpuOptions);
 
     // Custom Options for RAM
     const ramOptions = JSON.parse(JSON.stringify(commonOptions));
@@ -6982,6 +7222,9 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
         display: true,
         labels: { color: '#94a3b8', usePointStyle: true, boxWidth: 8 }
     };
+
+    // Add threshold annotations for RAM
+    ramOptions.plugins.annotation = getThresholdAnnotations('memory', totalMemory || 100);
 
     const ramData = {
         labels: netLabels, // Use same aligned labels
@@ -7053,6 +7296,10 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
                 display: true,
                 labels: { color: '#94a3b8', usePointStyle: true, boxWidth: 8 }
             };
+
+            // Add threshold annotations for Disk
+            const maxDiskValue = Math.max(...diskTotals.filter(v => v != null), 100);
+            diskOptions.plugins.annotation = getThresholdAnnotations('disk', maxDiskValue);
 
             diskChart = new Chart(ctxDisk, {
                 type: 'line',
@@ -7133,6 +7380,11 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
                 labels: { color: '#94a3b8', usePointStyle: true, boxWidth: 8 }
             };
 
+            // Add threshold annotations for Network
+            const maxCapacity = Math.max(...netCapacities.filter(v => v != null), 1000000000); // 1 Gbps default
+            const maxNetPercent = 100;
+            netOptions.plugins.annotation = getThresholdAnnotations('network', maxNetPercent);
+
             netChart = new Chart(ctxNet, {
                 type: 'line',
                 data: {
@@ -7203,6 +7455,11 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
                 display: true,
                 labels: { color: '#94a3b8', usePointStyle: true, boxWidth: 8 }
             };
+
+            // Add threshold annotations for Disk I/O
+            const maxDiskIO = Math.max(...ratesDiskRead.filter(v => v != null), ...ratesDiskWrite.filter(v => v != null), 500 * 1024 * 1024); // 500 MB/s
+            const maxDiskIOMB = maxDiskIO / (1024 * 1024);
+            dioOptions.plugins.annotation = getThresholdAnnotations('diskio', maxDiskIOMB);
 
             diskIOChart = new Chart(ctxDiskIO, {
                 type: 'line',
