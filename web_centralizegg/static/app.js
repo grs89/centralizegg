@@ -6627,6 +6627,15 @@ window.resetThresholds = function () {
 // END THRESHOLDS MANAGEMENT SYSTEM
 // ========================================
 
+// Reset zoom for all charts
+function resetAllChartsZoom() {
+    [cpuChart, ramChart, diskChart, netChart, diskIOChart].forEach(chart => {
+        if (chart && chart.resetZoom) {
+            chart.resetZoom();
+        }
+    });
+}
+
 function initHistoryMetrics() {
     if (historyMetricsInitialized) return;
 
@@ -6642,6 +6651,12 @@ function initHistoryMetrics() {
     const configThresholdsBtn = document.getElementById('configure-thresholds-btn');
     if (configThresholdsBtn) {
         configThresholdsBtn.addEventListener('click', showThresholdsConfigModal);
+    }
+
+    // Reset zoom button
+    const resetZoomBtn = document.getElementById('reset-zoom-btn');
+    if (resetZoomBtn) {
+        resetZoomBtn.addEventListener('click', resetAllChartsZoom);
     }
 
     if (serverSelect) {
@@ -7128,6 +7143,28 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
                 bodyColor: '#ccc',
                 borderColor: 'rgba(255, 255, 255, 0.1)',
                 borderWidth: 1
+            },
+            zoom: {
+                limits: {
+                    x: { min: 'original', max: 'original' },
+                    y: { min: 'original', max: 'original' }
+                },
+                pan: {
+                    enabled: true,
+                    mode: 'xy',
+                    modifierKey: null, // No need to hold key, just drag
+                    threshold: 10
+                },
+                zoom: {
+                    wheel: {
+                        enabled: true,
+                        speed: 0.1
+                    },
+                    pinch: {
+                        enabled: true
+                    },
+                    mode: 'xy'
+                }
             }
         },
         scales: {
