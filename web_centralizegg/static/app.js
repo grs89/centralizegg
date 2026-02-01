@@ -5036,6 +5036,9 @@ class NetworkMap {
         this.homeIP = null;
         this.homeGeo = null;
         this.activeMapConnections = [];
+        this.heatLayer = null;
+        this.showHeatmap = false;
+        this.filterMode = 'all'; // all, inbound, outbound
 
         // Restore Debug Mode from Persistent Storage
         if (localStorage.getItem('mapDebugMode') === 'true') {
@@ -5078,9 +5081,16 @@ class NetworkMap {
             this.mapInstance.invalidateSize();
         }
 
-        // Clear markers
+        // Add Controls
+        this.createControls();
+
+        // Clear markers & heatmap
         this.markers.forEach(m => this.mapInstance.removeLayer(m));
         this.markers = [];
+        if (this.heatLayer) {
+            this.heatLayer.remove();
+            this.heatLayer = null;
+        }
 
         // Filter top connections
         this.activeMapConnections = connections.slice(0, 50);
@@ -5090,27 +5100,131 @@ class NetworkMap {
         this.updateHomeLocation();
         this.updateDebugOverlay();
 
-        // Process Connections
-        this.activeMapConnections.forEach(conn => {
-            const ip = conn.remote_ip;
-            const cached = localStorage.getItem('geoip_' + ip);
-            if (cached) {
-                this.addMarker(conn, JSON.parse(cached));
-            } else {
-                if (!this.geoQueue.some(item => item.ip === ip)) {
-                    this.geoQueue.push({
-                        ip: ip,
-                        callback: (geoData) => {
-                            if (geoData && !geoData.error) {
-                                this.addMarker(conn, geoData);
+        // FILTER LOGIC
+        const filteredConns = this.activeMapConnections.filter(conn => {
+            if (this.filterMode === 'all') return true;
+            const isInbound = conn.inbound > conn.outbound;
+            if (this.filterMode === 'inbound') return isInbound;
+            if (this.filterMode === 'outbound') return !isInbound;
+            return true;
+        });
+
+        // Process Connections or Heatmap
+        if (this.showHeatmap) {
+            this.updateHeatmap(filteredConns);
+        } else {
+            filteredConns.forEach(conn => {
+                const ip = conn.remote_ip;
+                const cached = localStorage.getItem('geoip_' + ip);
+                if (cached) {
+                    this.addMarker(conn, JSON.parse(cached));
+                } else {
+                    if (!this.geoQueue.some(item => item.ip === ip)) {
+                        this.geoQueue.push({
+                            ip: ip,
+                            callback: (geoData) => {
+                                if (geoData && !geoData.error) {
+                                    this.addMarker(conn, geoData);
+                                }
                             }
-                        }
-                    });
+                        });
+                    }
                 }
+            });
+        }
+
+        // Trigger Queue Processing
+        this.processGeoQueue();
+    }
+
+    createControls() {
+        if (document.getElementById(this.containerId + '-controls')) return;
+
+        const controlDiv = document.createElement('div');
+        controlDiv.id = this.containerId + '-controls';
+        controlDiv.style.cssText = 'position: absolute; top: 10px; right: 10px; z-index: 1000; display: flex; gap: 5px;';
+
+        controlDiv.innerHTML = `
+            <div style="display: flex; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; overflow: hidden;">
+                <button data-filter="all" onclick="window.currentFirewallMap.setFilter('all')" style="background: rgba(56, 189, 248, 0.6); color: white; border: none; cursor: pointer; padding: 6px 10px; font-size: 0.8rem; border-right: 1px solid rgba(255,255,255,0.1);">All</button>
+                <button data-filter="inbound" onclick="window.currentFirewallMap.setFilter('inbound')" style="background: transparent; color: #fca5a5; border: none; cursor: pointer; padding: 6px 10px; font-size: 0.8rem; border-right: 1px solid rgba(255,255,255,0.1);">In</button>
+                <button data-filter="outbound" onclick="window.currentFirewallMap.setFilter('outbound')" style="background: transparent; color: #86efac; border: none; cursor: pointer; padding: 6px 10px; font-size: 0.8rem;">Out</button>
+            </div>
+            <button id="heat-btn" onclick="window.currentFirewallMap.toggleHeatmap()" class="glass-card-sm" style="background: rgba(0,0,0,0.6); color: white; border: 1px solid rgba(255,255,255,0.2); cursor: pointer; padding: 6px 10px; font-size: 0.8rem; display: flex; align-items: center; gap: 5px;">
+                <i class="fa-solid fa-fire"></i>
+            </button>
+        `;
+        document.getElementById(this.containerId).appendChild(controlDiv);
+
+        // Bind logic
+        controlDiv.querySelector('#heat-btn').onclick = () => this.toggleHeatmap();
+    }
+
+    setFilter(mode) {
+        this.filterMode = mode;
+
+        // Update UI
+        const container = document.getElementById(this.containerId + '-controls');
+        if (container) {
+            const buttons = container.querySelectorAll('button[data-filter]');
+            buttons.forEach(btn => {
+                if (btn.dataset.filter === mode) {
+                    btn.style.background = 'rgba(56, 189, 248, 0.6)';
+                    btn.style.color = 'white';
+                } else {
+                    btn.style.background = 'transparent';
+                    btn.style.color = btn.dataset.filter === 'inbound' ? '#fca5a5' : (btn.dataset.filter === 'outbound' ? '#86efac' : 'white');
+                }
+            });
+        }
+
+        // Re-render
+        this.render(JSON.stringify(this.activeMapConnections));
+    }
+
+    toggleHeatmap() {
+        this.showHeatmap = !this.showHeatmap;
+        const btn = document.getElementById(this.containerId + '-controls').querySelector('#heat-btn');
+        if (this.showHeatmap) {
+            btn.style.background = 'rgba(239, 68, 68, 0.6)';
+            btn.style.borderColor = '#ef4444';
+        } else {
+            btn.style.background = 'rgba(0,0,0,0.6)';
+            btn.style.borderColor = 'rgba(255,255,255,0.2)';
+        }
+        // Re-render
+        this.render(JSON.stringify(this.activeMapConnections));
+    }
+
+    updateHeatmap(filteredConns) {
+        if (!L.heatLayer) return;
+
+        const connsToUse = filteredConns || this.activeMapConnections;
+        const heatPoints = [];
+        connsToUse.forEach(conn => {
+            const cached = localStorage.getItem('geoip_' + conn.remote_ip);
+            if (cached) {
+                const geo = JSON.parse(cached);
+                if (geo.lat) {
+                    // Intensity based on connections
+                    const intensity = Math.min(1.0, (conn.inbound + conn.outbound) / 100);
+                    heatPoints.push([geo.lat, geo.lon, intensity * 500]); // Scale
+                }
+            } else {
+                // Trigger fetch (silent)
+                this.geoQueue.unshift({ ip: conn.remote_ip, callback: () => this.updateHeatmap(connsToUse) });
             }
         });
 
-        // Trigger Queue Processing
+        if (this.heatLayer) this.mapInstance.removeLayer(this.heatLayer);
+
+        this.heatLayer = L.heatLayer(heatPoints, {
+            radius: 25,
+            blur: 15,
+            maxZoom: 17,
+            gradient: { 0.4: 'blue', 0.65: 'lime', 1: 'red' }
+        }).addTo(this.mapInstance);
+
         this.processGeoQueue();
     }
 
@@ -5206,7 +5320,13 @@ class NetworkMap {
                 if (res.ok) {
                     const data = await res.json();
                     if (data.status === 'success') {
-                        const geoData = { lat: data.lat, lon: data.lon, city: data.city, country: data.country };
+                        const geoData = {
+                            lat: data.lat,
+                            lon: data.lon,
+                            city: data.city,
+                            country: data.country,
+                            countryCode: data.countryCode // Store country code
+                        };
                         localStorage.setItem('geoip_' + ip, JSON.stringify(geoData));
                         callback(geoData);
                     } else {
@@ -5239,25 +5359,44 @@ class NetworkMap {
     addMarker(conn, geoData) {
         if (!geoData || !geoData.lat) return;
 
-        const color = conn.inbound > conn.outbound ? '#ef4444' : '#22c55e';
-        const type = conn.inbound > conn.outbound ? 'Entrante' : 'Saliente';
+        const isInbound = conn.inbound > conn.outbound;
+        const colorClass = isInbound ? 'pulse-marker-red' : 'pulse-marker-green';
+        const typeColor = isInbound ? '#ef4444' : '#22c55e';
+        const type = isInbound ? 'Entrante' : 'Saliente';
 
-        const circle = L.circleMarker([geoData.lat, geoData.lon], {
-            radius: 5,
-            fillColor: color,
-            color: "#fff",
-            weight: 1,
-            opacity: 0.8,
-            fillOpacity: 0.8
-        }).addTo(this.mapInstance);
+        // Flag Helper
+        const getFlagEmoji = (countryCode) => {
+            if (!countryCode) return '🏳️';
+            return countryCode.toUpperCase().replace(/./g, char =>
+                String.fromCodePoint(char.charCodeAt(0) + 127397)
+            );
+        };
+        const flag = getFlagEmoji(geoData.countryCode);
 
-        circle.bindPopup(`
-            <b>${conn.remote_ip}</b><br>
-            ${geoData.city}, ${geoData.country}<br>
-            Tipo: <span style="color:${color}">${type}</span><br>
-            Conexiones: In: ${conn.inbound} / Out: ${conn.outbound}
+        // Pulsing Marker Icon
+        const pulseIcon = L.divIcon({
+            className: colorClass,
+            iconSize: [10, 10],
+            iconAnchor: [5, 5] // Center
+        });
+
+        const marker = L.marker([geoData.lat, geoData.lon], { icon: pulseIcon }).addTo(this.mapInstance);
+
+        marker.bindPopup(`
+            <div style="font-family: 'Outfit', sans-serif; min-width: 150px;">
+                <div style="font-size: 1.1rem; font-weight: 700; margin-bottom: 5px; display: flex; align-items: center; gap: 8px;">
+                     ${flag} <span>${geoData.country || 'Unknown'}</span>
+                </div>
+                <div style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 8px;">
+                    ${geoData.city}, IP: <b>${conn.remote_ip}</b>
+                </div>
+                <div style="font-size: 0.8rem; background: rgba(255,255,255,0.05); padding: 6px; border-radius: 6px; border-left: 3px solid ${typeColor};">
+                    <div>Tipo: <span style="color:${typeColor}; font-weight: 600;">${type}</span></div>
+                    <div>In: ${conn.inbound} / Out: ${conn.outbound}</div>
+                </div>
+            </div>
         `);
-        this.markers.push(circle);
+        this.markers.push(marker);
 
         this.drawSingleLine(conn, geoData);
     }
@@ -5282,6 +5421,11 @@ class NetworkMap {
         const color = isInbound ? '#ef4444' : '#22c55e';
         const pulse = isInbound ? '#fca5a5' : '#86efac';
 
+        // Dynamic Speed based on traffic
+        const totalTraffic = (conn.inbound || 0) + (conn.outbound || 0);
+        // Base delay 1500 (slow), min delay 300 (fast)
+        const speed = Math.max(300, 1500 - (totalTraffic * 20));
+
         // Generate Curved Path (Bezier)
         const latlngs = this.getCurvedPath([rLat, rLon], [hLat, hLon], isInbound);
 
@@ -5289,7 +5433,7 @@ class NetworkMap {
             // AntPath
             if (L.polyline.antPath) {
                 const path = L.polyline.antPath(latlngs, {
-                    "delay": 800,
+                    "delay": speed,
                     "dashArray": [10, 20],
                     "weight": 2, // Finer line
                     "color": color,
