@@ -50,7 +50,7 @@ git push origin v1.0.0
 
 También puedes ejecutar el workflow manualmente sin crear un tag:
 
-1. Ve a **Actions** → **Build and Push Docker Image** → **Run workflow**
+1. Ve a **Actions** → **Build Scan Push - DockerHub** → **Run workflow**
 2. Selecciona la rama
 3. Click en **Run workflow**
 
@@ -105,7 +105,7 @@ docker pull tuusuario/centralizegg:v1.0.0
 ## 🔍 Verificar el Workflow
 
 1. Ve a la pestaña **Actions** en tu repositorio
-2. Selecciona el workflow **Build and Push Docker Image**
+2. Selecciona el workflow **Build Scan Push - DockerHub**
 3. Verifica que el build sea exitoso (✅)
 4. Revisa los logs para ver las imágenes publicadas
 
@@ -126,9 +126,10 @@ docker pull tuusuario/centralizegg:v1.0.0
 
 ## 📝 Notas
 
+- Este workflow utiliza un **workflow reusable** desde `grs89/github-template`
 - El workflow usa **caché de Docker** para acelerar builds subsecuentes
 - Las imágenes se construyen para **múltiples arquitecturas** en paralelo
-- Los **Pull Requests** solo construyen (no publican) para validar cambios
+- Incluye **escaneo de seguridad con Trivy** antes de publicar
 
 ---
 
