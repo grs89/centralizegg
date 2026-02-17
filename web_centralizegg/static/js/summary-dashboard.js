@@ -131,7 +131,9 @@ function renderHealthGrid(health) {
                     </div>
                     <h4 style="margin: 0; font-size: 0.75rem; opacity: 0.5; text-transform: uppercase; letter-spacing: 1.2px; font-weight: 700;">${item.category}</h4>
                 </div>
-                <div class="status-dot ${isCritical ? 'offline' : (hasNoHosts ? 'inactive' : 'online')}" style="width: 8px; height: 8px; border-radius: 50%; background: ${statusColor}; box-shadow: 0 0 8px ${statusColor}aa;">
+                <div class="status-dot ${isCritical ? 'offline' : (hasNoHosts ? 'inactive' : 'online')}" 
+                     title="${isCritical && item.max_offline_since ? `Última caída: ${getRelativeTime(new Date(item.max_offline_since))}` : ''}"
+                     style="width: 8px; height: 8px; border-radius: 50%; background: ${statusColor}; box-shadow: 0 0 8px ${statusColor}aa;">
                 </div>
             </div>
 

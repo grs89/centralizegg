@@ -112,7 +112,7 @@ export function renderHostNodes(containerId = 'host-nodes-container', config = {
                     </div>
                 </div>
                 <div class="host-status-badge ${isOnline ? '' : 'offline'}" title="${offlineTooltip}">
-                    <span class="status-dot ${isOnline ? 'online' : 'offline'}"></span>
+                    <span class="status-dot ${isOnline ? 'online' : 'offline'}" title="${offlineTooltip}"></span>
                     ${isOnline ? (host.status || host.service_status || 'ONLINE').toUpperCase() : 'OFFLINE'}
                 </div>
             </div>
