@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { formatBytes, getStatusColor } from './utils.js';
+import { formatBytes, getStatusColor, getRelativeTime } from './utils.js';
 
 export function isStatusOnline(status) {
     if (!status) return false;
@@ -96,6 +96,9 @@ export function renderHostNodes(containerId = 'host-nodes-container', config = {
             else if (fullInfo.includes('arm') || fullInfo.includes('aarch64')) arch = 'ARM';
         }
 
+        const offlineTime = (!isOnline && host.offline_since) ? getRelativeTime(new Date(host.offline_since)) : null;
+        const offlineTooltip = offlineTime ? `Fuera de línea desde ${offlineTime}` : '';
+
         return `
         <div class="host-node-card glass-panel ${isActive}" onclick="window.${onHostClick}(${host.id})">
             <div class="host-node-header">
@@ -108,7 +111,7 @@ export function renderHostNodes(containerId = 'host-nodes-container', config = {
                         <div class="ip-badge">${host.ip_address || (host.tool_type === 'kubernetes' ? 'Cluster' : 'N/A')}</div>
                     </div>
                 </div>
-                <div class="host-status-badge ${isOnline ? '' : 'offline'}">
+                <div class="host-status-badge ${isOnline ? '' : 'offline'}" title="${offlineTooltip}">
                     <span class="status-dot ${isOnline ? 'online' : 'offline'}"></span>
                     ${isOnline ? (host.status || host.service_status || 'ONLINE').toUpperCase() : 'OFFLINE'}
                 </div>

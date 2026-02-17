@@ -1,3 +1,5 @@
+import { getRelativeTime } from './utils.js';
+
 const CATEGORY_ICONS = {
     'Virtualización (KVM)': 'fa-microchip',
     'Virtualización (Proxmox)': 'fa-server',
@@ -105,6 +107,10 @@ function renderHealthGrid(health) {
             statusColor = '#ef4444'; // Red (Critical)
             statusIcon = 'fa-triangle-exclamation';
             statusText = `${item.offline} Offline`;
+            if (item.max_offline_since) {
+                const timeStr = getRelativeTime(new Date(item.max_offline_since));
+                statusText += ` (desde ${timeStr})`;
+            }
         } else if (hasNoHosts) {
             statusColor = '#94a3b8'; // Slate (Inactive/Empty)
             statusIcon = 'fa-circle-minus';

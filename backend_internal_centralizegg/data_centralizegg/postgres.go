@@ -55,93 +55,96 @@ type VM struct {
 }
 
 type Host struct {
-	ID                int64   `json:"id"`
-	ServerID          int64   `json:"server_id"`
-	Hostname          string  `json:"hostname"`
-	ServerName        string  `json:"server_name"`
-	IPAddress         string  `json:"ip_address"`
-	PublicIP          string  `json:"public_ip"`
-	DNSServers        string  `json:"dns_servers"`
-	Uptime            string  `json:"uptime"`
-	UpdateStatus      string  `json:"update_status"`
-	Temperature       float64 `json:"temperature"`
-	Disks             string  `json:"disks"`
-	CPUModel          string  `json:"cpu_model"`
-	CPUCores          int     `json:"cpu_cores"`
-	TotalMemory       uint64  `json:"total_memory"`
-	FreeMemory        uint64  `json:"free_memory"`
-	CPUUsage          float64 `json:"cpu_usage"`
-	OSName            string  `json:"os_name"`
-	BridgeInterfaces  string  `json:"bridge_interfaces"`
-	OOMEvents         string  `json:"oom_events"`
-	HostEvents        string  `json:"host_events"`
-	ActiveConnections string  `json:"active_connections"`
+	ID                int64      `json:"id"`
+	ServerID          int64      `json:"server_id"`
+	Hostname          string     `json:"hostname"`
+	ServerName        string     `json:"server_name"`
+	IPAddress         string     `json:"ip_address"`
+	PublicIP          string     `json:"public_ip"`
+	DNSServers        string     `json:"dns_servers"`
+	Uptime            string     `json:"uptime"`
+	UpdateStatus      string     `json:"update_status"`
+	Temperature       float64    `json:"temperature"`
+	Disks             string     `json:"disks"`
+	CPUModel          string     `json:"cpu_model"`
+	CPUCores          int        `json:"cpu_cores"`
+	TotalMemory       uint64     `json:"total_memory"`
+	FreeMemory        uint64     `json:"free_memory"`
+	CPUUsage          float64    `json:"cpu_usage"`
+	OSName            string     `json:"os_name"`
+	BridgeInterfaces  string     `json:"bridge_interfaces"`
+	OOMEvents         string     `json:"oom_events"`
+	HostEvents        string     `json:"host_events"`
+	ActiveConnections string     `json:"active_connections"`
+	OfflineSince      *time.Time `json:"offline_since"`
 }
 
 type DockerHost struct {
-	ID                int64   `json:"id"`
-	ServerID          int64   `json:"server_id"`
-	Hostname          string  `json:"hostname"`
-	ServerName        string  `json:"server_name"`
-	IPAddress         string  `json:"ip_address"`
-	PublicIP          string  `json:"public_ip"`
-	DNSServers        string  `json:"dns_servers"`
-	Uptime            string  `json:"uptime"`
-	UpdateStatus      string  `json:"update_status"`
-	Temperature       float64 `json:"temperature"`
-	Disks             string  `json:"disks"`
-	CPUModel          string  `json:"cpu_model"`
-	CPUCores          int     `json:"cpu_cores"`
-	TotalMemory       uint64  `json:"total_memory"`
-	FreeMemory        uint64  `json:"free_memory"`
-	CPUUsage          float64 `json:"cpu_usage"`
-	OSName            string  `json:"os_name"`
-	Status            string  `json:"status"` // server connection status
-	DockerVer         string  `json:"docker_version"`
-	ServiceStatus     string  `json:"docker_service_status"`
-	SocketStatus      string  `json:"docker_socket_status"`
-	APILatency        int     `json:"docker_api_latency"`
-	StorageUsed       uint64  `json:"docker_storage_used"`
-	StorageTotal      uint64  `json:"docker_storage_total"`
-	InodesUsage       string  `json:"docker_inodes_usage"`
-	LogsSize          uint64  `json:"docker_logs_size"`
-	Volumes           string  `json:"docker_volumes"`
-	Networks          string  `json:"docker_networks"`
-	GPUInfo           string  `json:"gpu_info"`
-	HostEvents        string  `json:"host_events"`
-	ActiveConnections string  `json:"active_connections"`
+	ID                int64      `json:"id"`
+	ServerID          int64      `json:"server_id"`
+	Hostname          string     `json:"hostname"`
+	ServerName        string     `json:"server_name"`
+	IPAddress         string     `json:"ip_address"`
+	PublicIP          string     `json:"public_ip"`
+	DNSServers        string     `json:"dns_servers"`
+	Uptime            string     `json:"uptime"`
+	UpdateStatus      string     `json:"update_status"`
+	Temperature       float64    `json:"temperature"`
+	Disks             string     `json:"disks"`
+	CPUModel          string     `json:"cpu_model"`
+	CPUCores          int        `json:"cpu_cores"`
+	TotalMemory       uint64     `json:"total_memory"`
+	FreeMemory        uint64     `json:"free_memory"`
+	CPUUsage          float64    `json:"cpu_usage"`
+	OSName            string     `json:"os_name"`
+	Status            string     `json:"status"` // server connection status
+	DockerVer         string     `json:"docker_version"`
+	ServiceStatus     string     `json:"docker_service_status"`
+	SocketStatus      string     `json:"docker_socket_status"`
+	APILatency        int        `json:"docker_api_latency"`
+	StorageUsed       uint64     `json:"docker_storage_used"`
+	StorageTotal      uint64     `json:"docker_storage_total"`
+	InodesUsage       string     `json:"docker_inodes_usage"`
+	LogsSize          uint64     `json:"docker_logs_size"`
+	Volumes           string     `json:"docker_volumes"`
+	Networks          string     `json:"docker_networks"`
+	GPUInfo           string     `json:"gpu_info"`
+	HostEvents        string     `json:"host_events"`
+	ActiveConnections string     `json:"active_connections"`
+	OfflineSince      *time.Time `json:"offline_since"`
 }
 
 type PodmanHost struct {
-	ID                int64   `json:"id"`
-	ServerID          int64   `json:"server_id"`
-	Hostname          string  `json:"hostname"`
-	ServerName        string  `json:"server_name"`
-	IPAddress         string  `json:"ip_address"`
-	PublicIP          string  `json:"public_ip"`
-	DNSServers        string  `json:"dns_servers"`
-	Uptime            string  `json:"uptime"`
-	UpdateStatus      string  `json:"update_status"`
-	Temperature       float64 `json:"temperature"`
-	Disks             string  `json:"disks"`
-	CPUModel          string  `json:"cpu_model"`
-	CPUCores          int     `json:"cpu_cores"`
-	TotalMemory       uint64  `json:"total_memory"`
-	FreeMemory        uint64  `json:"free_memory"`
-	CPUUsage          float64 `json:"cpu_usage"`
-	OSName            string  `json:"os_name"`
-	Status            string  `json:"status"` // server connection status
-	PodmanVer         string  `json:"podman_version"`
-	ServiceStatus     string  `json:"podman_service_status"`
-	APILatency        int     `json:"podman_api_latency"`
-	StorageUsed       uint64  `json:"podman_storage_used"`
-	StorageTotal      uint64  `json:"podman_storage_total"`
-	InodesUsage       string  `json:"podman_inodes_usage"`
-	Volumes           string  `json:"podman_volumes"`
-	PodmanNetworks    string  `json:"podman_networks"`
-	GPUInfo           string  `json:"gpu_info"`
-	HostEvents        string  `json:"host_events"`
-	ActiveConnections string  `json:"active_connections"`
+	ID                int64      `json:"id"`
+	ServerID          int64      `json:"server_id"`
+	Hostname          string     `json:"hostname"`
+	ServerName        string     `json:"server_name"`
+	IPAddress         string     `json:"ip_address"`
+	PublicIP          string     `json:"public_ip"`
+	DNSServers        string     `json:"dns_servers"`
+	Uptime            string     `json:"uptime"`
+	UpdateStatus      string     `json:"update_status"`
+	Temperature       float64    `json:"temperature"`
+	Disks             string     `json:"disks"`
+	CPUModel          string     `json:"cpu_model"`
+	CPUCores          int        `json:"cpu_cores"`
+	TotalMemory       uint64     `json:"total_memory"`
+	FreeMemory        uint64     `json:"free_memory"`
+	CPUUsage          float64    `json:"cpu_usage"`
+	OSName            string     `json:"os_name"`
+	Status            string     `json:"status"` // server connection status
+	PodmanVer         string     `json:"podman_version"`
+	ServiceStatus     string     `json:"podman_service_status"`
+	APILatency        int        `json:"podman_api_latency"`
+	StorageUsed       uint64     `json:"podman_storage_used"`
+	StorageTotal      uint64     `json:"podman_storage_total"`
+	InodesUsage       string     `json:"podman_inodes_usage"`
+	Volumes           string     `json:"podman_volumes"`
+	PodmanNetworks    string     `json:"podman_networks"`
+	GPUInfo           string     `json:"gpu_info"`
+	HostEvents        string     `json:"host_events"`
+	ActiveConnections string     `json:"active_connections"`
+	OfflineSince      *time.Time `json:"offline_since"`
 }
 
 type Container struct {
@@ -167,31 +170,32 @@ type Container struct {
 }
 
 type KubernetesNode struct {
-	ID                int64   `json:"id"`
-	ServerID          int64   `json:"server_id"`
-	Hostname          string  `json:"hostname"`
-	ServerName        string  `json:"server_name"`
-	IPAddress         string  `json:"ip_address"`
-	Status            string  `json:"status"` // server connection status
-	Roles             string  `json:"roles"`
-	Version           string  `json:"version"`
-	CPUModel          string  `json:"cpu_model"`
-	CPUCores          int     `json:"cpu_cores"`
-	TotalMemory       uint64  `json:"total_memory"`
-	FreeMemory        uint64  `json:"free_memory"`
-	CPUUsage          float64 `json:"cpu_usage"`
-	OSName            string  `json:"os_name"`
-	KernelVer         string  `json:"kernel_version"`
-	ContainerRuntime  string  `json:"container_runtime"`
-	Architecture      string  `json:"architecture"`
-	PodsCount         int     `json:"pods_count"`
-	DiskTotal         uint64  `json:"disk_total"`
-	DiskUsed          uint64  `json:"disk_used"`
-	NetRX             uint64  `json:"net_rx"`
-	NetTX             uint64  `json:"net_tx"`
-	NetRXRate         uint64  `json:"net_rx_rate"`
-	NetTXRate         uint64  `json:"net_tx_rate"`
-	ActiveConnections string  `json:"active_connections"`
+	ID                int64      `json:"id"`
+	ServerID          int64      `json:"server_id"`
+	Hostname          string     `json:"hostname"`
+	ServerName        string     `json:"server_name"`
+	IPAddress         string     `json:"ip_address"`
+	Status            string     `json:"status"` // server connection status
+	Roles             string     `json:"roles"`
+	Version           string     `json:"version"`
+	CPUModel          string     `json:"cpu_model"`
+	CPUCores          int        `json:"cpu_cores"`
+	TotalMemory       uint64     `json:"total_memory"`
+	FreeMemory        uint64     `json:"free_memory"`
+	CPUUsage          float64    `json:"cpu_usage"`
+	OSName            string     `json:"os_name"`
+	KernelVer         string     `json:"kernel_version"`
+	ContainerRuntime  string     `json:"container_runtime"`
+	Architecture      string     `json:"architecture"`
+	PodsCount         int        `json:"pods_count"`
+	DiskTotal         uint64     `json:"disk_total"`
+	DiskUsed          uint64     `json:"disk_used"`
+	NetRX             uint64     `json:"net_rx"`
+	NetTX             uint64     `json:"net_tx"`
+	NetRXRate         uint64     `json:"net_rx_rate"`
+	NetTXRate         uint64     `json:"net_tx_rate"`
+	ActiveConnections string     `json:"active_connections"`
+	OfflineSince      *time.Time `json:"offline_since"`
 }
 
 type KubernetesPod struct {
@@ -241,24 +245,25 @@ type KubernetesEvent struct {
 }
 
 type ProxmoxHost struct {
-	ID                int64   `json:"id"`
-	ServerID          int64   `json:"server_id"`
-	Hostname          string  `json:"hostname"`
-	ServerName        string  `json:"server_name"`
-	IPAddress         string  `json:"ip_address"`
-	Status            string  `json:"status"` // server connection status
-	CPUModel          string  `json:"cpu_model"`
-	CPUCores          int     `json:"cpu_cores"`
-	TotalMemory       uint64  `json:"total_memory"`
-	FreeMemory        uint64  `json:"free_memory"`
-	CPUUsage          float64 `json:"cpu_usage"`
-	OSName            string  `json:"os_name"`
-	KernelVer         string  `json:"kernel_version"`
-	PVEVersion        string  `json:"pve_version"`
-	Uptime            string  `json:"uptime"`
-	VMsCount          int     `json:"vms_count"`
-	Containers        int     `json:"containers_count"`
-	ActiveConnections string  `json:"active_connections"`
+	ID                int64      `json:"id"`
+	ServerID          int64      `json:"server_id"`
+	Hostname          string     `json:"hostname"`
+	ServerName        string     `json:"server_name"`
+	IPAddress         string     `json:"ip_address"`
+	Status            string     `json:"status"` // server connection status
+	CPUModel          string     `json:"cpu_model"`
+	CPUCores          int        `json:"cpu_cores"`
+	TotalMemory       uint64     `json:"total_memory"`
+	FreeMemory        uint64     `json:"free_memory"`
+	CPUUsage          float64    `json:"cpu_usage"`
+	OSName            string     `json:"os_name"`
+	KernelVer         string     `json:"kernel_version"`
+	PVEVersion        string     `json:"pve_version"`
+	Uptime            string     `json:"uptime"`
+	VMsCount          int        `json:"vms_count"`
+	Containers        int        `json:"containers_count"`
+	ActiveConnections string     `json:"active_connections"`
+	OfflineSince      *time.Time `json:"offline_since"`
 }
 
 type ProxmoxVM struct {
@@ -277,23 +282,24 @@ type ProxmoxVM struct {
 }
 
 type NasHost struct {
-	ID                int64   `json:"id"`
-	ServerID          int64   `json:"server_id"`
-	Hostname          string  `json:"hostname"`
-	ServerName        string  `json:"server_name"`
-	IPAddress         string  `json:"ip_address"`
-	Status            string  `json:"status"` // server connection status
-	CPUModel          string  `json:"cpu_model"`
-	CPUCores          int     `json:"cpu_cores"`
-	TotalMemory       uint64  `json:"total_memory"`
-	FreeMemory        uint64  `json:"free_memory"`
-	CPUUsage          float64 `json:"cpu_usage"`
-	OSName            string  `json:"os_name"`
-	KernelVer         string  `json:"kernel_version"`
-	Uptime            string  `json:"uptime"`
-	Model             string  `json:"model"`
-	Serial            string  `json:"serial"`
-	ActiveConnections string  `json:"active_connections"`
+	ID                int64      `json:"id"`
+	ServerID          int64      `json:"server_id"`
+	Hostname          string     `json:"hostname"`
+	ServerName        string     `json:"server_name"`
+	IPAddress         string     `json:"ip_address"`
+	Status            string     `json:"status"` // server connection status
+	CPUModel          string     `json:"cpu_model"`
+	CPUCores          int        `json:"cpu_cores"`
+	TotalMemory       uint64     `json:"total_memory"`
+	FreeMemory        uint64     `json:"free_memory"`
+	CPUUsage          float64    `json:"cpu_usage"`
+	OSName            string     `json:"os_name"`
+	KernelVer         string     `json:"kernel_version"`
+	Uptime            string     `json:"uptime"`
+	Model             string     `json:"model"`
+	Serial            string     `json:"serial"`
+	ActiveConnections string     `json:"active_connections"`
+	OfflineSince      *time.Time `json:"offline_since"`
 }
 
 type NasVolume struct {
@@ -321,22 +327,24 @@ type NasDisk struct {
 }
 
 type KVMServer struct {
-	ID            int64  `json:"id"`
-	Name          string `json:"name"`
-	IPAddress     string `json:"ip_address"`
-	SSHPort       int    `json:"ssh_port"`
-	Username      string `json:"username"`
-	Password      string `json:"password"`
-	SSHKeyPath    string `json:"ssh_key_path"`
-	SSHKeyContent string `json:"ssh_key_content"`
-	Status        string `json:"status"` // online, offline, unknown
+	ID            int64      `json:"id"`
+	Name          string     `json:"name"`
+	IPAddress     string     `json:"ip_address"`
+	SSHPort       int        `json:"ssh_port"`
+	Username      string     `json:"username"`
+	Password      string     `json:"password"`
+	SSHKeyPath    string     `json:"ssh_key_path"`
+	SSHKeyContent string     `json:"ssh_key_content"`
+	Status        string     `json:"status"` // online, offline, unknown
+	OfflineSince  *time.Time `json:"offline_since"`
 }
 
 type HealthSummary struct {
-	Category string `json:"category"`
-	Total    int    `json:"total"`
-	Online   int    `json:"online"`
-	Offline  int    `json:"offline"`
+	Category        string     `json:"category"`
+	Total           int        `json:"total"`
+	Online          int        `json:"online"`
+	Offline         int        `json:"offline"`
+	MaxOfflineSince *time.Time `json:"max_offline_since"`
 }
 
 type InfrastructureAlert struct {
@@ -801,6 +809,7 @@ func ensureSchema(db *sql.DB) {
 		"ALTER TABLE containers.podman_servers ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
 		"ALTER TABLE kubernetes.kubernetes_servers ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
 		"ALTER TABLE firewall.pfsense_servers ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
+		"ALTER TABLE virtualization.kvm_servers ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
 		"ALTER TABLE kubernetes.kubernetes_servers ADD COLUMN IF NOT EXISTS cert_expiration TIMESTAMP",
 
 		// Docker Tables
@@ -1166,7 +1175,7 @@ func (d *DB) AddServer(s KVMServer) (int64, error) {
 }
 
 func (d *DB) GetServers() ([]KVMServer, error) {
-	rows, err := d.Conn.Query("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, status FROM virtualization.kvm_servers")
+	rows, err := d.Conn.Query("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, status, offline_since FROM virtualization.kvm_servers")
 	if err != nil {
 		return nil, err
 	}
@@ -1176,8 +1185,8 @@ func (d *DB) GetServers() ([]KVMServer, error) {
 	for rows.Next() {
 		var s KVMServer
 		var pwd sql.NullString
-		// Validating scan args count: 9 cols
-		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.SSHKeyContent, &s.Status); err != nil {
+		// Validating scan args count: 10 cols
+		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.SSHKeyContent, &s.Status, &s.OfflineSince); err != nil {
 			return nil, err
 		}
 		s.Password = pwd.String
@@ -1194,7 +1203,13 @@ func (d *DB) SetServerStatus(id int64, status string) error {
 		return nil
 	}
 
-	_, err := d.Conn.Exec("UPDATE virtualization.kvm_servers SET status=$1 WHERE id=$2", status, id)
+	var query string
+	if status == "offline" {
+		query = "UPDATE virtualization.kvm_servers SET status=$1, offline_since = COALESCE(offline_since, NOW()) WHERE id=$2"
+	} else {
+		query = "UPDATE virtualization.kvm_servers SET status=$1, offline_since = NULL WHERE id=$2"
+	}
+	_, err := d.Conn.Exec(query, status, id)
 	if err != nil {
 		return err
 	}
@@ -1252,7 +1267,7 @@ func (d *DB) DeleteServer(id int64) error {
 
 func (d *DB) GetHosts() ([]Host, error) {
 	rows, err := d.Conn.Query(`
-		SELECT h.id, h.server_id, h.hostname, s.name, s.ip_address, h.public_ip, h.dns_servers, h.uptime, h.update_status, h.temperature, h.disks, h.bridge_interfaces, h.oom_events, h.host_events, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, COALESCE(h.active_connections, '[]')
+		SELECT h.id, h.server_id, h.hostname, s.name, s.ip_address, h.public_ip, h.dns_servers, h.uptime, h.update_status, h.temperature, h.disks, h.bridge_interfaces, h.oom_events, h.host_events, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, COALESCE(h.active_connections, '[]'), s.offline_since
 		FROM virtualization.hosts h
 		JOIN virtualization.kvm_servers s ON h.server_id = s.id`)
 	if err != nil {
@@ -1264,7 +1279,7 @@ func (d *DB) GetHosts() ([]Host, error) {
 	for rows.Next() {
 		var h Host
 		var osName sql.NullString
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.PublicIP, &h.DNSServers, &h.Uptime, &h.UpdateStatus, &h.Temperature, &h.Disks, &h.BridgeInterfaces, &h.OOMEvents, &h.HostEvents, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &osName, &h.ActiveConnections); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.PublicIP, &h.DNSServers, &h.Uptime, &h.UpdateStatus, &h.Temperature, &h.Disks, &h.BridgeInterfaces, &h.OOMEvents, &h.HostEvents, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &osName, &h.ActiveConnections, &h.OfflineSince); err != nil {
 			return nil, err
 		}
 		h.OSName = osName.String
@@ -1310,6 +1325,7 @@ type FirewallHost struct {
 	DNSServers        string              `json:"dns_servers"`
 	ActiveConnections string              `json:"active_connections"`
 	HostEvents        string              `json:"host_events"`
+	OfflineSince      *time.Time          `json:"offline_since"`
 	Interfaces        []FirewallInterface `json:"interfaces"`
 	Gateways          []FirewallGateway   `json:"gateways"`
 }
@@ -1440,7 +1456,7 @@ func (d *DB) UpsertFirewallGateway(gw FirewallGateway) error {
 
 func (d *DB) GetFirewallHosts() ([]FirewallHost, error) { // Fetch Hosts
 	rows, err := d.Conn.Query(`
-		SELECT fh.id, fh.server_id, fh.hostname, s.name, s.ip_address, fh.cpu_model, fh.cpu_cores, fh.total_memory, fh.free_memory, fh.cpu_usage, fh.os_name, fh.net_rx_total, fh.net_tx_total, fh.net_rx_bytes_per_sec, fh.net_tx_bytes_per_sec, fh.uptime, fh.update_status, COALESCE(fh.dns_servers, ''), COALESCE(fh.active_connections, '[]'), COALESCE(fh.state_table_size, 0), COALESCE(fh.state_table_limit, 0), COALESCE(fh.temperature, 0), COALESCE(fh.host_events, '[]')
+		SELECT fh.id, fh.server_id, fh.hostname, s.name, s.ip_address, fh.cpu_model, fh.cpu_cores, fh.total_memory, fh.free_memory, fh.cpu_usage, fh.os_name, fh.net_rx_total, fh.net_tx_total, fh.net_rx_bytes_per_sec, fh.net_tx_bytes_per_sec, fh.uptime, fh.update_status, COALESCE(fh.dns_servers, ''), COALESCE(fh.active_connections, '[]'), COALESCE(fh.state_table_size, 0), COALESCE(fh.state_table_limit, 0), COALESCE(fh.temperature, 0), COALESCE(fh.host_events, '[]'), s.offline_since
 		FROM firewall.hosts fh
 		JOIN firewall.pfsense_servers s ON fh.server_id = s.id
 	`)
@@ -1452,7 +1468,7 @@ func (d *DB) GetFirewallHosts() ([]FirewallHost, error) { // Fetch Hosts
 	var hosts []FirewallHost
 	for rows.Next() {
 		var h FirewallHost
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.NetRXTotal, &h.NetTXTotal, &h.NetRXBytesPerSec, &h.NetTXBytesPerSec, &h.Uptime, &h.UpdateStatus, &h.DNSServers, &h.ActiveConnections, &h.StateTableSize, &h.StateTableLimit, &h.Temperature, &h.HostEvents); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.NetRXTotal, &h.NetTXTotal, &h.NetRXBytesPerSec, &h.NetTXBytesPerSec, &h.Uptime, &h.UpdateStatus, &h.DNSServers, &h.ActiveConnections, &h.StateTableSize, &h.StateTableLimit, &h.Temperature, &h.HostEvents, &h.OfflineSince); err != nil {
 			return nil, err
 		}
 
@@ -1963,7 +1979,7 @@ func (d *DB) UpsertContainer(c Container) error {
 
 func (d *DB) GetDockerHosts() ([]DockerHost, error) {
 	rows, err := d.Conn.Query(`
-		SELECT h.id, h.server_id, h.hostname, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, h.public_ip, h.dns_servers, h.uptime, h.update_status, h.temperature, h.disks, h.docker_version, h.docker_service_status, h.docker_socket_status, h.docker_api_latency, h.docker_storage_used, h.docker_storage_total, h.docker_inodes_usage, h.docker_logs_size, h.docker_volumes, h.docker_networks, h.gpu_info, ds.name, ds.ip_address, ds.status, COALESCE(h.host_events, '[]'), COALESCE(h.active_connections, '[]')
+		SELECT h.id, h.server_id, h.hostname, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, h.public_ip, h.dns_servers, h.uptime, h.update_status, h.temperature, h.disks, h.docker_version, h.docker_service_status, h.docker_socket_status, h.docker_api_latency, h.docker_storage_used, h.docker_storage_total, h.docker_inodes_usage, h.docker_logs_size, h.docker_volumes, h.docker_networks, h.gpu_info, ds.name, ds.ip_address, ds.status, COALESCE(h.host_events, '[]'), COALESCE(h.active_connections, '[]'), ds.offline_since
 		FROM containers.hosts h
 		JOIN containers.docker_servers ds ON h.server_id = ds.id`)
 	if err != nil {
@@ -1974,7 +1990,7 @@ func (d *DB) GetDockerHosts() ([]DockerHost, error) {
 	var hosts []DockerHost
 	for rows.Next() {
 		var h DockerHost
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.PublicIP, &h.DNSServers, &h.Uptime, &h.UpdateStatus, &h.Temperature, &h.Disks, &h.DockerVer, &h.ServiceStatus, &h.SocketStatus, &h.APILatency, &h.StorageUsed, &h.StorageTotal, &h.InodesUsage, &h.LogsSize, &h.Volumes, &h.Networks, &h.GPUInfo, &h.ServerName, &h.IPAddress, &h.Status, &h.HostEvents, &h.ActiveConnections); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.PublicIP, &h.DNSServers, &h.Uptime, &h.UpdateStatus, &h.Temperature, &h.Disks, &h.DockerVer, &h.ServiceStatus, &h.SocketStatus, &h.APILatency, &h.StorageUsed, &h.StorageTotal, &h.InodesUsage, &h.LogsSize, &h.Volumes, &h.Networks, &h.GPUInfo, &h.ServerName, &h.IPAddress, &h.Status, &h.HostEvents, &h.ActiveConnections, &h.OfflineSince); err != nil {
 			return nil, err
 		}
 		hosts = append(hosts, h)
@@ -2035,7 +2051,7 @@ func (d *DB) UpsertKubernetesPod(p KubernetesPod) error {
 
 func (d *DB) GetKubernetesNodes() ([]KubernetesNode, error) {
 	rows, err := d.Conn.Query(`
-		SELECT n.id, n.server_id, n.hostname, n.status, n.roles, n.version, n.cpu_model, n.cpu_cores, n.total_memory, n.free_memory, n.cpu_usage, n.os_name, n.kernel_version, n.container_runtime, n.pods_count, n.disk_total, n.disk_used, n.net_rx, n.net_tx, n.net_rx_rate, n.net_tx_rate, ks.name, n.ip_address, n.architecture, COALESCE(n.active_connections, '[]')
+		SELECT n.id, n.server_id, n.hostname, n.status, n.roles, n.version, n.cpu_model, n.cpu_cores, n.total_memory, n.free_memory, n.cpu_usage, n.os_name, n.kernel_version, n.container_runtime, n.pods_count, n.disk_total, n.disk_used, n.net_rx, n.net_tx, n.net_rx_rate, n.net_tx_rate, ks.name, n.ip_address, n.architecture, COALESCE(n.active_connections, '[]'), ks.offline_since
 		FROM kubernetes.nodes n
 		JOIN kubernetes.kubernetes_servers ks ON n.server_id = ks.id`)
 	if err != nil {
@@ -2046,7 +2062,7 @@ func (d *DB) GetKubernetesNodes() ([]KubernetesNode, error) {
 	var nodes []KubernetesNode
 	for rows.Next() {
 		var n KubernetesNode
-		if err := rows.Scan(&n.ID, &n.ServerID, &n.Hostname, &n.Status, &n.Roles, &n.Version, &n.CPUModel, &n.CPUCores, &n.TotalMemory, &n.FreeMemory, &n.CPUUsage, &n.OSName, &n.KernelVer, &n.ContainerRuntime, &n.PodsCount, &n.DiskTotal, &n.DiskUsed, &n.NetRX, &n.NetTX, &n.NetRXRate, &n.NetTXRate, &n.ServerName, &n.IPAddress, &n.Architecture, &n.ActiveConnections); err != nil {
+		if err := rows.Scan(&n.ID, &n.ServerID, &n.Hostname, &n.Status, &n.Roles, &n.Version, &n.CPUModel, &n.CPUCores, &n.TotalMemory, &n.FreeMemory, &n.CPUUsage, &n.OSName, &n.KernelVer, &n.ContainerRuntime, &n.PodsCount, &n.DiskTotal, &n.DiskUsed, &n.NetRX, &n.NetTX, &n.NetRXRate, &n.NetTXRate, &n.ServerName, &n.IPAddress, &n.Architecture, &n.ActiveConnections, &n.OfflineSince); err != nil {
 			return nil, err
 		}
 		nodes = append(nodes, n)
@@ -2112,7 +2128,7 @@ func (d *DB) UpsertPodmanContainer(c Container) error {
 
 func (d *DB) GetPodmanHosts() ([]PodmanHost, error) {
 	rows, err := d.Conn.Query(`
-		SELECT h.id, h.server_id, h.hostname, ps.name, ps.ip_address, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, h.uptime, h.podman_version, h.podman_service_status, h.podman_api_latency, h.podman_storage_used, h.podman_storage_total, h.podman_inodes_usage, h.podman_volumes, h.podman_networks, h.gpu_info, ps.status, COALESCE(h.host_events, '[]'), COALESCE(h.active_connections, '[]')
+		SELECT h.id, h.server_id, h.hostname, ps.name, ps.ip_address, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, h.uptime, h.podman_version, h.podman_service_status, h.podman_api_latency, h.podman_storage_used, h.podman_storage_total, h.podman_inodes_usage, h.podman_volumes, h.podman_networks, h.gpu_info, ps.status, COALESCE(h.host_events, '[]'), COALESCE(h.active_connections, '[]'), ps.offline_since
 		FROM containers.podman_hosts h
 		JOIN containers.podman_servers ps ON h.server_id = ps.id`)
 	if err != nil {
@@ -2123,7 +2139,7 @@ func (d *DB) GetPodmanHosts() ([]PodmanHost, error) {
 	var hosts []PodmanHost
 	for rows.Next() {
 		var h PodmanHost
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.Uptime, &h.PodmanVer, &h.ServiceStatus, &h.APILatency, &h.StorageUsed, &h.StorageTotal, &h.InodesUsage, &h.Volumes, &h.PodmanNetworks, &h.GPUInfo, &h.Status, &h.HostEvents, &h.ActiveConnections); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.Uptime, &h.PodmanVer, &h.ServiceStatus, &h.APILatency, &h.StorageUsed, &h.StorageTotal, &h.InodesUsage, &h.Volumes, &h.PodmanNetworks, &h.GPUInfo, &h.Status, &h.HostEvents, &h.ActiveConnections, &h.OfflineSince); err != nil {
 			return nil, err
 		}
 		hosts = append(hosts, h)
@@ -2189,7 +2205,7 @@ func (d *DB) UpsertProxmoxVM(vm ProxmoxVM) error {
 
 func (d *DB) GetProxmoxHosts() ([]ProxmoxHost, error) {
 	rows, err := d.Conn.Query(`
-		SELECT ph.id, ph.server_id, ph.hostname, ps.name, ps.ip_address, ps.status, ph.cpu_model, ph.cpu_cores, ph.total_memory, ph.free_memory, ph.cpu_usage, ph.os_name, ph.kernel_version, ph.pve_version, ph.uptime, ph.vms_count, ph.containers_count, COALESCE(ph.active_connections, '[]')
+		SELECT ph.id, ph.server_id, ph.hostname, ps.name, ps.ip_address, ps.status, ph.cpu_model, ph.cpu_cores, ph.total_memory, ph.free_memory, ph.cpu_usage, ph.os_name, ph.kernel_version, ph.pve_version, ph.uptime, ph.vms_count, ph.containers_count, COALESCE(ph.active_connections, '[]'), ps.offline_since
 		FROM virtualization.proxmox_hosts ph
 		JOIN virtualization.proxmox_servers ps ON ph.server_id = ps.id`)
 	if err != nil {
@@ -2200,7 +2216,7 @@ func (d *DB) GetProxmoxHosts() ([]ProxmoxHost, error) {
 	var hosts []ProxmoxHost
 	for rows.Next() {
 		var h ProxmoxHost
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.Status, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.KernelVer, &h.PVEVersion, &h.Uptime, &h.VMsCount, &h.Containers, &h.ActiveConnections); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.Status, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.KernelVer, &h.PVEVersion, &h.Uptime, &h.VMsCount, &h.Containers, &h.ActiveConnections, &h.OfflineSince); err != nil {
 			return nil, err
 		}
 		hosts = append(hosts, h)
@@ -2284,7 +2300,7 @@ func (d *DB) UpsertNasDisk(disk NasDisk) error {
 
 func (d *DB) GetNasHosts() ([]NasHost, error) {
 	rows, err := d.Conn.Query(`
-		SELECT nh.id, nh.server_id, nh.hostname, ns.name, ns.ip_address, ns.status, nh.cpu_model, nh.cpu_cores, nh.total_memory, nh.free_memory, nh.cpu_usage, nh.os_name, nh.kernel_version, nh.uptime, nh.model, nh.serial, COALESCE(nh.active_connections, '[]')
+		SELECT nh.id, nh.server_id, nh.hostname, ns.name, ns.ip_address, ns.status, nh.cpu_model, nh.cpu_cores, nh.total_memory, nh.free_memory, nh.cpu_usage, nh.os_name, nh.kernel_version, nh.uptime, nh.model, nh.serial, COALESCE(nh.active_connections, '[]'), ns.offline_since
 		FROM storage.nas_hosts nh
 		JOIN storage.nas_servers ns ON nh.server_id = ns.id`)
 	if err != nil {
@@ -2295,7 +2311,7 @@ func (d *DB) GetNasHosts() ([]NasHost, error) {
 	var hosts []NasHost
 	for rows.Next() {
 		var h NasHost
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.Status, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.KernelVer, &h.Uptime, &h.Model, &h.Serial, &h.ActiveConnections); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.Status, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.KernelVer, &h.Uptime, &h.Model, &h.Serial, &h.ActiveConnections, &h.OfflineSince); err != nil {
 			return nil, err
 		}
 		hosts = append(hosts, h)
@@ -2341,23 +2357,24 @@ func (d *DB) GetAllNasDisks() ([]NasDisk, error) {
 
 // Ceph Types
 type CephHost struct {
-	ID                int64   `json:"id"`
-	ServerID          int64   `json:"server_id"`
-	Hostname          string  `json:"hostname"`
-	ServerName        string  `json:"server_name"`
-	IPAddress         string  `json:"ip_address"`
-	Status            string  `json:"status"`
-	CPUModel          string  `json:"cpu_model"`
-	CPUCores          int     `json:"cpu_cores"`
-	TotalMemory       uint64  `json:"total_memory"`
-	FreeMemory        uint64  `json:"free_memory"`
-	CPUUsage          float64 `json:"cpu_usage"`
-	OSName            string  `json:"os_name"`
-	KernelVer         string  `json:"kernel_version"`
-	Uptime            string  `json:"uptime"`
-	ClusterStatus     string  `json:"cluster_status"` // JSON string of "ceph status"
-	ClusterHealth     string  `json:"cluster_health"` // HEALTH_OK, HEALTH_WARN, etc.
-	ActiveConnections string  `json:"active_connections"`
+	ID                int64      `json:"id"`
+	ServerID          int64      `json:"server_id"`
+	Hostname          string     `json:"hostname"`
+	ServerName        string     `json:"server_name"`
+	IPAddress         string     `json:"ip_address"`
+	Status            string     `json:"status"`
+	CPUModel          string     `json:"cpu_model"`
+	CPUCores          int        `json:"cpu_cores"`
+	TotalMemory       uint64     `json:"total_memory"`
+	FreeMemory        uint64     `json:"free_memory"`
+	CPUUsage          float64    `json:"cpu_usage"`
+	OSName            string     `json:"os_name"`
+	KernelVer         string     `json:"kernel_version"`
+	Uptime            string     `json:"uptime"`
+	ClusterStatus     string     `json:"cluster_status"` // JSON string of "ceph status"
+	ClusterHealth     string     `json:"cluster_health"` // HEALTH_OK, HEALTH_WARN, etc.
+	ActiveConnections string     `json:"active_connections"`
+	OfflineSince      *time.Time `json:"offline_since"`
 }
 
 // Ceph Methods
@@ -2382,7 +2399,7 @@ func (d *DB) UpsertCephHost(h CephHost) (int64, error) {
 
 func (d *DB) GetCephHosts() ([]CephHost, error) {
 	rows, err := d.Conn.Query(`
-		SELECT ch.id, ch.server_id, ch.hostname, cs.name, cs.ip_address, ch.status, ch.cpu_model, ch.cpu_cores, ch.total_memory, ch.free_memory, ch.cpu_usage, ch.os_name, ch.kernel_version, ch.uptime, ch.cluster_status, ch.cluster_health, COALESCE(ch.active_connections, '[]')
+		SELECT ch.id, ch.server_id, ch.hostname, cs.name, cs.ip_address, ch.status, ch.cpu_model, ch.cpu_cores, ch.total_memory, ch.free_memory, ch.cpu_usage, ch.os_name, ch.kernel_version, ch.uptime, ch.cluster_status, ch.cluster_health, COALESCE(ch.active_connections, '[]'), cs.offline_since
 		FROM storage.ceph_hosts ch
 		JOIN storage.ceph_servers cs ON ch.server_id = cs.id`)
 	if err != nil {
@@ -2393,7 +2410,7 @@ func (d *DB) GetCephHosts() ([]CephHost, error) {
 	var hosts []CephHost
 	for rows.Next() {
 		var h CephHost
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.Status, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.KernelVer, &h.Uptime, &h.ClusterStatus, &h.ClusterHealth, &h.ActiveConnections); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.Status, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.KernelVer, &h.Uptime, &h.ClusterStatus, &h.ClusterHealth, &h.ActiveConnections, &h.OfflineSince); err != nil {
 			return nil, err
 		}
 		hosts = append(hosts, h)
@@ -2444,10 +2461,12 @@ func (d *DB) GetInfrastructureHealth() (*GlobalHealthData, error) {
 		query := fmt.Sprintf(`
 			SELECT 
 				COUNT(*), 
-				COUNT(*) FILTER (WHERE %s ILIKE 'online' OR %s ILIKE 'running' OR %s ILIKE 'up' OR %s ILIKE 'Ready' OR %s ILIKE 'active')
+				COUNT(*) FILTER (WHERE %s ILIKE 'online' OR %s ILIKE 'running' OR %s ILIKE 'up' OR %s ILIKE 'Ready' OR %s ILIKE 'active'),
+				MAX(offline_since)
 			FROM %s`, q.StatusCol, q.StatusCol, q.StatusCol, q.StatusCol, q.StatusCol, q.Table)
 
-		err := d.Conn.QueryRow(query).Scan(&total, &online)
+		var maxOfflineSince *time.Time
+		err := d.Conn.QueryRow(query).Scan(&total, &online, &maxOfflineSince)
 		offline = total - online
 		if err != nil {
 			// If status column is missing, try a simpler count
@@ -2457,10 +2476,11 @@ func (d *DB) GetInfrastructureHealth() (*GlobalHealthData, error) {
 		}
 
 		data.OverallHealth = append(data.OverallHealth, HealthSummary{
-			Category: q.Category,
-			Total:    total,
-			Online:   online,
-			Offline:  offline,
+			Category:        q.Category,
+			Total:           total,
+			Online:          online,
+			Offline:         offline,
+			MaxOfflineSince: maxOfflineSince,
 		})
 	}
 
