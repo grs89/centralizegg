@@ -1097,9 +1097,14 @@ func ensureSchema(db *sql.DB) {
 			memory_usage BIGINT DEFAULT 0,
 			net_rx BIGINT DEFAULT 0,
 			net_tx BIGINT DEFAULT 0,
-			disk_read BIGINT DEFAULT 0,
 			disk_write BIGINT DEFAULT 0
 		)`,
+		"ALTER TABLE containers.hosts ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
+		"ALTER TABLE containers.podman_hosts ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
+		"ALTER TABLE kubernetes.nodes ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
+		"ALTER TABLE storage.nas_hosts ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
+		"ALTER TABLE storage.ceph_hosts ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
+		"ALTER TABLE virtualization.proxmox_hosts ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
 	}
 
 	for _, q := range queries {
@@ -2471,8 +2476,8 @@ func (d *DB) GetInfrastructureHealth() (*GlobalHealthData, error) {
 		if err != nil {
 			// If status column is missing, try a simpler count
 			d.Conn.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", q.Table)).Scan(&total)
-			online = total // Fallback
-			offline = 0
+			d.Conn.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE %s ILIKE 'online' OR %s ILIKE 'running' OR %s ILIKE 'up' OR %s ILIKE 'Ready' OR %s ILIKE 'active'", q.Table, q.StatusCol, q.StatusCol, q.StatusCol, q.StatusCol, q.StatusCol)).Scan(&online)
+			offline = total - online
 		}
 
 		data.OverallHealth = append(data.OverallHealth, HealthSummary{
