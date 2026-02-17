@@ -159,17 +159,31 @@ function switchTool(toolKey) {
     state.selectedHostId = null;
     state.lastRenderedVMsHash = "";
 
-    // Update Category Button Identity (Skip for config-btn to avoid layout break)
+    // Update Category Button Identity (Reset others to defaults)
     try {
-        const categoryBtn = document.getElementById(tool.categoryBtnId);
-        if (categoryBtn && tool.categoryBtnId !== 'config-btn' && tool.categoryBtnId !== 'log-btn' && tool.categoryBtnId !== 'dashboard-btn') {
-            categoryBtn.innerHTML = `
-                <i class="${tool.icon}"></i> ${tool.name} <i class="fa-solid fa-chevron-down" style="font-size: 0.8rem; margin-left: 5px;"></i>
-            `;
-            console.log('[DEBUG] Category button updated:', tool.categoryBtnId);
-        }
+        const categoryDefaults = {
+            'virtualization-btn': { name: 'Virtualización', icon: 'fa-solid fa-microchip' },
+            'storage-btn': { name: 'Almacenamiento', icon: 'fa-solid fa-database' },
+            'firewall-btn': { name: 'Firewall', icon: 'fa-solid fa-shield-halved' },
+            'containers-btn': { name: 'Contenedores', icon: 'fa-solid fa-box' },
+            'services-btn': { name: 'Servidores', icon: 'fa-solid fa-gears' }
+        };
+
+        Object.keys(categoryDefaults).forEach(btnId => {
+            const btn = document.getElementById(btnId);
+            if (!btn) return;
+
+            if (btnId === tool.categoryBtnId) {
+                // Current tool category: set to specific tool name
+                btn.innerHTML = `<i class="${tool.icon}"></i> ${tool.name} <i class="fa-solid fa-chevron-down" style="font-size: 0.8rem; margin-left: 5px;"></i>`;
+            } else {
+                // Inactive category: reset to default label
+                const def = categoryDefaults[btnId];
+                btn.innerHTML = `<i class="${def.icon}"></i> ${def.name} <i class="fa-solid fa-chevron-down" style="font-size: 0.8rem; margin-left: 5px;"></i>`;
+            }
+        });
     } catch (e) {
-        console.error('[DEBUG] Failed to update category button:', e);
+        console.error('[DEBUG] Failed to update category buttons:', e);
     }
 
     // Comprehensive visibility management
