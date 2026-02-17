@@ -29,6 +29,7 @@ type ServerMetric struct {
 	InterfacesData string    `json:"interfaces_data"` // JSON map of interface stats
 	DisksData      string    `json:"disks_data"`      // JSON map of disk I/O stats
 	NodesData      string    `json:"nodes_data"`      // JSON map of cluster nodes stats (K8s)
+	IsOnline       bool      `json:"is_online"`
 }
 
 type VM struct {
@@ -1105,6 +1106,7 @@ func ensureSchema(db *sql.DB) {
 		"ALTER TABLE storage.nas_hosts ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
 		"ALTER TABLE storage.ceph_hosts ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
 		"ALTER TABLE virtualization.proxmox_hosts ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
+		"ALTER TABLE server_metrics_history ADD COLUMN IF NOT EXISTS is_online BOOLEAN DEFAULT TRUE",
 	}
 
 	for _, q := range queries {
@@ -2527,9 +2529,9 @@ func (d *DB) GetInfrastructureHealth() (*GlobalHealthData, error) {
 
 func (d *DB) InsertServerMetrics(m ServerMetric) error {
 	_, err := d.Conn.Exec(`
-		INSERT INTO server_metrics_history (server_id, category, timestamp, cpu_usage, memory_usage, net_rx, net_tx, disk_read, disk_write, interfaces_data, disk_usage, disk_total, disks_data, nodes_data)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-		m.ServerID, m.Category, m.Timestamp, m.CPUUsage, m.MemoryUsage, m.NetRX, m.NetTX, m.DiskRead, m.DiskWrite, m.InterfacesData, m.DiskUsage, m.DiskTotal, m.DisksData, m.NodesData)
+		INSERT INTO server_metrics_history (server_id, category, timestamp, cpu_usage, memory_usage, net_rx, net_tx, disk_read, disk_write, interfaces_data, disk_usage, disk_total, disks_data, nodes_data, is_online)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+		m.ServerID, m.Category, m.Timestamp, m.CPUUsage, m.MemoryUsage, m.NetRX, m.NetTX, m.DiskRead, m.DiskWrite, m.InterfacesData, m.DiskUsage, m.DiskTotal, m.DisksData, m.NodesData, m.IsOnline)
 	return err
 }
 
@@ -2557,7 +2559,7 @@ func (d *DB) GetServerHistory(serverID int64, category string, duration string) 
 	}
 
 	rows, err := d.Conn.Query(`
-		SELECT id, server_id, category, timestamp, cpu_usage, memory_usage, net_rx, net_tx, disk_read, disk_write, COALESCE(interfaces_data, '{}'), COALESCE(disk_usage, 0), COALESCE(disk_total, 0), COALESCE(disks_data, '{}'), COALESCE(nodes_data, '{}')
+		SELECT id, server_id, category, timestamp, cpu_usage, memory_usage, net_rx, net_tx, disk_read, disk_write, COALESCE(interfaces_data, '{}'), COALESCE(disk_usage, 0), COALESCE(disk_total, 0), COALESCE(disks_data, '{}'), COALESCE(nodes_data, '{}'), is_online
 		FROM server_metrics_history
 		WHERE server_id = $1 AND category = $2 AND timestamp > NOW() - CAST($3 AS INTERVAL)
 		ORDER BY timestamp ASC`,
@@ -2570,7 +2572,7 @@ func (d *DB) GetServerHistory(serverID int64, category string, duration string) 
 	var metrics []ServerMetric
 	for rows.Next() {
 		var m ServerMetric
-		if err := rows.Scan(&m.ID, &m.ServerID, &m.Category, &m.Timestamp, &m.CPUUsage, &m.MemoryUsage, &m.NetRX, &m.NetTX, &m.DiskRead, &m.DiskWrite, &m.InterfacesData, &m.DiskUsage, &m.DiskTotal, &m.DisksData, &m.NodesData); err != nil {
+		if err := rows.Scan(&m.ID, &m.ServerID, &m.Category, &m.Timestamp, &m.CPUUsage, &m.MemoryUsage, &m.NetRX, &m.NetTX, &m.DiskRead, &m.DiskWrite, &m.InterfacesData, &m.DiskUsage, &m.DiskTotal, &m.DisksData, &m.NodesData, &m.IsOnline); err != nil {
 			return nil, err
 		}
 		metrics = append(metrics, m)

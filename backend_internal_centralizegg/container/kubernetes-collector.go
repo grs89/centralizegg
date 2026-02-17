@@ -117,6 +117,13 @@ func (kc *KubernetesCollector) CollectAll() {
 		if err := kc.collectOne(s); err != nil {
 			log.Printf("[KubernetesCollector] Failed to collect from Kubernetes %s (%s): %v", s.Name, s.IPAddress, err)
 			kc.DB.SetGenericServerStatus("kubernetes", s.ID, "offline", metadata)
+			// Insert "down" metric point
+			kc.DB.InsertServerMetrics(data_centralizegg.ServerMetric{
+				ServerID:  s.ID,
+				Category:  "kubernetes",
+				Timestamp: time.Now(),
+				IsOnline:  false,
+			})
 			kc.DB.UpdateControlPlaneStatus("kubernetes", s.ID, "{}")
 			kc.DB.ClearKubernetesNodesStatus(s.ID)
 			continue
@@ -793,6 +800,7 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 		MemoryUsage: clusterTotalMemory - clusterFreeMemory,
 		NetRX:       totalNetRX,
 		NetTX:       totalNetTX,
+		IsOnline:    true,
 	}
 
 	if nodesData, err := json.Marshal(nodeStatsMap); err == nil {

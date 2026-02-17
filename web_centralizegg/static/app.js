@@ -8735,6 +8735,67 @@ function updateCharts(metrics, keepDropdown = false, totalMemory = 0) {
         }
     }
 
+    // Availability / Uptime Chart
+    const canvasUptime = document.getElementById('uptimeChart');
+    if (canvasUptime) {
+        // Calculate uptime percentage from is_online data
+        let onlineCount = 0;
+        const uptimeData = metrics.map(m => {
+            const isOnline = m.is_online !== undefined ? m.is_online : true; // Fallback to true if missing (legacy)
+            if (isOnline) onlineCount++;
+            return isOnline ? 100 : 0;
+        });
+
+        const uptimePercentage = metrics.length > 0 ? (onlineCount / metrics.length) * 100 : 0;
+        const uptimeValueElem = document.getElementById('uptime-value');
+        if (uptimeValueElem) {
+            uptimeValueElem.textContent = metrics.length > 0 ? uptimePercentage.toFixed(1) + '%' : '--%';
+
+            // Color based on value
+            uptimeValueElem.className = 'val'; // reset
+            if (uptimePercentage >= 95) uptimeValueElem.classList.add('text-green-400');
+            else if (uptimePercentage >= 80) uptimeValueElem.classList.add('text-amber-400');
+            else uptimeValueElem.classList.add('text-red-400');
+        }
+
+        if (uptimeChart) {
+            uptimeChart.data.labels = netLabels;
+            uptimeChart.data.datasets[0].data = uptimeData;
+            uptimeChart.update('none');
+        } else {
+            const ctxUptime = canvasUptime.getContext('2d');
+
+            // Custom options for Uptime
+            const uptimeOptions = JSON.parse(JSON.stringify(commonOptions));
+            uptimeOptions.scales.x.ticks = xAxisTicks;
+            uptimeOptions.scales.y.suggestedMin = 0;
+            uptimeOptions.scales.y.suggestedMax = 100;
+            uptimeOptions.scales.y.ticks.callback = (value) => value + '%';
+            uptimeOptions.plugins.tooltip.callbacks = {
+                label: (context) => context.raw === 100 ? 'Online' : 'Offline'
+            };
+
+            uptimeChart = new Chart(ctxUptime, {
+                type: 'line',
+                data: {
+                    labels: netLabels,
+                    datasets: [{
+                        label: 'Disponibilidad',
+                        data: uptimeData,
+                        borderColor: '#10b981', // Green
+                        backgroundColor: getGradient(ctxUptime, '#10b981'),
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0, // Step-like
+                        pointRadius: 0,
+                        spanGaps: false
+                    }]
+                },
+                options: uptimeOptions
+            });
+        }
+    }
+
     // Update anomalies if enabled
     updateAnomalyVisualization();
 

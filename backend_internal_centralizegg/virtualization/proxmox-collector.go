@@ -49,6 +49,13 @@ func (pc *ProxmoxCollector) CollectAll() {
 		if err := pc.collectOne(s); err != nil {
 			log.Printf("[ProxmoxCollector] Failed to collect from Proxmox %s (%s): %v", s.Name, s.IPAddress, err)
 			pc.DB.SetGenericServerStatus("proxmox", s.ID, "offline", metadata)
+			// Insert "down" metric point
+			pc.DB.InsertServerMetrics(data_centralizegg.ServerMetric{
+				ServerID:  s.ID,
+				Category:  "proxmox",
+				Timestamp: time.Now(),
+				IsOnline:  false,
+			})
 			continue
 		}
 		pc.DB.SetGenericServerStatus("proxmox", s.ID, "online", metadata)
@@ -226,6 +233,28 @@ func (pc *ProxmoxCollector) collectOne(s data_centralizegg.GenericServer) error 
 		// Update host counts
 		pc.DB.Conn.Exec("UPDATE virtualization.proxmox_hosts SET vms_count = $1, containers_count = $2 WHERE id = $3", len(vms), len(lxcs), hostID)
 	}
+
+	// Aggregate metrics for history
+	var totalMem uint64
+	var avgCPU float64
+	if len(nodes) > 0 {
+		for _, n := range nodes {
+			avgCPU += n.CPU * 100
+			totalMem += n.Mem
+		}
+		avgCPU /= float64(len(nodes))
+	}
+
+	// Insert Historical Metrics
+	metric := data_centralizegg.ServerMetric{
+		ServerID:    s.ID,
+		Category:    "proxmox",
+		Timestamp:   time.Now(),
+		CPUUsage:    avgCPU,
+		MemoryUsage: totalMem,
+		IsOnline:    true,
+	}
+	pc.DB.InsertServerMetrics(metric)
 
 	return nil
 }

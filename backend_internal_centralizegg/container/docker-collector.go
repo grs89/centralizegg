@@ -54,6 +54,13 @@ func (dc *DockerCollector) CollectAll() {
 		if err := dc.collectOne(s); err != nil {
 			// log.Printf("[DockerCollector] Failed to collect from Docker %s (%s): %v", s.Name, s.IPAddress, err)
 			dc.DB.SetGenericServerStatus("docker", s.ID, "offline", metadata)
+			// Insert "down" metric point
+			dc.DB.InsertServerMetrics(data_centralizegg.ServerMetric{
+				ServerID:  s.ID,
+				Category:  "docker",
+				Timestamp: time.Now(),
+				IsOnline:  false,
+			})
 			continue
 		}
 		// log.Printf("[DockerCollector] Successfully collected from %s.", s.Name)
@@ -423,6 +430,7 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 			DiskTotal:      storageTotal,
 			InterfacesData: interfacesJSON,
 			DisksData:      disksDataJSON,
+			IsOnline:       true,
 		}
 		if err := dc.DB.InsertServerMetrics(metric); err != nil {
 			// log.Printf("[DockerCollector] Failed to insert metrics: %v", err)

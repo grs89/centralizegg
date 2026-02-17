@@ -50,6 +50,13 @@ func (cc *CephCollector) CollectAll() {
 		if err := cc.collectOne(s); err != nil {
 			log.Printf("[CephCollector] Failed to collect from Ceph node %s (%s): %v", s.Name, s.IPAddress, err)
 			cc.DB.SetGenericServerStatus("ceph", s.ID, "offline", metadata)
+			// Insert "down" metric point
+			cc.DB.InsertServerMetrics(data_centralizegg.ServerMetric{
+				ServerID:  s.ID,
+				Category:  "ceph",
+				Timestamp: time.Now(),
+				IsOnline:  false,
+			})
 			continue
 		}
 		cc.DB.SetGenericServerStatus("ceph", s.ID, "online", metadata)
@@ -172,6 +179,17 @@ func (cc *CephCollector) collectOne(s data_centralizegg.GenericServer) error {
 		ClusterHealth:     clusterHealth,
 		ActiveConnections: activeConnsJSON,
 	})
+
+	// Insert Historical Metrics
+	metric := data_centralizegg.ServerMetric{
+		ServerID:    s.ID,
+		Category:    "ceph",
+		Timestamp:   time.Now(),
+		CPUUsage:    cpuUsage,
+		MemoryUsage: memTotal - memFree,
+		IsOnline:    true,
+	}
+	cc.DB.InsertServerMetrics(metric)
 
 	return err
 }

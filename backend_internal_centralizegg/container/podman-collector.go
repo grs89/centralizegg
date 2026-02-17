@@ -55,6 +55,13 @@ func (pc *PodmanCollector) CollectAll() {
 		if err := pc.collectOne(s); err != nil {
 			log.Printf("[PodmanCollector] Failed to collect from Podman %s (%s): %v", s.Name, s.IPAddress, err)
 			pc.DB.SetGenericServerStatus("podman", s.ID, "offline", metadata)
+			// Insert "down" metric point
+			pc.DB.InsertServerMetrics(data_centralizegg.ServerMetric{
+				ServerID:  s.ID,
+				Category:  "podman",
+				Timestamp: time.Now(),
+				IsOnline:  false,
+			})
 			continue
 		}
 		log.Printf("[PodmanCollector] Successfully collected from %s.", s.Name)
@@ -557,6 +564,7 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 			DiskTotal:      storageTotal,
 			InterfacesData: interfacesJSON,
 			DisksData:      disksDataJSON,
+			IsOnline:       true,
 		}
 		if err := pc.DB.InsertServerMetrics(metric); err != nil {
 			// log.Printf("[PodmanCollector] Failed to insert metrics: %v", err)

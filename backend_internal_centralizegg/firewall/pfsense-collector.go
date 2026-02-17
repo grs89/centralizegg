@@ -51,6 +51,13 @@ func (mc *PfsenseCollector) CollectAll() {
 		if err := mc.collectOne(s); err != nil {
 			log.Printf("Failed to collect from pfSense %s (%s): %v", s.Name, s.IPAddress, err)
 			mc.DB.SetPFSenseServerStatus(s.ID, "offline", metadata)
+			// Insert "down" metric point
+			mc.DB.InsertServerMetrics(data_centralizegg.ServerMetric{
+				ServerID:  s.ID,
+				Category:  "pfsense",
+				Timestamp: time.Now(),
+				IsOnline:  false,
+			})
 			continue
 		}
 		log.Printf("[PFSenseCollector] Successfully collected from %s.", s.Name)
@@ -502,6 +509,7 @@ func (mc *PfsenseCollector) collectOne(s data_centralizegg.PFSenseServer) error 
 		DiskTotal:      diskTotal,
 		InterfacesData: interfacesJSON,
 		DisksData:      disksDataJSON,
+		IsOnline:       true,
 	}
 	if err := mc.DB.InsertServerMetrics(metric); err != nil {
 		log.Printf("[PFSenseCollector] Failed to insert metrics: %v", err)

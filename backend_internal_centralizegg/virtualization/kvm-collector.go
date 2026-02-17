@@ -67,6 +67,13 @@ func (mc *MultiCollector) CollectAll() {
 		if err := mc.collectOne(s); err != nil {
 			log.Printf("Failed to collect from %s (%s): %v", s.Name, s.IPAddress, err)
 			mc.DB.SetServerStatus(s.ID, "offline")
+			// Insert "down" metric point
+			mc.DB.InsertServerMetrics(data_centralizegg.ServerMetric{
+				ServerID:  s.ID,
+				Category:  "kvm",
+				Timestamp: time.Now(),
+				IsOnline:  false,
+			})
 			continue
 		}
 		log.Printf("[KVMCollector] Successfully collected from %s.", s.Name)
@@ -609,6 +616,7 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 		DiskTotal:      totalDiskCapacity,
 		InterfacesData: interfacesJSON,
 		DisksData:      disksDataJSON,
+		IsOnline:       true,
 	}
 	if err := mc.DB.InsertServerMetrics(metric); err != nil {
 		log.Printf("[KVMCollector] Failed to insert metrics for %s: %v", s.Name, err)

@@ -50,6 +50,13 @@ func (nc *NasCollector) CollectAll() {
 		if err := nc.collectOne(s); err != nil {
 			log.Printf("[NasCollector] Failed to collect from NAS %s (%s): %v", s.Name, s.IPAddress, err)
 			nc.DB.SetGenericServerStatus("nas", s.ID, "offline", metadata)
+			// Insert "down" metric point
+			nc.DB.InsertServerMetrics(data_centralizegg.ServerMetric{
+				ServerID:  s.ID,
+				Category:  "nas",
+				Timestamp: time.Now(),
+				IsOnline:  false,
+			})
 			continue
 		}
 		nc.DB.SetGenericServerStatus("nas", s.ID, "online", metadata)
@@ -206,6 +213,19 @@ func (nc *NasCollector) collectOne(s data_centralizegg.GenericServer) error {
 			}
 		}
 	}
+
+	// Insert Historical Metrics
+	metric := data_centralizegg.ServerMetric{
+		ServerID:    hostID,
+		Category:    "nas",
+		Timestamp:   time.Now(),
+		CPUUsage:    cpuUsage,
+		MemoryUsage: memTotal - memFree,
+		// NAS doesn't have total NetRX/TX easily aggregated in this script yet,
+		// but we can add placeholders or leave at 0.
+		IsOnline: true,
+	}
+	nc.DB.InsertServerMetrics(metric)
 
 	return nil
 }
