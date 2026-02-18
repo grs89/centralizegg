@@ -129,6 +129,7 @@ export function renderHostNodes(containerId = 'host-nodes-container', config = {
                         <div class="host-progress-container">
                             <div class="host-progress-fill" style="width: ${cpuPercent}%; background: ${getStatusColor(cpuPercent)};"></div>
                         </div>
+                        <div class="stat-value-sub">${host.cpu_cores || 'N/A'} Cores</div>
                     </div>
                 </div>
                 <div class="host-stat-item">
@@ -147,10 +148,10 @@ export function renderHostNodes(containerId = 'host-nodes-container', config = {
                 <div class="host-stat-item">
                     <div class="stat-label-row">
                         <i class="fa-solid fa-microchip"></i>
-                        <span>${arch ? 'ARCH' : 'CORES'}</span>
+                        <span>ARCH</span>
                     </div>
                     <div class="stat-value-display">
-                        <div class="stat-value-main color-cores" style="font-size: ${arch ? '0.85rem' : '1.2rem'};">${arch || host.cpu_cores || 'N/A'}</div>
+                        <div class="stat-value-main color-cores" style="font-size: 0.85rem;">${arch || 'Unknown'}</div>
                     </div>
                 </div>
             </div>

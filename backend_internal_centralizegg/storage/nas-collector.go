@@ -139,6 +139,9 @@ func (nc *NasCollector) collectOne(s data_centralizegg.GenericServer) error {
 		activeConnsJSON = string(b)
 	}
 
+	archRaw, _ := nc.runCommand(client, "uname -m")
+	arch := strings.TrimSpace(archRaw)
+
 	hostID, err := nc.DB.UpsertNasHost(data_centralizegg.NasHost{
 		ServerID:          s.ID,
 		Hostname:          strings.TrimSpace(hostname),
@@ -152,6 +155,7 @@ func (nc *NasCollector) collectOne(s data_centralizegg.GenericServer) error {
 		KernelVer:         strings.TrimSpace(uname),
 		Uptime:            strings.TrimSpace(uptime),
 		ActiveConnections: activeConnsJSON,
+		Architecture:      arch,
 	})
 	if err != nil {
 		return err
@@ -226,6 +230,7 @@ func (nc *NasCollector) collectOne(s data_centralizegg.GenericServer) error {
 		IsOnline: true,
 	}
 	nc.DB.InsertServerMetrics(metric)
+	nc.DB.UpdateGenericServerStats("nas", s.ID, cpuUsage, int(cpuCores), memTotal, memFree, 0, 0, osName, cpuModelRaw, uptime, arch)
 
 	return nil
 }

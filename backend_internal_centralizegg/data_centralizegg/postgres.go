@@ -62,6 +62,7 @@ type Host struct {
 	ServerName        string     `json:"server_name"`
 	IPAddress         string     `json:"ip_address"`
 	PublicIP          string     `json:"public_ip"`
+	Architecture      string     `json:"architecture"`
 	DNSServers        string     `json:"dns_servers"`
 	Uptime            string     `json:"uptime"`
 	UpdateStatus      string     `json:"update_status"`
@@ -103,6 +104,7 @@ type DockerHost struct {
 	ServiceStatus     string     `json:"docker_service_status"`
 	SocketStatus      string     `json:"docker_socket_status"`
 	APILatency        int        `json:"docker_api_latency"`
+	Architecture      string     `json:"architecture"`
 	StorageUsed       uint64     `json:"docker_storage_used"`
 	StorageTotal      uint64     `json:"docker_storage_total"`
 	InodesUsage       string     `json:"docker_inodes_usage"`
@@ -137,6 +139,7 @@ type PodmanHost struct {
 	PodmanVer         string     `json:"podman_version"`
 	ServiceStatus     string     `json:"podman_service_status"`
 	APILatency        int        `json:"podman_api_latency"`
+	Architecture      string     `json:"architecture"`
 	StorageUsed       uint64     `json:"podman_storage_used"`
 	StorageTotal      uint64     `json:"podman_storage_total"`
 	InodesUsage       string     `json:"podman_inodes_usage"`
@@ -260,6 +263,7 @@ type ProxmoxHost struct {
 	OSName            string     `json:"os_name"`
 	KernelVer         string     `json:"kernel_version"`
 	PVEVersion        string     `json:"pve_version"`
+	Architecture      string     `json:"architecture"`
 	Uptime            string     `json:"uptime"`
 	VMsCount          int        `json:"vms_count"`
 	Containers        int        `json:"containers_count"`
@@ -282,6 +286,28 @@ type ProxmoxVM struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
+type CephHost struct {
+	ID                int64      `json:"id"`
+	ServerID          int64      `json:"server_id"`
+	Hostname          string     `json:"hostname"`
+	ServerName        string     `json:"server_name"`
+	IPAddress         string     `json:"ip_address"`
+	Status            string     `json:"status"` // server connection status
+	CPUModel          string     `json:"cpu_model"`
+	CPUCores          int        `json:"cpu_cores"`
+	TotalMemory       uint64     `json:"total_memory"`
+	FreeMemory        uint64     `json:"free_memory"`
+	CPUUsage          float64    `json:"cpu_usage"`
+	OSName            string     `json:"os_name"`
+	KernelVer         string     `json:"kernel_version"`
+	Architecture      string     `json:"architecture"`
+	Uptime            string     `json:"uptime"`
+	ClusterStatus     string     `json:"cluster_status"`
+	ClusterHealth     string     `json:"cluster_health"`
+	ActiveConnections string     `json:"active_connections"`
+	OfflineSince      *time.Time `json:"offline_since"`
+}
+
 type NasHost struct {
 	ID                int64      `json:"id"`
 	ServerID          int64      `json:"server_id"`
@@ -299,6 +325,7 @@ type NasHost struct {
 	Uptime            string     `json:"uptime"`
 	Model             string     `json:"model"`
 	Serial            string     `json:"serial"`
+	Architecture      string     `json:"architecture"`
 	ActiveConnections string     `json:"active_connections"`
 	OfflineSince      *time.Time `json:"offline_since"`
 }
@@ -338,6 +365,16 @@ type KVMServer struct {
 	SSHKeyContent string     `json:"ssh_key_content"`
 	Status        string     `json:"status"` // online, offline, unknown
 	OfflineSince  *time.Time `json:"offline_since"`
+	Architecture  string     `json:"architecture"`
+	CPUUsage      float64    `json:"cpu_usage"`
+	CPUCores      int        `json:"cpu_cores"`
+	TotalMemory   uint64     `json:"total_memory"`
+	FreeMemory    uint64     `json:"free_memory"`
+	StorageUsed   uint64     `json:"storage_used"`
+	StorageTotal  uint64     `json:"storage_total"`
+	OSName        string     `json:"os_name"`
+	CPUModel      string     `json:"cpu_model"`
+	Uptime        string     `json:"uptime"`
 }
 
 type HealthSummary struct {
@@ -452,6 +489,7 @@ func NewPostgresDB(connStr string) (*DB, error) {
 		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS os_name VARCHAR(255) DEFAULT ''", t))
 		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS cpu_model VARCHAR(255) DEFAULT ''", t))
 		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS uptime VARCHAR(255) DEFAULT ''", t))
+		_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS architecture VARCHAR(50) DEFAULT ''", t))
 	}
 
 	// Migration: Add cert_expiration to all generic servers
@@ -1106,6 +1144,13 @@ func ensureSchema(db *sql.DB) {
 		"ALTER TABLE storage.nas_hosts ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
 		"ALTER TABLE storage.ceph_hosts ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
 		"ALTER TABLE virtualization.proxmox_hosts ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
+		"ALTER TABLE virtualization.hosts ADD COLUMN IF NOT EXISTS architecture VARCHAR(50) DEFAULT ''",
+		"ALTER TABLE containers.hosts ADD COLUMN IF NOT EXISTS architecture VARCHAR(50) DEFAULT ''",
+		"ALTER TABLE containers.podman_hosts ADD COLUMN IF NOT EXISTS architecture VARCHAR(50) DEFAULT ''",
+		"ALTER TABLE virtualization.proxmox_hosts ADD COLUMN IF NOT EXISTS architecture VARCHAR(50) DEFAULT ''",
+		"ALTER TABLE storage.nas_hosts ADD COLUMN IF NOT EXISTS architecture VARCHAR(50) DEFAULT ''",
+		"ALTER TABLE storage.ceph_hosts ADD COLUMN IF NOT EXISTS architecture VARCHAR(50) DEFAULT ''",
+		"ALTER TABLE firewall.hosts ADD COLUMN IF NOT EXISTS architecture VARCHAR(50) DEFAULT ''",
 		"ALTER TABLE server_metrics_history ADD COLUMN IF NOT EXISTS is_online BOOLEAN DEFAULT TRUE",
 	}
 
@@ -1122,12 +1167,12 @@ func (d *DB) UpsertHost(h Host) (int64, error) {
 	err := d.Conn.QueryRow("SELECT id FROM virtualization.hosts WHERE server_id = $1", h.ServerID).Scan(&id)
 	if err == sql.ErrNoRows {
 		err = d.Conn.QueryRow(`
-			INSERT INTO virtualization.hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, public_ip, dns_servers, uptime, update_status, temperature, disks, bridge_interfaces, oom_events, host_events, active_connections)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING id`,
-			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.PublicIP, h.DNSServers, h.Uptime, h.UpdateStatus, h.Temperature, h.Disks, h.BridgeInterfaces, h.OOMEvents, h.HostEvents, h.ActiveConnections).Scan(&id)
+			INSERT INTO virtualization.hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, public_ip, dns_servers, uptime, update_status, temperature, disks, bridge_interfaces, oom_events, host_events, active_connections, architecture)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) RETURNING id`,
+			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.PublicIP, h.DNSServers, h.Uptime, h.UpdateStatus, h.Temperature, h.Disks, h.BridgeInterfaces, h.OOMEvents, h.HostEvents, h.ActiveConnections, h.Architecture).Scan(&id)
 	} else if err == nil {
-		_, err = d.Conn.Exec(`UPDATE virtualization.hosts SET hostname=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, public_ip=$8, dns_servers=$9, uptime=$10, update_status=$11, temperature=$12, disks=$13, bridge_interfaces=$14, oom_events=$15, host_events=$16, active_connections=$17 WHERE id=$18`,
-			h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.PublicIP, h.DNSServers, h.Uptime, h.UpdateStatus, h.Temperature, h.Disks, h.BridgeInterfaces, h.OOMEvents, h.HostEvents, h.ActiveConnections, id)
+		_, err = d.Conn.Exec(`UPDATE virtualization.hosts SET hostname=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, public_ip=$8, dns_servers=$9, uptime=$10, update_status=$11, temperature=$12, disks=$13, bridge_interfaces=$14, oom_events=$15, host_events=$16, active_connections=$17, architecture=$18 WHERE id=$19`,
+			h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.PublicIP, h.DNSServers, h.Uptime, h.UpdateStatus, h.Temperature, h.Disks, h.BridgeInterfaces, h.OOMEvents, h.HostEvents, h.ActiveConnections, h.Architecture, id)
 	}
 	return id, err
 }
@@ -1182,7 +1227,7 @@ func (d *DB) AddServer(s KVMServer) (int64, error) {
 }
 
 func (d *DB) GetServers() ([]KVMServer, error) {
-	rows, err := d.Conn.Query("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, status, offline_since FROM virtualization.kvm_servers")
+	rows, err := d.Conn.Query("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, status, offline_since, architecture, cpu_usage, cpu_cores, total_memory, free_memory, storage_used, storage_total, os_name, cpu_model, uptime FROM virtualization.kvm_servers")
 	if err != nil {
 		return nil, err
 	}
@@ -1192,8 +1237,7 @@ func (d *DB) GetServers() ([]KVMServer, error) {
 	for rows.Next() {
 		var s KVMServer
 		var pwd sql.NullString
-		// Validating scan args count: 10 cols
-		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.SSHKeyContent, &s.Status, &s.OfflineSince); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.SSHKeyContent, &s.Status, &s.OfflineSince, &s.Architecture, &s.CPUUsage, &s.CPUCores, &s.TotalMemory, &s.FreeMemory, &s.StorageUsed, &s.StorageTotal, &s.OSName, &s.CPUModel, &s.Uptime); err != nil {
 			return nil, err
 		}
 		s.Password = pwd.String
@@ -1274,7 +1318,7 @@ func (d *DB) DeleteServer(id int64) error {
 
 func (d *DB) GetHosts() ([]Host, error) {
 	rows, err := d.Conn.Query(`
-		SELECT h.id, h.server_id, h.hostname, s.name, s.ip_address, h.public_ip, h.dns_servers, h.uptime, h.update_status, h.temperature, h.disks, h.bridge_interfaces, h.oom_events, h.host_events, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, COALESCE(h.active_connections, '[]'), s.offline_since
+		SELECT h.id, h.server_id, h.hostname, s.name, s.ip_address, h.public_ip, h.dns_servers, h.uptime, h.update_status, h.temperature, h.disks, h.bridge_interfaces, h.oom_events, h.host_events, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, COALESCE(h.active_connections, '[]'), s.offline_since, h.architecture
 		FROM virtualization.hosts h
 		JOIN virtualization.kvm_servers s ON h.server_id = s.id`)
 	if err != nil {
@@ -1286,7 +1330,7 @@ func (d *DB) GetHosts() ([]Host, error) {
 	for rows.Next() {
 		var h Host
 		var osName sql.NullString
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.PublicIP, &h.DNSServers, &h.Uptime, &h.UpdateStatus, &h.Temperature, &h.Disks, &h.BridgeInterfaces, &h.OOMEvents, &h.HostEvents, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &osName, &h.ActiveConnections, &h.OfflineSince); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.PublicIP, &h.DNSServers, &h.Uptime, &h.UpdateStatus, &h.Temperature, &h.Disks, &h.BridgeInterfaces, &h.OOMEvents, &h.HostEvents, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &osName, &h.ActiveConnections, &h.OfflineSince, &h.Architecture); err != nil {
 			return nil, err
 		}
 		h.OSName = osName.String
@@ -1329,6 +1373,7 @@ type FirewallHost struct {
 	StateTableSize    int64               `json:"state_table_size"`
 	StateTableLimit   int64               `json:"state_table_limit"`
 	Temperature       int                 `json:"temperature"`
+	Architecture      string              `json:"architecture"`
 	DNSServers        string              `json:"dns_servers"`
 	ActiveConnections string              `json:"active_connections"`
 	HostEvents        string              `json:"host_events"`
@@ -1372,12 +1417,12 @@ func (d *DB) UpsertFirewallHost(h FirewallHost) (int64, error) {
 	err := d.Conn.QueryRow("SELECT id FROM firewall.hosts WHERE server_id = $1", h.ServerID).Scan(&id)
 	if err == sql.ErrNoRows {
 		err = d.Conn.QueryRow(`
-			INSERT INTO firewall.hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, net_rx_total, net_tx_total, net_rx_bytes_per_sec, net_tx_bytes_per_sec, uptime, update_status, dns_servers, active_connections, state_table_size, state_table_limit, temperature, host_events)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) RETURNING id`,
-			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.NetRXTotal, h.NetTXTotal, h.NetRXBytesPerSec, h.NetTXBytesPerSec, h.Uptime, h.UpdateStatus, h.DNSServers, h.ActiveConnections, h.StateTableSize, h.StateTableLimit, h.Temperature, h.HostEvents).Scan(&id)
+			INSERT INTO firewall.hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, net_rx_total, net_tx_total, net_rx_bytes_per_sec, net_tx_bytes_per_sec, uptime, update_status, dns_servers, active_connections, state_table_size, state_table_limit, temperature, host_events, architecture)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21) RETURNING id`,
+			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.NetRXTotal, h.NetTXTotal, h.NetRXBytesPerSec, h.NetTXBytesPerSec, h.Uptime, h.UpdateStatus, h.DNSServers, h.ActiveConnections, h.StateTableSize, h.StateTableLimit, h.Temperature, h.HostEvents, h.Architecture).Scan(&id)
 	} else if err == nil {
-		_, err = d.Conn.Exec(`UPDATE firewall.hosts SET hostname=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, net_rx_total=$8, net_tx_total=$9, net_rx_bytes_per_sec=$10, net_tx_bytes_per_sec=$11, uptime=$12, update_status=$13, dns_servers=$14, active_connections=$15, state_table_size=$16, state_table_limit=$17, temperature=$18, host_events=$19 WHERE id=$20`,
-			h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.NetRXTotal, h.NetTXTotal, h.NetRXBytesPerSec, h.NetTXBytesPerSec, h.Uptime, h.UpdateStatus, h.DNSServers, h.ActiveConnections, h.StateTableSize, h.StateTableLimit, h.Temperature, h.HostEvents, id)
+		_, err = d.Conn.Exec(`UPDATE firewall.hosts SET hostname=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, net_rx_total=$8, net_tx_total=$9, net_rx_bytes_per_sec=$10, net_tx_bytes_per_sec=$11, uptime=$12, update_status=$13, dns_servers=$14, active_connections=$15, state_table_size=$16, state_table_limit=$17, temperature=$18, host_events=$19, architecture=$20 WHERE id=$21`,
+			h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.NetRXTotal, h.NetTXTotal, h.NetRXBytesPerSec, h.NetTXBytesPerSec, h.Uptime, h.UpdateStatus, h.DNSServers, h.ActiveConnections, h.StateTableSize, h.StateTableLimit, h.Temperature, h.HostEvents, h.Architecture, id)
 	}
 	return id, err
 }
@@ -1463,7 +1508,7 @@ func (d *DB) UpsertFirewallGateway(gw FirewallGateway) error {
 
 func (d *DB) GetFirewallHosts() ([]FirewallHost, error) { // Fetch Hosts
 	rows, err := d.Conn.Query(`
-		SELECT fh.id, fh.server_id, fh.hostname, s.name, s.ip_address, fh.cpu_model, fh.cpu_cores, fh.total_memory, fh.free_memory, fh.cpu_usage, fh.os_name, fh.net_rx_total, fh.net_tx_total, fh.net_rx_bytes_per_sec, fh.net_tx_bytes_per_sec, fh.uptime, fh.update_status, COALESCE(fh.dns_servers, ''), COALESCE(fh.active_connections, '[]'), COALESCE(fh.state_table_size, 0), COALESCE(fh.state_table_limit, 0), COALESCE(fh.temperature, 0), COALESCE(fh.host_events, '[]'), s.offline_since
+		SELECT fh.id, fh.server_id, fh.hostname, s.name, s.ip_address, fh.cpu_model, fh.cpu_cores, fh.total_memory, fh.free_memory, fh.cpu_usage, fh.os_name, fh.net_rx_total, fh.net_tx_total, fh.net_rx_bytes_per_sec, fh.net_tx_bytes_per_sec, fh.uptime, fh.update_status, COALESCE(fh.dns_servers, ''), COALESCE(fh.active_connections, '[]'), COALESCE(fh.state_table_size, 0), COALESCE(fh.state_table_limit, 0), COALESCE(fh.temperature, 0), COALESCE(fh.host_events, '[]'), s.offline_since, fh.architecture
 		FROM firewall.hosts fh
 		JOIN firewall.pfsense_servers s ON fh.server_id = s.id
 	`)
@@ -1475,7 +1520,7 @@ func (d *DB) GetFirewallHosts() ([]FirewallHost, error) { // Fetch Hosts
 	var hosts []FirewallHost
 	for rows.Next() {
 		var h FirewallHost
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.NetRXTotal, &h.NetTXTotal, &h.NetRXBytesPerSec, &h.NetTXBytesPerSec, &h.Uptime, &h.UpdateStatus, &h.DNSServers, &h.ActiveConnections, &h.StateTableSize, &h.StateTableLimit, &h.Temperature, &h.HostEvents, &h.OfflineSince); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.NetRXTotal, &h.NetTXTotal, &h.NetRXBytesPerSec, &h.NetTXBytesPerSec, &h.Uptime, &h.UpdateStatus, &h.DNSServers, &h.ActiveConnections, &h.StateTableSize, &h.StateTableLimit, &h.Temperature, &h.HostEvents, &h.OfflineSince, &h.Architecture); err != nil {
 			return nil, err
 		}
 
@@ -1543,7 +1588,8 @@ type GenericServer struct {
 	NetworkTopology    string     `json:"network_topology"`     // JSON string for Kubernetes network map
 	OfflineSince       *time.Time `json:"offline_since"`        // Timestamp when server went offline
 	CertExpiration     *time.Time `json:"cert_expiration"`      // TLS Certificate expiration date
-	HostEvents         string     `json:"host_events"`          // JSON string for host events/logs
+	Architecture       string     `json:"architecture"`
+	HostEvents         string     `json:"host_events"` // JSON string for host events/logs
 	Uptime             string     `json:"uptime"`
 }
 
@@ -1563,7 +1609,7 @@ func (d *DB) GetGenericServers(toolType string) ([]GenericServer, error) {
 		return nil, fmt.Errorf("unknown tool type: %s", toolType)
 	}
 
-	query := fmt.Sprintf("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, kubeconfig_path, kubeconfig_content, status, cpu_usage, cpu_cores, total_memory, free_memory, storage_used, storage_total, os_name, cpu_model, control_plane_status, resource_counts, network_topology, offline_since, cert_expiration, host_events, uptime FROM %s", table)
+	query := fmt.Sprintf("SELECT id, name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, kubeconfig_path, kubeconfig_content, status, cpu_usage, cpu_cores, total_memory, free_memory, storage_used, storage_total, os_name, cpu_model, control_plane_status, resource_counts, network_topology, offline_since, cert_expiration, host_events, architecture, uptime FROM %s", table)
 	rows, err := d.Conn.Query(query)
 	if err != nil {
 		return nil, err
@@ -1574,7 +1620,7 @@ func (d *DB) GetGenericServers(toolType string) ([]GenericServer, error) {
 	for rows.Next() {
 		var s GenericServer
 		var pwd sql.NullString
-		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.SSHKeyContent, &s.KubeconfigPath, &s.KubeconfigContent, &s.Status, &s.CPUUsage, &s.CPUCores, &s.TotalMemory, &s.FreeMemory, &s.StorageUsed, &s.StorageTotal, &s.OSName, &s.CPUModel, &s.ControlPlaneStatus, &s.ResourceCounts, &s.NetworkTopology, &s.OfflineSince, &s.CertExpiration, &s.HostEvents, &s.Uptime); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.IPAddress, &s.SSHPort, &s.Username, &pwd, &s.SSHKeyPath, &s.SSHKeyContent, &s.KubeconfigPath, &s.KubeconfigContent, &s.Status, &s.CPUUsage, &s.CPUCores, &s.TotalMemory, &s.FreeMemory, &s.StorageUsed, &s.StorageTotal, &s.OSName, &s.CPUModel, &s.ControlPlaneStatus, &s.ResourceCounts, &s.NetworkTopology, &s.OfflineSince, &s.CertExpiration, &s.HostEvents, &s.Architecture, &s.Uptime); err != nil {
 			return nil, err
 		}
 		s.Password = pwd.String
@@ -1637,8 +1683,8 @@ func (d *DB) AddGenericServer(toolType string, s GenericServer) (int64, error) {
 	}
 
 	var id int64
-	query := fmt.Sprintf("INSERT INTO %s (name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, kubeconfig_path, kubeconfig_content) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id", table)
-	err := d.Conn.QueryRow(query, s.Name, s.IPAddress, s.SSHPort, s.Username, s.Password, s.SSHKeyPath, s.SSHKeyContent, s.KubeconfigPath, s.KubeconfigContent).Scan(&id)
+	query := fmt.Sprintf("INSERT INTO %s (name, ip_address, ssh_port, username, password, ssh_key_path, ssh_key_content, kubeconfig_path, kubeconfig_content, architecture) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id", table)
+	err := d.Conn.QueryRow(query, s.Name, s.IPAddress, s.SSHPort, s.Username, s.Password, s.SSHKeyPath, s.SSHKeyContent, s.KubeconfigPath, s.KubeconfigContent, s.Architecture).Scan(&id)
 	return id, err
 }
 
@@ -1653,12 +1699,12 @@ func (d *DB) UpdateGenericServer(toolType string, s GenericServer) error {
 	}
 
 	if s.Password == "" {
-		query := fmt.Sprintf(`UPDATE %s SET name=$1, ip_address=$2, ssh_port=$3, username=$4, ssh_key_path=$5, ssh_key_content=$6, kubeconfig_path=$7, kubeconfig_content=$8 WHERE id=$9`, table)
-		_, err := d.Conn.Exec(query, s.Name, s.IPAddress, s.SSHPort, s.Username, s.SSHKeyPath, s.SSHKeyContent, s.KubeconfigPath, s.KubeconfigContent, s.ID)
+		query := fmt.Sprintf(`UPDATE %s SET name=$1, ip_address=$2, ssh_port=$3, username=$4, ssh_key_path=$5, ssh_key_content=$6, kubeconfig_path=$7, kubeconfig_content=$8, architecture=$9 WHERE id=$10`, table)
+		_, err := d.Conn.Exec(query, s.Name, s.IPAddress, s.SSHPort, s.Username, s.SSHKeyPath, s.SSHKeyContent, s.KubeconfigPath, s.KubeconfigContent, s.Architecture, s.ID)
 		return err
 	}
-	query := fmt.Sprintf(`UPDATE %s SET name=$1, ip_address=$2, ssh_port=$3, username=$4, password=$5, ssh_key_path=$6, ssh_key_content=$7, kubeconfig_path=$8, kubeconfig_content=$9 WHERE id=$10`, table)
-	_, err := d.Conn.Exec(query, s.Name, s.IPAddress, s.SSHPort, s.Username, s.Password, s.SSHKeyPath, s.SSHKeyContent, s.KubeconfigPath, s.KubeconfigContent, s.ID)
+	query := fmt.Sprintf(`UPDATE %s SET name=$1, ip_address=$2, ssh_port=$3, username=$4, password=$5, ssh_key_path=$6, ssh_key_content=$7, kubeconfig_path=$8, kubeconfig_content=$9, architecture=$10 WHERE id=$11`, table)
+	_, err := d.Conn.Exec(query, s.Name, s.IPAddress, s.SSHPort, s.Username, s.Password, s.SSHKeyPath, s.SSHKeyContent, s.KubeconfigPath, s.KubeconfigContent, s.Architecture, s.ID)
 	return err
 }
 
@@ -1812,14 +1858,14 @@ func (d *DB) GetHistory(limit int) ([]InfrastructureHistoryEvent, error) {
 	return events, nil
 }
 
-func (d *DB) UpdateGenericServerStats(toolType string, id int64, cpuUsage float64, cpuCores int, totalMem, freeMem, storageUsed, storageTotal uint64, osName, cpuModel, uptime string) error {
+func (d *DB) UpdateGenericServerStats(toolType string, id int64, cpuUsage float64, cpuCores int, totalMem, freeMem, storageUsed, storageTotal uint64, osName, cpuModel, uptime, architecture string) error {
 	table, ok := serverTableMap[toolType]
 	if !ok {
 		return fmt.Errorf("unknown tool type: %s", toolType)
 	}
 
-	query := fmt.Sprintf("UPDATE %s SET cpu_usage=$1, cpu_cores=$2, total_memory=$3, free_memory=$4, storage_used=$5, storage_total=$6, os_name=$7, cpu_model=$8, uptime=$9 WHERE id=$10", table)
-	_, err := d.Conn.Exec(query, cpuUsage, cpuCores, totalMem, freeMem, storageUsed, storageTotal, osName, cpuModel, uptime, id)
+	query := fmt.Sprintf("UPDATE %s SET cpu_usage=$1, cpu_cores=$2, total_memory=$3, free_memory=$4, storage_used=$5, storage_total=$6, os_name=$7, cpu_model=$8, uptime=$9, architecture=$10 WHERE id=$11", table)
+	_, err := d.Conn.Exec(query, cpuUsage, cpuCores, totalMem, freeMem, storageUsed, storageTotal, osName, cpuModel, uptime, architecture, id)
 	return err
 }
 
@@ -1941,9 +1987,9 @@ func (d *DB) UpsertDockerHost(h DockerHost) (int64, error) {
 	err := d.Conn.QueryRow("SELECT id FROM containers.hosts WHERE server_id = $1", h.ServerID).Scan(&id)
 	if err == sql.ErrNoRows {
 		err = d.Conn.QueryRow(`
-			INSERT INTO containers.hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, public_ip, dns_servers, uptime, update_status, temperature, disks, docker_version, docker_service_status, docker_socket_status, docker_api_latency, docker_storage_used, docker_storage_total, docker_inodes_usage, docker_logs_size, docker_volumes, docker_networks, gpu_info, host_events, active_connections)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27) RETURNING id`,
-			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.PublicIP, h.DNSServers, h.Uptime, h.UpdateStatus, h.Temperature, h.Disks, h.DockerVer, h.ServiceStatus, h.SocketStatus, h.APILatency, h.StorageUsed, h.StorageTotal, h.InodesUsage, h.LogsSize, h.Volumes, h.Networks, h.GPUInfo, h.HostEvents, h.ActiveConnections).Scan(&id)
+			INSERT INTO containers.hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, public_ip, dns_servers, uptime, update_status, temperature, disks, docker_version, docker_service_status, docker_socket_status, docker_api_latency, docker_storage_used, docker_storage_total, docker_inodes_usage, docker_logs_size, docker_volumes, docker_networks, gpu_info, host_events, active_connections, architecture)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28) RETURNING id`,
+			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.PublicIP, h.DNSServers, h.Uptime, h.UpdateStatus, h.Temperature, h.Disks, h.DockerVer, h.ServiceStatus, h.SocketStatus, h.APILatency, h.StorageUsed, h.StorageTotal, h.InodesUsage, h.LogsSize, h.Volumes, h.Networks, h.GPUInfo, h.HostEvents, h.ActiveConnections, h.Architecture).Scan(&id)
 	} else if err == nil {
 		_, err = d.Conn.Exec(`
 			UPDATE containers.hosts SET 
@@ -1953,15 +1999,15 @@ func (d *DB) UpsertDockerHost(h DockerHost) (int64, error) {
 				docker_service_status=$15, docker_socket_status=$16, docker_api_latency=$17, 
 				docker_storage_used=$18, docker_storage_total=$19, docker_inodes_usage=$20, 
 				docker_logs_size=$21, docker_volumes=$22, docker_networks=$23, gpu_info=$24, 
-				host_events=$25, active_connections=$26
-			WHERE id=$27`,
+				host_events=$25, active_connections=$26, architecture=$27
+			WHERE id=$28`,
 			h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory,
 			h.CPUUsage, h.OSName, h.PublicIP, h.DNSServers, h.Uptime,
 			h.UpdateStatus, h.Temperature, h.Disks, h.DockerVer,
 			h.ServiceStatus, h.SocketStatus, h.APILatency,
 			h.StorageUsed, h.StorageTotal, h.InodesUsage,
 			h.LogsSize, h.Volumes, h.Networks, h.GPUInfo,
-			h.HostEvents, h.ActiveConnections, id)
+			h.HostEvents, h.ActiveConnections, h.Architecture, id)
 	}
 	return id, err
 }
@@ -1986,7 +2032,7 @@ func (d *DB) UpsertContainer(c Container) error {
 
 func (d *DB) GetDockerHosts() ([]DockerHost, error) {
 	rows, err := d.Conn.Query(`
-		SELECT h.id, h.server_id, h.hostname, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, h.public_ip, h.dns_servers, h.uptime, h.update_status, h.temperature, h.disks, h.docker_version, h.docker_service_status, h.docker_socket_status, h.docker_api_latency, h.docker_storage_used, h.docker_storage_total, h.docker_inodes_usage, h.docker_logs_size, h.docker_volumes, h.docker_networks, h.gpu_info, ds.name, ds.ip_address, ds.status, COALESCE(h.host_events, '[]'), COALESCE(h.active_connections, '[]'), ds.offline_since
+		SELECT h.id, h.server_id, h.hostname, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, h.public_ip, h.dns_servers, h.uptime, h.update_status, h.temperature, h.disks, h.docker_version, h.docker_service_status, h.docker_socket_status, h.docker_api_latency, h.docker_storage_used, h.docker_storage_total, h.docker_inodes_usage, h.docker_logs_size, h.docker_volumes, h.docker_networks, h.gpu_info, ds.name, ds.ip_address, ds.status, COALESCE(h.host_events, '[]'), COALESCE(h.active_connections, '[]'), ds.offline_since, h.architecture
 		FROM containers.hosts h
 		JOIN containers.docker_servers ds ON h.server_id = ds.id`)
 	if err != nil {
@@ -1997,7 +2043,7 @@ func (d *DB) GetDockerHosts() ([]DockerHost, error) {
 	var hosts []DockerHost
 	for rows.Next() {
 		var h DockerHost
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.PublicIP, &h.DNSServers, &h.Uptime, &h.UpdateStatus, &h.Temperature, &h.Disks, &h.DockerVer, &h.ServiceStatus, &h.SocketStatus, &h.APILatency, &h.StorageUsed, &h.StorageTotal, &h.InodesUsage, &h.LogsSize, &h.Volumes, &h.Networks, &h.GPUInfo, &h.ServerName, &h.IPAddress, &h.Status, &h.HostEvents, &h.ActiveConnections, &h.OfflineSince); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.PublicIP, &h.DNSServers, &h.Uptime, &h.UpdateStatus, &h.Temperature, &h.Disks, &h.DockerVer, &h.ServiceStatus, &h.SocketStatus, &h.APILatency, &h.StorageUsed, &h.StorageTotal, &h.InodesUsage, &h.LogsSize, &h.Volumes, &h.Networks, &h.GPUInfo, &h.ServerName, &h.IPAddress, &h.Status, &h.HostEvents, &h.ActiveConnections, &h.OfflineSince, &h.Architecture); err != nil {
 			return nil, err
 		}
 		hosts = append(hosts, h)
@@ -2102,14 +2148,14 @@ func (d *DB) UpsertPodmanHost(h PodmanHost) (int64, error) {
 
 	if err == sql.ErrNoRows {
 		err = d.Conn.QueryRow(`
-			INSERT INTO containers.podman_hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, uptime, podman_version, podman_service_status, podman_api_latency, podman_storage_used, podman_storage_total, podman_inodes_usage, podman_volumes, podman_networks, gpu_info, host_events, active_connections)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) RETURNING id`,
-			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.Uptime, h.PodmanVer, h.ServiceStatus, h.APILatency, h.StorageUsed, h.StorageTotal, h.InodesUsage, h.Volumes, h.PodmanNetworks, h.GPUInfo, h.HostEvents, h.ActiveConnections).Scan(&id)
+			INSERT INTO containers.podman_hosts (server_id, hostname, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, uptime, podman_version, podman_service_status, podman_api_latency, podman_storage_used, podman_storage_total, podman_inodes_usage, podman_volumes, podman_networks, gpu_info, host_events, active_connections, architecture)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21) RETURNING id`,
+			h.ServerID, h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.Uptime, h.PodmanVer, h.ServiceStatus, h.APILatency, h.StorageUsed, h.StorageTotal, h.InodesUsage, h.Volumes, h.PodmanNetworks, h.GPUInfo, h.HostEvents, h.ActiveConnections, h.Architecture).Scan(&id)
 	} else if err == nil {
 		_, err = d.Conn.Exec(`
-			UPDATE containers.podman_hosts SET cpu_model=$1, cpu_cores=$2, total_memory=$3, free_memory=$4, cpu_usage=$5, os_name=$6, uptime=$7, podman_version=$8, podman_service_status=$9, podman_api_latency=$10, podman_storage_used=$11, podman_storage_total=$12, podman_inodes_usage=$13, podman_volumes=$14, podman_networks=$15, gpu_info=$16, host_events=$17, active_connections=$18
-			WHERE id=$19`,
-			h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.Uptime, h.PodmanVer, h.ServiceStatus, h.APILatency, h.StorageUsed, h.StorageTotal, h.InodesUsage, h.Volumes, h.PodmanNetworks, h.GPUInfo, h.HostEvents, h.ActiveConnections, id)
+			UPDATE containers.podman_hosts SET cpu_model=$1, cpu_cores=$2, total_memory=$3, free_memory=$4, cpu_usage=$5, os_name=$6, uptime=$7, podman_version=$8, podman_service_status=$9, podman_api_latency=$10, podman_storage_used=$11, podman_storage_total=$12, podman_inodes_usage=$13, podman_volumes=$14, podman_networks=$15, gpu_info=$16, host_events=$17, active_connections=$18, architecture=$19
+			WHERE id=$20`,
+			h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.Uptime, h.PodmanVer, h.ServiceStatus, h.APILatency, h.StorageUsed, h.StorageTotal, h.InodesUsage, h.Volumes, h.PodmanNetworks, h.GPUInfo, h.HostEvents, h.ActiveConnections, h.Architecture, id)
 	}
 
 	return id, err
@@ -2135,7 +2181,7 @@ func (d *DB) UpsertPodmanContainer(c Container) error {
 
 func (d *DB) GetPodmanHosts() ([]PodmanHost, error) {
 	rows, err := d.Conn.Query(`
-		SELECT h.id, h.server_id, h.hostname, ps.name, ps.ip_address, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, h.uptime, h.podman_version, h.podman_service_status, h.podman_api_latency, h.podman_storage_used, h.podman_storage_total, h.podman_inodes_usage, h.podman_volumes, h.podman_networks, h.gpu_info, ps.status, COALESCE(h.host_events, '[]'), COALESCE(h.active_connections, '[]'), ps.offline_since
+		SELECT h.id, h.server_id, h.hostname, ps.name, ps.ip_address, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, h.uptime, h.podman_version, h.podman_service_status, h.podman_api_latency, h.podman_storage_used, h.podman_storage_total, h.podman_inodes_usage, h.podman_volumes, h.podman_networks, h.gpu_info, ps.status, COALESCE(h.host_events, '[]'), COALESCE(h.active_connections, '[]'), ps.offline_since, h.architecture
 		FROM containers.podman_hosts h
 		JOIN containers.podman_servers ps ON h.server_id = ps.id`)
 	if err != nil {
@@ -2146,7 +2192,7 @@ func (d *DB) GetPodmanHosts() ([]PodmanHost, error) {
 	var hosts []PodmanHost
 	for rows.Next() {
 		var h PodmanHost
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.Uptime, &h.PodmanVer, &h.ServiceStatus, &h.APILatency, &h.StorageUsed, &h.StorageTotal, &h.InodesUsage, &h.Volumes, &h.PodmanNetworks, &h.GPUInfo, &h.Status, &h.HostEvents, &h.ActiveConnections, &h.OfflineSince); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.Uptime, &h.PodmanVer, &h.ServiceStatus, &h.APILatency, &h.StorageUsed, &h.StorageTotal, &h.InodesUsage, &h.Volumes, &h.PodmanNetworks, &h.GPUInfo, &h.Status, &h.HostEvents, &h.ActiveConnections, &h.OfflineSince, &h.Architecture); err != nil {
 			return nil, err
 		}
 		hosts = append(hosts, h)
@@ -2179,14 +2225,14 @@ func (d *DB) UpsertProxmoxHost(h ProxmoxHost) (int64, error) {
 
 	if err == sql.ErrNoRows {
 		err = d.Conn.QueryRow(`
-			INSERT INTO virtualization.proxmox_hosts (server_id, hostname, status, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, kernel_version, pve_version, uptime, vms_count, containers_count, active_connections)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
-			h.ServerID, h.Hostname, h.Status, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.KernelVer, h.PVEVersion, h.Uptime, h.VMsCount, h.Containers, h.ActiveConnections).Scan(&id)
+			INSERT INTO virtualization.proxmox_hosts (server_id, hostname, status, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, kernel_version, pve_version, uptime, vms_count, containers_count, active_connections, architecture)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
+			h.ServerID, h.Hostname, h.Status, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.KernelVer, h.PVEVersion, h.Uptime, h.VMsCount, h.Containers, h.ActiveConnections, h.Architecture).Scan(&id)
 	} else if err == nil {
 		_, err = d.Conn.Exec(`
-			UPDATE virtualization.proxmox_hosts SET status=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, kernel_version=$8, pve_version=$9, uptime=$10, vms_count=$11, containers_count=$12, active_connections=$13
-			WHERE id=$14`,
-			h.Status, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.KernelVer, h.PVEVersion, h.Uptime, h.VMsCount, h.Containers, h.ActiveConnections, id)
+			UPDATE virtualization.proxmox_hosts SET status=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, kernel_version=$8, pve_version=$9, uptime=$10, vms_count=$11, containers_count=$12, active_connections=$13, architecture=$14
+			WHERE id=$15`,
+			h.Status, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.KernelVer, h.PVEVersion, h.Uptime, h.VMsCount, h.Containers, h.ActiveConnections, h.Architecture, id)
 	}
 
 	return id, err
@@ -2212,7 +2258,7 @@ func (d *DB) UpsertProxmoxVM(vm ProxmoxVM) error {
 
 func (d *DB) GetProxmoxHosts() ([]ProxmoxHost, error) {
 	rows, err := d.Conn.Query(`
-		SELECT ph.id, ph.server_id, ph.hostname, ps.name, ps.ip_address, ps.status, ph.cpu_model, ph.cpu_cores, ph.total_memory, ph.free_memory, ph.cpu_usage, ph.os_name, ph.kernel_version, ph.pve_version, ph.uptime, ph.vms_count, ph.containers_count, COALESCE(ph.active_connections, '[]'), ps.offline_since
+		SELECT ph.id, ph.server_id, ph.hostname, ps.name, ps.ip_address, ps.status, ph.cpu_model, ph.cpu_cores, ph.total_memory, ph.free_memory, ph.cpu_usage, ph.os_name, ph.kernel_version, ph.pve_version, ph.uptime, ph.vms_count, ph.containers_count, COALESCE(ph.active_connections, '[]'), ps.offline_since, ph.architecture
 		FROM virtualization.proxmox_hosts ph
 		JOIN virtualization.proxmox_servers ps ON ph.server_id = ps.id`)
 	if err != nil {
@@ -2223,7 +2269,7 @@ func (d *DB) GetProxmoxHosts() ([]ProxmoxHost, error) {
 	var hosts []ProxmoxHost
 	for rows.Next() {
 		var h ProxmoxHost
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.Status, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.KernelVer, &h.PVEVersion, &h.Uptime, &h.VMsCount, &h.Containers, &h.ActiveConnections, &h.OfflineSince); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.Status, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.KernelVer, &h.PVEVersion, &h.Uptime, &h.VMsCount, &h.Containers, &h.ActiveConnections, &h.OfflineSince, &h.Architecture); err != nil {
 			return nil, err
 		}
 		hosts = append(hosts, h)
@@ -2256,14 +2302,14 @@ func (d *DB) UpsertNasHost(h NasHost) (int64, error) {
 
 	if err == sql.ErrNoRows {
 		err = d.Conn.QueryRow(`
-			INSERT INTO storage.nas_hosts (server_id, hostname, status, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, kernel_version, uptime, model, serial, active_connections)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
-			h.ServerID, h.Hostname, h.Status, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.KernelVer, h.Uptime, h.Model, h.Serial, h.ActiveConnections).Scan(&id)
+			INSERT INTO storage.nas_hosts (server_id, hostname, status, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, kernel_version, uptime, model, serial, active_connections, architecture)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
+			h.ServerID, h.Hostname, h.Status, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.KernelVer, h.Uptime, h.Model, h.Serial, h.ActiveConnections, h.Architecture).Scan(&id)
 	} else if err == nil {
 		_, err = d.Conn.Exec(`
-			UPDATE storage.nas_hosts SET status=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, kernel_version=$8, uptime=$9, model=$10, serial=$11, active_connections=$12
-			WHERE id=$13`,
-			h.Status, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.KernelVer, h.Uptime, h.Model, h.Serial, h.ActiveConnections, id)
+			UPDATE storage.nas_hosts SET status=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, kernel_version=$8, uptime=$9, model=$10, serial=$11, active_connections=$12, architecture=$13
+			WHERE id=$14`,
+			h.Status, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.KernelVer, h.Uptime, h.Model, h.Serial, h.ActiveConnections, h.Architecture, id)
 	}
 
 	return id, err
@@ -2307,7 +2353,7 @@ func (d *DB) UpsertNasDisk(disk NasDisk) error {
 
 func (d *DB) GetNasHosts() ([]NasHost, error) {
 	rows, err := d.Conn.Query(`
-		SELECT nh.id, nh.server_id, nh.hostname, ns.name, ns.ip_address, ns.status, nh.cpu_model, nh.cpu_cores, nh.total_memory, nh.free_memory, nh.cpu_usage, nh.os_name, nh.kernel_version, nh.uptime, nh.model, nh.serial, COALESCE(nh.active_connections, '[]'), ns.offline_since
+		SELECT nh.id, nh.server_id, nh.hostname, ns.name, ns.ip_address, ns.status, nh.cpu_model, nh.cpu_cores, nh.total_memory, nh.free_memory, nh.cpu_usage, nh.os_name, nh.kernel_version, nh.uptime, nh.model, nh.serial, COALESCE(nh.active_connections, '[]'), ns.offline_since, nh.architecture
 		FROM storage.nas_hosts nh
 		JOIN storage.nas_servers ns ON nh.server_id = ns.id`)
 	if err != nil {
@@ -2318,7 +2364,7 @@ func (d *DB) GetNasHosts() ([]NasHost, error) {
 	var hosts []NasHost
 	for rows.Next() {
 		var h NasHost
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.Status, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.KernelVer, &h.Uptime, &h.Model, &h.Serial, &h.ActiveConnections, &h.OfflineSince); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.Status, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.KernelVer, &h.Uptime, &h.Model, &h.Serial, &h.ActiveConnections, &h.OfflineSince, &h.Architecture); err != nil {
 			return nil, err
 		}
 		hosts = append(hosts, h)
@@ -2362,28 +2408,6 @@ func (d *DB) GetAllNasDisks() ([]NasDisk, error) {
 	return disks, nil
 }
 
-// Ceph Types
-type CephHost struct {
-	ID                int64      `json:"id"`
-	ServerID          int64      `json:"server_id"`
-	Hostname          string     `json:"hostname"`
-	ServerName        string     `json:"server_name"`
-	IPAddress         string     `json:"ip_address"`
-	Status            string     `json:"status"`
-	CPUModel          string     `json:"cpu_model"`
-	CPUCores          int        `json:"cpu_cores"`
-	TotalMemory       uint64     `json:"total_memory"`
-	FreeMemory        uint64     `json:"free_memory"`
-	CPUUsage          float64    `json:"cpu_usage"`
-	OSName            string     `json:"os_name"`
-	KernelVer         string     `json:"kernel_version"`
-	Uptime            string     `json:"uptime"`
-	ClusterStatus     string     `json:"cluster_status"` // JSON string of "ceph status"
-	ClusterHealth     string     `json:"cluster_health"` // HEALTH_OK, HEALTH_WARN, etc.
-	ActiveConnections string     `json:"active_connections"`
-	OfflineSince      *time.Time `json:"offline_since"`
-}
-
 // Ceph Methods
 func (d *DB) UpsertCephHost(h CephHost) (int64, error) {
 	var id int64
@@ -2391,14 +2415,14 @@ func (d *DB) UpsertCephHost(h CephHost) (int64, error) {
 
 	if err == sql.ErrNoRows {
 		err = d.Conn.QueryRow(`
-			INSERT INTO storage.ceph_hosts (server_id, hostname, status, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, kernel_version, uptime, cluster_status, cluster_health, active_connections)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
-			h.ServerID, h.Hostname, h.Status, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.KernelVer, h.Uptime, h.ClusterStatus, h.ClusterHealth, h.ActiveConnections).Scan(&id)
+			INSERT INTO storage.ceph_hosts (server_id, hostname, status, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, kernel_version, uptime, cluster_status, cluster_health, active_connections, architecture)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
+			h.ServerID, h.Hostname, h.Status, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.KernelVer, h.Uptime, h.ClusterStatus, h.ClusterHealth, h.ActiveConnections, h.Architecture).Scan(&id)
 	} else if err == nil {
 		_, err = d.Conn.Exec(`
-			UPDATE storage.ceph_hosts SET status=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, kernel_version=$8, uptime=$9, cluster_status=$10, cluster_health=$11, active_connections=$12
-			WHERE id=$13`,
-			h.Status, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.KernelVer, h.Uptime, h.ClusterStatus, h.ClusterHealth, h.ActiveConnections, id)
+			UPDATE storage.ceph_hosts SET status=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, kernel_version=$8, uptime=$9, cluster_status=$10, cluster_health=$11, active_connections=$12, architecture=$13
+			WHERE id=$14`,
+			h.Status, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.KernelVer, h.Uptime, h.ClusterStatus, h.ClusterHealth, h.ActiveConnections, h.Architecture, id)
 	}
 
 	return id, err
@@ -2406,7 +2430,7 @@ func (d *DB) UpsertCephHost(h CephHost) (int64, error) {
 
 func (d *DB) GetCephHosts() ([]CephHost, error) {
 	rows, err := d.Conn.Query(`
-		SELECT ch.id, ch.server_id, ch.hostname, cs.name, cs.ip_address, ch.status, ch.cpu_model, ch.cpu_cores, ch.total_memory, ch.free_memory, ch.cpu_usage, ch.os_name, ch.kernel_version, ch.uptime, ch.cluster_status, ch.cluster_health, COALESCE(ch.active_connections, '[]'), cs.offline_since
+		SELECT ch.id, ch.server_id, ch.hostname, cs.name, cs.ip_address, ch.status, ch.cpu_model, ch.cpu_cores, ch.total_memory, ch.free_memory, ch.cpu_usage, ch.os_name, ch.kernel_version, ch.uptime, ch.cluster_status, ch.cluster_health, COALESCE(ch.active_connections, '[]'), cs.offline_since, ch.architecture
 		FROM storage.ceph_hosts ch
 		JOIN storage.ceph_servers cs ON ch.server_id = cs.id`)
 	if err != nil {
@@ -2417,7 +2441,7 @@ func (d *DB) GetCephHosts() ([]CephHost, error) {
 	var hosts []CephHost
 	for rows.Next() {
 		var h CephHost
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.Status, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.KernelVer, &h.Uptime, &h.ClusterStatus, &h.ClusterHealth, &h.ActiveConnections, &h.OfflineSince); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.Status, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.KernelVer, &h.Uptime, &h.ClusterStatus, &h.ClusterHealth, &h.ActiveConnections, &h.OfflineSince, &h.Architecture); err != nil {
 			return nil, err
 		}
 		hosts = append(hosts, h)

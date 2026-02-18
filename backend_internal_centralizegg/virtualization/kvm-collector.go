@@ -150,19 +150,23 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 		return fmt.Errorf("node info: %w", err)
 	}
 
-	// Fetch OS Name and Free Memory via SSH
+	// Fetch OS Name, Architecture and Free Memory via SSH
 	osName := "Unknown OS"
+	arch := "Unknown"
 	var freeMem uint64
 
 	session, err := sshClient.NewSession()
 	if err == nil {
 		defer session.Close()
-		// Get OS Name
-		output, err := session.Output("grep PRETTY_NAME /etc/os-release | cut -d '\"' -f 2")
+		// Get OS Name and Architecture
+		output, err := session.Output("grep PRETTY_NAME /etc/os-release | cut -d '\"' -f 2 && uname -m")
 		if err == nil {
-			osName = string(output)
-			if len(osName) > 0 && osName[len(osName)-1] == '\n' {
-				osName = osName[:len(osName)-1]
+			lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+			if len(lines) >= 1 {
+				osName = lines[0]
+			}
+			if len(lines) >= 2 {
+				arch = lines[1]
 			}
 		}
 	}
@@ -529,6 +533,7 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 		OOMEvents:         oomJSON,
 		HostEvents:        hostEventsJSON,
 		ActiveConnections: activeConnsJSON,
+		Architecture:      arch,
 	}
 	hostID, err := mc.DB.UpsertHost(h)
 	if err != nil {

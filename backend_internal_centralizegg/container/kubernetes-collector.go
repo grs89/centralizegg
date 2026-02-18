@@ -786,7 +786,7 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 		avgCPUUsage = totalCPUUsage / float64(nodeCount)
 	}
 
-	err = kc.DB.UpdateGenericServerStats("kubernetes", s.ID, avgCPUUsage, totalCores, clusterTotalMemory, clusterFreeMemory, clusterUsedStorage, clusterTotalStorage, dominantOS, dominantArch, clusterUptime)
+	err = kc.DB.UpdateGenericServerStats("kubernetes", s.ID, avgCPUUsage, totalCores, clusterTotalMemory, clusterFreeMemory, clusterUsedStorage, clusterTotalStorage, dominantOS, dominantArch, clusterUptime, dominantArch)
 	if err != nil {
 		log.Printf("[KubernetesCollector] Failed to update cluster stats: %v", err)
 	}

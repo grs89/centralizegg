@@ -88,6 +88,11 @@ func (pc *ProxmoxCollector) collectOne(s data_centralizegg.GenericServer) error 
 		return fmt.Errorf("failed to unmarshal nodes: %w", err)
 	}
 
+	var totalMem, totalFreeMem uint64
+	var avgCPU float64
+	var totalCores int
+	var lastOS, lastModel, lastUptime, lastArch string
+
 	for _, n := range nodes {
 		// Get detailed node status for PVE version and OS info
 		nodeStatusJSON, _ := pc.runCommand(client, fmt.Sprintf("pvesh get /nodes/%s/status --output-format json", n.Node))
@@ -108,6 +113,7 @@ func (pc *ProxmoxCollector) collectOne(s data_centralizegg.GenericServer) error 
 		// Get OS info via standard command
 		osName, _ := pc.runCommand(client, "cut -d '\"' -f 2 /etc/os-release | head -n 1")
 		kernelVer, _ := pc.runCommand(client, "uname -r")
+		arch, _ := pc.runCommand(client, "uname -m")
 
 		// Active Connections
 		activeConnsJSON := "[]"
@@ -166,11 +172,18 @@ func (pc *ProxmoxCollector) collectOne(s data_centralizegg.GenericServer) error 
 			PVEVersion:        nodeStat.PVEVersion,
 			Uptime:            fmt.Sprintf("%d seconds", n.Uptime),
 			ActiveConnections: activeConnsJSON,
+			Architecture:      strings.TrimSpace(arch),
 		})
 		if err != nil {
 			log.Printf("[ProxmoxCollector] Failed to upsert host %s: %v", n.Node, err)
 			continue
 		}
+		lastOS = strings.TrimSpace(osName)
+		lastModel = strings.TrimSpace(nodeStat.CPUInfo.Model)
+		lastUptime = fmt.Sprintf("%d seconds", n.Uptime)
+		lastArch = strings.TrimSpace(arch)
+		totalCores += nodeStat.CPUInfo.CPUs
+		totalFreeMem += nodeStat.Memory.Free
 
 		// 2. Get VMs (QEMU)
 		vmsJSON, _ := pc.runCommand(client, fmt.Sprintf("pvesh get /nodes/%s/qemu --output-format json", n.Node))
@@ -234,14 +247,7 @@ func (pc *ProxmoxCollector) collectOne(s data_centralizegg.GenericServer) error 
 		pc.DB.Conn.Exec("UPDATE virtualization.proxmox_hosts SET vms_count = $1, containers_count = $2 WHERE id = $3", len(vms), len(lxcs), hostID)
 	}
 
-	// Aggregate metrics for history
-	var totalMem uint64
-	var avgCPU float64
 	if len(nodes) > 0 {
-		for _, n := range nodes {
-			avgCPU += n.CPU * 100
-			totalMem += n.Mem
-		}
 		avgCPU /= float64(len(nodes))
 	}
 
@@ -255,6 +261,9 @@ func (pc *ProxmoxCollector) collectOne(s data_centralizegg.GenericServer) error 
 		IsOnline:    true,
 	}
 	pc.DB.InsertServerMetrics(metric)
+
+	// Note: lastOS, lastModel, lastUptime, lastArch are populated in the loop above
+	pc.DB.UpdateGenericServerStats("proxmox", s.ID, avgCPU, totalCores, totalMem, totalFreeMem, 0, 0, lastOS, lastModel, lastUptime, lastArch)
 
 	return nil
 }

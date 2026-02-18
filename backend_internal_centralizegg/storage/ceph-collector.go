@@ -74,6 +74,8 @@ func (cc *CephCollector) collectOne(s data_centralizegg.GenericServer) error {
 	hostname, _ := cc.runCommand(client, "hostname")
 	uname, _ := cc.runCommand(client, "uname -srm")
 	uptime, _ := cc.runCommand(client, "uptime -p")
+	archRaw, _ := cc.runCommand(client, "uname -m")
+	arch := strings.TrimSpace(archRaw)
 
 	// CPU Info
 	cpuModelRaw, _ := cc.runCommand(client, "grep 'model name' /proc/cpuinfo | head -n 1 | cut -d ':' -f 2")
@@ -178,6 +180,7 @@ func (cc *CephCollector) collectOne(s data_centralizegg.GenericServer) error {
 		ClusterStatus:     cephStatusJSON,
 		ClusterHealth:     clusterHealth,
 		ActiveConnections: activeConnsJSON,
+		Architecture:      arch,
 	})
 
 	// Insert Historical Metrics
@@ -190,6 +193,7 @@ func (cc *CephCollector) collectOne(s data_centralizegg.GenericServer) error {
 		IsOnline:    true,
 	}
 	cc.DB.InsertServerMetrics(metric)
+	cc.DB.UpdateGenericServerStats("ceph", s.ID, cpuUsage, cpuCores, memTotal, memFree, 0, 0, strings.TrimSpace(osName), strings.TrimSpace(cpuModelRaw), strings.TrimSpace(uptime), arch)
 
 	return err
 }

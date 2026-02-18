@@ -89,6 +89,9 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 	cpuModelRaw, _ := pc.runCommand(client, "grep 'model name' /proc/cpuinfo | head -n 1 | cut -d ':' -f 2 | xargs")
 	cpuModel := strings.TrimSpace(cpuModelRaw)
 
+	archRaw, _ := pc.runCommand(client, "uname -m")
+	arch := strings.TrimSpace(archRaw)
+
 	cpuCoresStr, _ := pc.runCommand(client, "nproc")
 	var cpuCores int
 	fmt.Sscanf(strings.TrimSpace(cpuCoresStr), "%d", &cpuCores)
@@ -545,9 +548,11 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 		PodmanNetworks:    networksJSON,
 		HostEvents:        hostEventsJSON,
 		ActiveConnections: activeConnsJSON,
+		Architecture:      arch,
 	})
 	if err == nil {
 		pc.DB.UpdateGenericServerHostEvents("podman", s.ID, hostEventsJSON)
+		pc.DB.UpdateGenericServerStats("podman", s.ID, cpuUsage, cpuCores, memTotal, memFree, storageUsed, storageTotal, osName, cpuModel, uptime, arch)
 
 		// Insert Historical Metrics
 		metric := data_centralizegg.ServerMetric{

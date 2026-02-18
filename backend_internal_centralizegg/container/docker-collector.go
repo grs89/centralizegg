@@ -88,6 +88,9 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 	cpuModelRaw, _ := dc.runCommand(client, "grep 'model name' /proc/cpuinfo | head -n 1 | cut -d ':' -f 2 | xargs")
 	cpuModel := strings.TrimSpace(cpuModelRaw)
 
+	archRaw, _ := dc.runCommand(client, "uname -m")
+	arch := strings.TrimSpace(archRaw)
+
 	cpuCoresStr, _ := dc.runCommand(client, "nproc")
 	var cpuCores int
 	fmt.Sscanf(strings.TrimSpace(cpuCoresStr), "%d", &cpuCores)
@@ -411,9 +414,11 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 		UpdateStatus:      "Up to Date",
 		HostEvents:        hostEventsJSON,
 		ActiveConnections: activeConnsJSON,
+		Architecture:      arch,
 	})
 	if err == nil {
 		dc.DB.UpdateGenericServerHostEvents("docker", s.ID, hostEventsJSON)
+		dc.DB.UpdateGenericServerStats("docker", s.ID, cpuUsage, cpuCores, memTotal, memFree, storageUsed, storageTotal, osName, cpuModel, uptime, arch)
 
 		// Insert Historical Metrics
 		metric := data_centralizegg.ServerMetric{
