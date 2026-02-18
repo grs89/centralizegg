@@ -19,7 +19,7 @@ import {
 import {
     fetchHosts, renderHosts, selectHost, fetchVMs, renderVMs, renderHostEvents,
     startVM, stopVM
-} from './js/tool-kvm.js?v=2';
+} from './js/tool-kvm.js?v=4';
 
 // Expose functions to global scope for event handlers
 window.selectHost = selectHost;

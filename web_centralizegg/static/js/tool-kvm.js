@@ -1,7 +1,7 @@
 import { state } from './state.js';
 import { API_HOSTS, API_VMS } from './api.js';
 import { formatBytes, getStatusColor, getOSIcon, playAlertSound } from './utils.js';
-import { renderHostNodes, renderDonutChart, renderSparkline } from './ui-components.js';
+import { renderHostNodes, renderDonutChart, renderSparkline, isStatusOnline } from './ui-components.js';
 import { updateNetworkHistory, updateBridgeHistory } from './history.js';
 
 export {
@@ -167,8 +167,13 @@ function renderVMs() {
     const host = state.allHostsCache.find(h => h.id === state.selectedHostId);
     if (!host) return;
 
+    const rawStatus = host.status || host.service_status || 'UNKNOWN';
+    const isHostOnline = isStatusOnline(rawStatus);
+
     const hostInfoLeft = document.getElementById('vm-host-info-left');
-    const isAlreadyRenderingHost = hostInfoLeft && hostInfoLeft.getAttribute('data-host-id') === String(state.selectedHostId);
+    const isAlreadyRenderingHost = hostInfoLeft &&
+        hostInfoLeft.getAttribute('data-host-id') === String(state.selectedHostId) &&
+        isHostOnline;
 
     const renderBridgesList = () => {
         let bridges = [];
@@ -515,19 +520,45 @@ function renderVMs() {
         `;
     }
 
-    grid.innerHTML = `
-        <div style="width: 100%; padding-bottom: 10px;">
-            <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); width: 100%;">Máquinas Virtuales</div>
-            <div class="vm-list-header" style="display: grid; grid-template-columns: ${gridCols}; gap: 15px; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 8px;">
-                <div>Nombre / Sistema</div><div>CPU</div><div>Memoria</div><div>Disco</div><div>RED (RX/TX)</div>
+
+    if (!isHostOnline) {
+        grid.innerHTML = `
+            <div style="width: 100%; padding: 20px; text-align: center; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 8px; margin-bottom: 20px;">
+                <i class="fa-solid fa-triangle-exclamation" style="color: #ef4444; font-size: 1.5rem; margin-bottom: 10px;"></i>
+                <div style="color: #fca5a5; font-weight: 500;">Host Offline</div>
+                <div style="color: rgba(255,255,255,0.6); font-size: 0.85rem; margin-top: 5px;">
+                    No se puede conectar con el host para obtener o gestionar el estado de las VMs.
+                </div>
             </div>
-            <div id="kvm-vm-list-rows" style="display: flex; flex-direction: column; gap: 4px;">${renderVMRows()}</div>
-        </div>
-        <div style="width: 100%; margin-top: 30px;">
-            <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); width: 100%; display: flex; align-items: center; gap: 10px;">
-                <i class="fa-solid fa-terminal" style="color: var(--accent-color); font-size: 1rem;"></i>Eventos del host
+            <div style="opacity: 0.5; pointer-events: none;">
+                <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); width: 100%;">Máquinas Virtuales (Último estado conocido)</div>
+                 <div class="vm-list-header" style="display: grid; grid-template-columns: ${gridCols}; gap: 15px; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 8px;">
+                    <div>Nombre / Sistema</div><div>CPU</div><div>Memoria</div><div>Disco</div><div>RED (RX/TX)</div>
+                </div>
+                <div id="kvm-vm-list-rows" style="display: flex; flex-direction: column; gap: 4px;">${renderVMRows()}</div>
             </div>
-            <div id="kvm-host-events">${renderHostEventsUI()}</div>
-        </div>
-    `;
+            <div style="width: 100%; margin-top: 30px; opacity: 0.6;">
+                <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); width: 100%; display: flex; align-items: center; gap: 10px;">
+                    <i class="fa-solid fa-terminal" style="color: var(--accent-color); font-size: 1rem;"></i>Eventos del host
+                </div>
+                <div id="kvm-host-events">${renderHostEventsUI()}</div>
+            </div>
+         `;
+    } else {
+        grid.innerHTML = `
+            <div style="width: 100%; padding-bottom: 10px;">
+                <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); width: 100%;">Máquinas Virtuales</div>
+                <div class="vm-list-header" style="display: grid; grid-template-columns: ${gridCols}; gap: 15px; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 8px;">
+                    <div>Nombre / Sistema</div><div>CPU</div><div>Memoria</div><div>Disco</div><div>RED (RX/TX)</div>
+                </div>
+                <div id="kvm-vm-list-rows" style="display: flex; flex-direction: column; gap: 4px;">${renderVMRows()}</div>
+            </div>
+            <div style="width: 100%; margin-top: 30px;">
+                <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); width: 100%; display: flex; align-items: center; gap: 10px;">
+                    <i class="fa-solid fa-terminal" style="color: var(--accent-color); font-size: 1rem;"></i>Eventos del host
+                </div>
+                <div id="kvm-host-events">${renderHostEventsUI()}</div>
+            </div>
+        `;
+    }
 }

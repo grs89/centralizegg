@@ -15,7 +15,7 @@
 <a name="español"></a>
 # 🇨🇴 Centralizegg
 
-**Centralizegg** es una solución de monitoreo ligera y containerizada para múltiples servidores y servicios. Proporciona un dashboard premium en tiempo real para visualizar los recursos de tus hosts, contenedores y Cluster K8s  permite ver el estado de los recursos de forma centralizada.
+**Centralizegg** es una solución de monitoreo ligera y containerizada para múltiples servidores y servicios. Proporciona un dashboard premium en tiempo real para visualizar los recursos de tus hosts, contenedores y Cluster K8s, permitiendo ver el estado de los recursos de forma centralizada.
 
 [![Docker Build (GitHub)](https://github.com/USUARIO/REPO/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/USUARIO/REPO/actions/workflows/docker-publish.yml)
 [![Docker Build (GitLab)](https://gitlab.com/USUARIO/REPO/badges/main/pipeline.svg)](https://gitlab.com/USUARIO/REPO/-/pipelines)
@@ -43,10 +43,9 @@
 
 *   **Detección de SO**: Identificación automática del Sistema Operativo de cada host mediante `/etc/os-release` con iconos representativos (Ubuntu, Debian, Fedora, CentOS, Windows, Red Hat, SUSE).
 *   **Métricas Premium**: Ventanas flotantes (popovers) interactivas para CPU y Memoria con barras de progreso en tiempo real.
-*   **Colector Automático**: Recopilación de métricas cada 10 segundos desde todos los servidores configurados.
+*   **Colector Automático**: Recopilación de métricas cada 5 segundos desde todos los servidores configurados.
 *   **Métricas Completas**: 
     - CPU: Uso calculado basado en tiempo de CPU acumulado
-    - Memoria: Total, libre y utilizada
     - Memoria: Total, libre y utilizada
     - **Almacenamiento (NAS)**: Monitoreo vía SSH de servidores Linux/NAS:
         - Inventario de discos (`lsblk`) y particiones.
@@ -57,6 +56,7 @@
     - Estado de VMs: Running, Blocked, Paused, Shutdown, Shutoff, Crashed, Suspended
 *   **Monitoreo de Contenedores**: Soporte avanzado para **Docker & Podman**. El icono de Podman se ha actualizado a una foca (`fa-otter`) en todo el UI, incluyendo el menú, Host Nodes y el listado de contenedores.
     - **Mapa de Topología**: Visualización interactiva animada de la red (Contenedores -> Redes -> Internet).
+    - **Control de Contenedores**: Start/Stop de contenedores Docker y Podman directamente desde la UI.
 - **Alertas Audibles**: Se reproduce un sonido de "ping" cuando aparecen nuevas notificaciones de servidores offline.
 - **Tamaños de Volúmenes Podman**: Se muestra el tamaño de cada volumen y se ordenan de mayor a menor.
     - **Monitoreo de GPU**: Carga, temperatura y VRAM para GPUs NVIDIA mediante `nvidia-smi`.
@@ -72,6 +72,7 @@
 *   **Proxmox VE**: Integración nativa con clusters Proxmox.
     - Monitoreo de nodos, VMs y Contenedores LXC.
     - Métricas de almacenamiento ZFS y Ceph (vía API).
+*   **Control de VMs KVM**: Start/Stop de máquinas virtuales directamente desde la interfaz.
 *   **Visualización Multi-Disco**: Barras de uso individuales para cada disco virtual adjunto a la VM.
 *   **Mapa de Tráfico Mundial**: Visualización geográfica premium con animaciones "Flight Path" (Bezier curvos).
     - **GeoIP Proxy Integrado**: Resolución de IPs backend para privacidad y seguridad (evita Mixed Content).
@@ -86,11 +87,12 @@
         - ⚠️ Advertencia (>0% Pérdida de paquetes): Resaltado ámbar.
         - 🚨 Crítico (>10% Pérdida de paquetes): **Animación de pulso rojo** y sombras dinámicas para atención inmediata.
     - Métricas precisas de RTT y Desviación estándar.
-*   **Historial de Logs del Host**: Real-time log viewer (`journalctl` / `clog`) integrado en la herramienta de Historial Global para todos los tipos de servidores (KVM, Docker, pfSense, Proxmox, NAS, Ceph).
+*   **Historial de Logs del Host**: Real-time log viewer (`journalctl` / `clog`) integrado en la herramienta de Historial Global para todos los tipos de servidores (KVM, Docker, Podman, pfSense, Proxmox, NAS, Ceph, Kubernetes).
 *   **Monitoreo de Kubernetes (K8s)**:
     - Visualización de Nodos y Pods en tiempo real.
     - **Historial Detallado por Nodo**: Métricas históricas de CPU, Memoria, Red y Disco para cada nodo del cluster.
     - Métricas de consumo de recursos por Namespace y estadísticas de red (RX/TX).
+    - Persistent Volumes (PVs) y Eventos del cluster.
     - [Documentación Detallada](web_centralizegg/static/docs/kubernetes.html)
 *   **Almacenamiento & Disco**:
     - **NAS**: Monitoreo vía SSH de servidores Linux/NAS:
@@ -114,11 +116,12 @@
     - **Estimación de Días Restantes**: Cálculo automático de agotamiento de disco basado en tendencia.
 *   **Monitoreo de Ceph**: Soporte para clusters de almacenamiento distribuido Ceph vía SSH.
     - Estado de salud del cluster, OSDs y pools.
+*   **Dashboard de Salud Global**: Panel resumen con visión general del estado de toda la infraestructura (`/api/health/summary`).
 
 
 ### Flujo de Datos
 
-1. **Colector de Datos**: Se ejecuta cada 10 segundos en segundo plano
+1. **Colector de Datos**: Se ejecuta cada 5 segundos en segundo plano
    - Obtiene lista de servidores configurados desde la base de datos
    - Para cada servidor, establece conexión SSH
    - Crea túnel SSH hacia el socket de Libvirt (`/var/run/libvirt/libvirt-sock`)
@@ -126,25 +129,22 @@
    - Enumera todas las VMs y recopila sus métricas
    - Calcula uso de CPU basado en tiempo acumulado
    - Almacena/actualiza datos en PostgreSQL
-4. **Monitoreo de Docker**:
+2. **Monitoreo de Docker/Podman**:
    - Inspección de redes para generar el mapa de topología.
    - Recopilación de estadísticas de contenedores (CPU, RAM, Red, I/O).
    - Escaneo de vulnerabilidades y monitoreo de GPU.
-
-2. **API REST**: Procesa peticiones del frontend
+3. **API REST**: Procesa peticiones del frontend
    - `GET /api/hosts` - Retorna hosts con información completa
    - `GET /api/vms` - Retorna todas las VMs
-   - `GET/POST/PUT/DELETE /api/config/servers` - Gestión de servidores
-#### `GET /api/firewall/servers`
-Obtiene servidores pfSense configurados.
+   - `GET/POST/PUT/DELETE /api/config/servers` - Gestión de servidores KVM
 
-#### `POST /api/firewall/servers`
-Agrega un nuevo servidor pfSense.
+#### Endpoints de Firewall
 
-#### `PUT/DELETE /api/firewall/servers/{id}`
-Actualiza o elimina servidores pfSense.
+- `GET/POST /api/firewall/servers` - Obtiene/agrega servidores pfSense.
+- `PUT/DELETE /api/firewall/servers/{id}` - Actualiza o elimina servidores pfSense.
+- `GET /api/firewall/hosts` - Hosts pfSense con métricas.
 
-### Otros Endpoints (NAS, Proxmox, Contenedores)
+### Otros Endpoints (NAS, Proxmox, Contenedores, K8s)
 
 Centralizegg expone endpoints estandarizados para el resto de herramientas:
 
@@ -155,16 +155,18 @@ Centralizegg expone endpoints estandarizados para el resto de herramientas:
 *   **Podman**: `/api/podman/hosts`, `/api/podman/containers`
 *   **Ceph**: `/api/ceph/hosts`
 *   **Salud y Métricas**: `/api/health/summary`, `/api/metrics/{category}/{id}`, `/api/status`
-*   **Geolocalización**: `/api/geoip/{ip}` (Proxy a ip-api.com)
-*   **Configuración Genérica**: `/api/config/{tool}` (donde tool = nas, proxmox, docker, ceph, etc.)
+*   **Historial**: `/api/history`
+*   **Logs del Host**: `/api/hosts/{category}/{id}/logs` (categorías: kvm, docker, podman, kubernetes, pfsense, proxmox, nas, ceph)
+*   **Logs de Contenedores**: `/api/containers/{serverID}/{containerID}/logs`, `/api/podman/containers/{serverID}/{containerID}/logs`
+*   **Logs de Pods K8s**: `/api/kubernetes/pods/{serverID}/{namespace}/{name}/logs`
+*   **Control de Contenedores**: `POST /api/containers/{serverID}/{containerID}/start|stop`, `POST /api/podman/containers/{serverID}/{containerID}/start|stop`
+*   **Control de VMs KVM**: `POST /api/kvm/vms/{serverID}/{vmName}/start|stop`
+*   **Geolocalización**: `/api/geoip/{ip}` (Proxy a ip-api.com, soporta `self`)
+*   **Configuración Genérica**: `/api/config/{tool}` (donde tool = nas, proxmox, docker, podman, ceph, kubernetes)
 
 ## 🗄️ Base de Datos
 
-Centralizegg utiliza PostgreSQL con esquemas dedicados para cada módulo.
-   - Auto-refresh cada 5 segundos
-   - Búsqueda en tiempo real
-   - Filtrado por host seleccionado
-   - Popovers interactivos para métricas detalladas
+Centralizegg utiliza PostgreSQL 15 con esquemas dedicados para cada módulo: `virtualization`, `firewall`, `storage`, `containers` y `kubernetes`.
 
 ## 📁 Estructura del Proyecto
 
@@ -172,10 +174,10 @@ Centralizegg utiliza PostgreSQL con esquemas dedicados para cada módulo.
 Centralizegg/
 ├── cmd_centralizegg/
 │   └── server/
-│       └── main.go                 # Punto de entrada de la aplicación
+│       └── main.go                 # Punto de entrada (882 líneas, rutas API, middlewares)
 ├── backend_internal_centralizegg/
 │   ├── data_centralizegg/
-│   │   └── postgres.go            # Capa de acceso a datos (PostgreSQL)
+│   │   └── postgres.go            # Capa de acceso a datos (PostgreSQL, 2615 líneas)
 │   ├── virtualization/
 │   │   ├── kvm-collector.go       # Colector de métricas KVM/Libvirt
 │   │   └── proxmox-collector.go   # Colector de API Proxmox
@@ -191,23 +193,45 @@ Centralizegg/
 ├── web_centralizegg/
 │   └── static/
 │       ├── index.html             # Interfaz principal
-│       ├── app.js                 # Lógica del frontend (monolito)
+│       ├── app.js                 # Lógica del frontend (monolito, 449KB)
 │       ├── style.css              # Estilos glassmorphism
+│       ├── history-map.js         # Módulo de mapa de historial
+│       ├── favicon.ico            # Icono del sitio
 │       ├── js/                    # Módulos ES modulares
-│       │   ├── state.js           # Estado global
-│       │   ├── history.js         # Lógica de historial
-│       │   ├── ui-components.js   # Componentes reutilizables
-│       │   └── utils.js           # Utilidades
-│       ├── docs/                  # Documentación embebida
+│       │   ├── api.js             # Funciones de fetch centralizadas
+│       │   ├── state.js           # Estado global (Single Source of Truth)
+│       │   ├── history.js         # Lógica de historial y gráficos
+│       │   ├── summary-dashboard.js # Dashboard de salud global
+│       │   ├── tool-kvm.js        # Renderizado y control KVM
+│       │   ├── ui-components.js   # Componentes UI reutilizables
+│       │   └── utils.js           # Utilidades (formatBytes, etc.)
+│       ├── docs/                  # Documentación embebida (HTML)
+│       │   ├── virtualization.html
+│       │   ├── containers.html
+│       │   ├── firewall.html
+│       │   ├── kubernetes.html
+│       │   ├── storage.html
+│       │   └── performance.html
 │       ├── logo.png
 │       └── image/
 │           └── 1.png              # Screenshot del dashboard
 ├── deploy_centralizegg/
 │   └── postgres/
 │       └── init.sql               # Script de inicialización de BD
+├── .github/
+│   ├── DOCKER_HUB_SETUP.md       # Instrucciones CI/CD GitHub
+│   └── workflows/
+│       └── docker-publish.yml     # Workflow reusable Docker Hub
+├── .gitlab/
+│   └── DOCKER_HUB_SETUP.md       # Instrucciones CI/CD GitLab
+├── .gitlab-ci.yml                 # Pipeline GitLab CI
 ├── docker-compose.yml             # Configuración de servicios
-├── Dockerfile                     # Imagen del contenedor
-├── go.mod                         # Dependencias Go
+├── Dockerfile                     # Imagen multi-stage del contenedor
+├── go.mod                         # Dependencias Go 1.23.2
+├── go.sum                         # Checksums de dependencias
+├── CI_CD_COMPARISON.md            # Comparación GitHub Actions vs GitLab CI
+├── LICENSE                        # Licencia MIT
+├── ARCHITECTURE.MD                # Documentación de arquitectura detallada
 └── README.md
 ```
 
@@ -241,7 +265,7 @@ cd Centralizegg
 docker-compose up -d --build
 
 # Ver logs
-docker-compose logs -f app
+docker-compose logs -f centralizegg_app
 ```
 
 Accede al dashboard en: `http://localhost:8080`
@@ -253,7 +277,7 @@ Si prefieres usar la imagen pre-construida desde Docker Hub en lugar de compilar
 ```yaml
 # docker-compose.yml
 services:
-  app:
+  centralizegg_app:
     image: tuusuario/centralizegg:latest  # Reemplaza con tu usuario de Docker Hub
     # ... resto de la configuración
 ```
@@ -280,14 +304,14 @@ docker run -d -p 8080:8080 \
 
 ### Variables de Entorno
 
-El servicio `app` en `docker-compose.yml` utiliza las siguientes variables de entorno:
+El servicio `centralizegg_app` en `docker-compose.yml` utiliza las siguientes variables de entorno:
 
 ```yaml
-DB_HOST: db                    # Host de PostgreSQL
-DB_PORT: 5432                  # Puerto de PostgreSQL
-DB_USER: centralizegg          # Usuario de la base de datos
-DB_PASS: centralizegg_secret   # Contraseña de la base de datos
-DB_NAME: centralizegg_db       # Nombre de la base de datos
+DB_HOST: centralizegg__trn_db     # Host de PostgreSQL (nombre del servicio)
+DB_PORT: 5432                     # Puerto de PostgreSQL
+DB_USER: centralizegg             # Usuario de la base de datos
+DB_PASS: centralizegg_secret      # Contraseña de la base de datos
+DB_NAME: centralizegg_db          # Nombre de la base de datos
 LIBVIRT_SOCK: /var/run/libvirt/libvirt-sock  # Socket de Libvirt (local)
 ```
 
@@ -341,7 +365,7 @@ Los servidores KVM se configuran a través del dashboard web:
 **Error**: `Could not connect to DB`
 - Verifica que PostgreSQL esté corriendo: `docker-compose ps`
 - Revisa las variables de entorno en `docker-compose.yml`
-- Verifica los logs: `docker-compose logs db`
+- Verifica los logs: `docker-compose logs centralizegg__trn_db`
 
 **Error**: `relation "virtualization.hosts" does not exist`
 - Ejecuta el script de inicialización: `psql -f deploy_centralizegg/postgres/init.sql`
@@ -362,7 +386,7 @@ Los servidores KVM se configuran a través del dashboard web:
 <a name="português"></a>
 # 🇧🇷 Centralizegg
 
-**Centralizegg** é uma solução de monitoramento leve e containerizada para múltiplos servidores KVM. Fornece um painel premium em tempo real para visualizar os recursos de seus hosts e o estado das máquinas virtuais (VMs) de forma centralizada.
+**Centralizegg** é uma solução de monitoramento leve e containerizada para múltiplos servidores e serviços. Fornece um painel premium em tempo real para visualizar os recursos de seus hosts, containers e Cluster K8s, permitindo ver o estado dos recursos de forma centralizada.
 
 [![Docker Build (GitHub)](https://github.com/USUARIO/REPO/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/USUARIO/REPO/actions/workflows/docker-publish.yml)
 [![Docker Build (GitLab)](https://gitlab.com/USUARIO/REPO/badges/main/pipeline.svg)](https://gitlab.com/USUARIO/REPO/-/pipelines)
@@ -389,12 +413,15 @@ Los servidores KVM se configuran a través del dashboard web:
 
 *   **Detecção de SO**: Identificação automática do Sistema Operacional de cada host através de `/etc/os-release` com ícones representativos (Ubuntu, Debian, Fedora, CentOS, Windows, Red Hat, SUSE).
 *   **Métricas Premium**: Janelas flutuantes (popovers) interativas para CPU e Memória com barras de progresso em tempo real.
-*   **Coletor Automático**: Coleta de métricas a cada 10 segundos de todos os servidores configurados.
+*   **Coletor Automático**: Coleta de métricas a cada 5 segundos de todos os servidores configurados.
 *   **Métricas Completas**: 
     - CPU: Uso calculado com base no tempo de CPU acumulado
     - Memória: Total, livre e utilizada
     - Disco: Alocação, capacidade e estatísticas de I/O
     - Rede: Tráfico RX/TX em tempo real
+*   **Monitoramento de Containers**: Suporte avançado para **Docker & Podman**. O ícone do Podman foi atualizado para uma foca (`fa-otter`) em toda a interface.
+    - **Mapa de Topologia**: Visualização interativa animada da rede (Containers -> Redes -> Internet).
+    - **Controle de Containers**: Start/Stop de containers Docker e Podman diretamente da UI.
 *   **Monitoramento de Firewall**: Suporte completo para **pfSense** via SSH.
     - Métricas de sistema (CPU, Memória, Disco)
     - Informações de interfaces de rede com estatísticas de tráfego
@@ -405,6 +432,7 @@ Los servidores KVM se configuran a través del dashboard web:
 *   **Proxmox VE**: Integração nativa com clusters Proxmox.
     - Monitoramento de nós, VMs e Containers LXC.
     - Métricas de armazenamento ZFS e Ceph (via API).
+*   **Controle de VMs KVM**: Start/Stop de máquinas virtuais diretamente da interface.
 *   **Mapa de Tráfego Mundial**: Visualização geográfica premium com animações "Flight Path" (curvas Bezier).
     - **Proxy GeoIP Integrado**: Resolução de IPs no backend para privacidade e segurança (evita Mixed Content).
     - **Animações Fluidas**: Linhas curvas com pulso dinâmico (Vermelho: Entrada, Verde: Saída).
@@ -418,11 +446,12 @@ Los servidores KVM se configuran a través del dashboard web:
         - ⚠️ Aviso (>0% Perda de pacotes): Destaque âmbar.
         - 🚨 Crítico (>10% Perda de pacotes): **Animação de pulso vermelho** e sombras dinâmicas para atenção imediata.
     - Métricas precisas de RTT e Desvio padrão.
-*   **Histórico de Logs do Host**: Visualizador de logs em tempo real (`journalctl` / `clog`) integrado na ferramenta de Histórico Global para todos os tipos de servidores (KVM, Docker, pfSense, Proxmox, NAS, Ceph).
+*   **Histórico de Logs do Host**: Visualizador de logs em tempo real (`journalctl` / `clog`) integrado na ferramenta de Histórico Global para todos os tipos de servidores (KVM, Docker, Podman, pfSense, Proxmox, NAS, Ceph, Kubernetes).
 *   **Monitoramento de Kubernetes (K8s)**:
     - Visualização de Nós e Pods em tempo real.
     - **Histórico Detalhado por Nó**: Métricas históricas de CPU, Memória, Rede e Disco para cada nó do cluster.
     - Métricas de consumo de recursos por Namespace e estatísticas de rede (RX/TX).
+    - Persistent Volumes (PVs) e Eventos do cluster.
     - [Documentação Detalhada](web_centralizegg/static/docs/kubernetes.html)
 *   **Armazenamento & Disco**:
     - **NAS**: Monitoramento via SSH de servidores Linux/NAS:
@@ -446,6 +475,7 @@ Los servidores KVM se configuran a través del dashboard web:
     - **Estimativa de Dias Restantes**: Cálculo automático de esgotamento de disco baseado em tendência.
 *   **Monitoramento de Ceph**: Suporte para clusters de armazenamento distribuído Ceph via SSH.
     - Estado de saúde do cluster, OSDs e pools.
+*   **Dashboard de Saúde Global**: Painel resumo com visão geral do estado de toda a infraestrutura (`/api/health/summary`).
 
 ## 📁 Estrutura do Projeto
 
@@ -453,10 +483,10 @@ Los servidores KVM se configuran a través del dashboard web:
 Centralizegg/
 ├── cmd_centralizegg/
 │   └── server/
-│       └── main.go                 # Ponto de entrada da aplicação
+│       └── main.go                 # Ponto de entrada (882 linhas, rotas API, middlewares)
 ├── backend_internal_centralizegg/
 │   ├── data_centralizegg/
-│   │   └── postgres.go            # Camada de acesso a dados (PostgreSQL)
+│   │   └── postgres.go            # Camada de acesso a dados (PostgreSQL, 2615 linhas)
 │   ├── virtualization/
 │   │   ├── kvm-collector.go       # Coletor de métricas KVM/Libvirt
 │   │   └── proxmox-collector.go   # Coletor de API Proxmox
@@ -472,23 +502,45 @@ Centralizegg/
 ├── web_centralizegg/
 │   └── static/
 │       ├── index.html             # Interface principal
-│       ├── app.js                 # Lógica do frontend (monolito)
+│       ├── app.js                 # Lógica do frontend (monolito, 449KB)
 │       ├── style.css              # Estilos glassmorphism
+│       ├── history-map.js         # Módulo de mapa de histórico
+│       ├── favicon.ico            # Ícone do site
 │       ├── js/                    # Módulos ES modulares
-│       │   ├── state.js           # Estado global
-│       │   ├── history.js         # Lógica de histórico
-│       │   ├── ui-components.js   # Componentes reutilizáveis
-│       │   └── utils.js           # Utilidades
-│       ├── docs/                  # Documentação embebida
+│       │   ├── api.js             # Funções de fetch centralizadas
+│       │   ├── state.js           # Estado global (Single Source of Truth)
+│       │   ├── history.js         # Lógica de histórico e gráficos
+│       │   ├── summary-dashboard.js # Dashboard de saúde global
+│       │   ├── tool-kvm.js        # Renderização e controle KVM
+│       │   ├── ui-components.js   # Componentes UI reutilizáveis
+│       │   └── utils.js           # Utilidades (formatBytes, etc.)
+│       ├── docs/                  # Documentação embebida (HTML)
+│       │   ├── virtualization.html
+│       │   ├── containers.html
+│       │   ├── firewall.html
+│       │   ├── kubernetes.html
+│       │   ├── storage.html
+│       │   └── performance.html
 │       ├── logo.png
 │       └── image/
 │           └── 1.png              # Screenshot do painel
 ├── deploy_centralizegg/
 │   └── postgres/
 │       └── init.sql               # Script de inicialização do BD
+├── .github/
+│   ├── DOCKER_HUB_SETUP.md       # Instruções CI/CD GitHub
+│   └── workflows/
+│       └── docker-publish.yml     # Workflow reusável Docker Hub
+├── .gitlab/
+│   └── DOCKER_HUB_SETUP.md       # Instruções CI/CD GitLab
+├── .gitlab-ci.yml                 # Pipeline GitLab CI
 ├── docker-compose.yml             # Configuração de serviços
-├── Dockerfile                     # Imagem do container
-├── go.mod                         # Dependências Go
+├── Dockerfile                     # Imagem multi-stage do container
+├── go.mod                         # Dependências Go 1.23.2
+├── go.sum                         # Checksums de dependências
+├── CI_CD_COMPARISON.md            # Comparação GitHub Actions vs GitLab CI
+├── LICENSE                        # Licença MIT
+├── ARCHITECTURE.MD                # Documentação de arquitetura detalhada
 └── README.md
 ```
 
@@ -522,7 +574,7 @@ cd Centralizegg
 docker-compose up -d --build
 
 # Ver logs
-docker-compose logs -f app
+docker-compose logs -f centralizegg_app
 ```
 
 Acesse o painel em: `http://localhost:8080`
@@ -531,14 +583,14 @@ Acesse o painel em: `http://localhost:8080`
 
 ### Variáveis de Ambiente
 
-O serviço `app` em `docker-compose.yml` utiliza as seguintes variáveis de ambiente:
+O serviço `centralizegg_app` em `docker-compose.yml` utiliza as seguintes variáveis de ambiente:
 
 ```yaml
-DB_HOST: db                    # Host do PostgreSQL
-DB_PORT: 5432                  # Porta do PostgreSQL
-DB_USER: centralizegg          # Usuário do banco de dados
-DB_PASS: centralizegg_secret   # Senha do banco de dados
-DB_NAME: centralizegg_db       # Nome do banco de dados
+DB_HOST: centralizegg__trn_db     # Host do PostgreSQL (nome do serviço)
+DB_PORT: 5432                     # Porta do PostgreSQL
+DB_USER: centralizegg             # Usuário do banco de dados
+DB_PASS: centralizegg_secret      # Senha do banco de dados
+DB_NAME: centralizegg_db          # Nome do banco de dados
 LIBVIRT_SOCK: /var/run/libvirt/libvirt-sock  # Socket do Libvirt (local)
 ```
 
@@ -568,7 +620,7 @@ Os servidores KVM são configurados através do painel web:
 2. Clique no botão de configuração (⚙️)
 3. Adicione um novo servidor com credenciais SSH (similar ao KVM).
    - **Autenticação**: Suporta Chave SSH (RSA/Ed25519) ou Senha.
-   - **Requisitos**: O usuário deve ter acesso ao shell (`/bin/sh` ou `/bin/tcsh`) e permissões para executar `top`, `sysctl`, `netstat`, `pfctl`.
+   - **Requisitos**: O usuário deve ter acesso ao shell (`/bin/sh` ou `//bin/tcsh`) e permissões para executar `top`, `sysctl`, `netstat`, `pfctl`.
    - **Não requer agentes**: Tudo é coletado remotamente e com segurança.
 
 ## 🔧 Solução de Problemas
@@ -590,7 +642,7 @@ Os servidores KVM são configurados através do painel web:
 **Erro**: `Could not connect to DB`
 - Verifique se o PostgreSQL está rodando: `docker-compose ps`
 - Revise as variáveis de ambiente em `docker-compose.yml`
-- Verifique os logs: `docker-compose logs db`
+- Verifique os logs: `docker-compose logs centralizegg__trn_db`
 
 **Erro**: `relation "virtualization.hosts" does not exist`
 - Execute o script de inicialização: `psql -f deploy_centralizegg/postgres/init.sql`
