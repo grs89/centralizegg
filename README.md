@@ -17,10 +17,10 @@
 
 **Centralizegg** es una solución de monitoreo ligera y containerizada para múltiples servidores y servicios. Proporciona un dashboard premium en tiempo real para visualizar los recursos de tus hosts, contenedores y Cluster K8s, permitiendo ver el estado de los recursos de forma centralizada.
 
-[![Docker Build (GitHub)](https://github.com/USUARIO/REPO/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/USUARIO/REPO/actions/workflows/docker-publish.yml)
-[![Docker Build (GitLab)](https://gitlab.com/USUARIO/REPO/badges/main/pipeline.svg)](https://gitlab.com/USUARIO/REPO/-/pipelines)
-[![Docker Hub](https://img.shields.io/docker/v/USUARIO/centralizegg?label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/USUARIO/centralizegg)
-[![Docker Pulls](https://img.shields.io/docker/pulls/USUARIO/centralizegg?logo=docker)](https://hub.docker.com/r/USUARIO/centralizegg)
+[![Docker Build (GitHub)](https://github.com/grs89/Centralizegg/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/grs89/Centralizegg/actions/workflows/docker-publish.yml)
+[![Docker Build (GitLab)](https://gitlab.com/grs89/Centralizegg/badges/main/pipeline.svg)](https://gitlab.com/grs89/Centralizegg/-/pipelines)
+[![Docker Hub](https://img.shields.io/docker/v/gersonofstone/centralizegg?label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/gersonofstone/centralizegg)
+[![Docker Pulls](https://img.shields.io/docker/pulls/gersonofstone/centralizegg?logo=docker)](https://hub.docker.com/r/gersonofstone/centralizegg)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 > [!TIP]
