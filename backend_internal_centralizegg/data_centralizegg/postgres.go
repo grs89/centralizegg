@@ -462,6 +462,14 @@ func NewPostgresDB(connStr string) (*DB, error) {
 	_, _ = db.Exec("ALTER TABLE containers.hosts ADD COLUMN IF NOT EXISTS host_events TEXT DEFAULT '[]'")
 	_, _ = db.Exec("ALTER TABLE containers.podman_hosts ADD COLUMN IF NOT EXISTS host_events TEXT DEFAULT '[]'")
 
+	// Add active_connections to all host tables
+	_, _ = db.Exec("ALTER TABLE virtualization.hosts ADD COLUMN IF NOT EXISTS active_connections TEXT DEFAULT '[]'")
+	_, _ = db.Exec("ALTER TABLE containers.hosts ADD COLUMN IF NOT EXISTS active_connections TEXT DEFAULT '[]'")
+	_, _ = db.Exec("ALTER TABLE containers.podman_hosts ADD COLUMN IF NOT EXISTS active_connections TEXT DEFAULT '[]'")
+	_, _ = db.Exec("ALTER TABLE virtualization.proxmox_hosts ADD COLUMN IF NOT EXISTS active_connections TEXT DEFAULT '[]'")
+	_, _ = db.Exec("ALTER TABLE storage.nas_hosts ADD COLUMN IF NOT EXISTS active_connections TEXT DEFAULT '[]'")
+	_, _ = db.Exec("ALTER TABLE storage.ceph_hosts ADD COLUMN IF NOT EXISTS active_connections TEXT DEFAULT '[]'")
+
 	// Migration: Add metrics columns to kubernetes.nodes
 	_, _ = db.Exec("ALTER TABLE kubernetes.nodes ADD COLUMN IF NOT EXISTS disk_total BIGINT DEFAULT 0")
 	_, _ = db.Exec("ALTER TABLE kubernetes.nodes ADD COLUMN IF NOT EXISTS disk_used BIGINT DEFAULT 0")
@@ -470,6 +478,7 @@ func NewPostgresDB(connStr string) (*DB, error) {
 	_, _ = db.Exec("ALTER TABLE kubernetes.nodes ADD COLUMN IF NOT EXISTS net_rx_rate BIGINT DEFAULT 0")
 	_, _ = db.Exec("ALTER TABLE kubernetes.nodes ADD COLUMN IF NOT EXISTS net_tx_rate BIGINT DEFAULT 0")
 	_, _ = db.Exec("ALTER TABLE kubernetes.nodes ADD COLUMN IF NOT EXISTS architecture VARCHAR(50) DEFAULT ''")
+	_, _ = db.Exec("ALTER TABLE kubernetes.nodes ADD COLUMN IF NOT EXISTS active_connections TEXT DEFAULT '[]'")
 
 	// Pod Metrics
 	_, _ = db.Exec("ALTER TABLE kubernetes.pods ADD COLUMN IF NOT EXISTS image TEXT DEFAULT ''")
