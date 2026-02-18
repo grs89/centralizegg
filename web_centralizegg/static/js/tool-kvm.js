@@ -4,9 +4,20 @@ import { formatBytes, getStatusColor, getOSIcon, playAlertSound } from './utils.
 import { renderHostNodes, renderDonutChart, renderSparkline } from './ui-components.js';
 import { updateNetworkHistory, updateBridgeHistory } from './history.js';
 
-export { updateNetworkHistory, updateBridgeHistory };
+export {
+    updateNetworkHistory,
+    updateBridgeHistory,
+    renderHostEvents,
+    fetchHosts,
+    renderHosts,
+    selectHost,
+    fetchVMs,
+    startVM,
+    stopVM,
+    renderVMs
+};
 
-export function renderHostEvents(host_events_json, type = 'host') {
+function renderHostEvents(host_events_json, type = 'host') {
     let events = [];
     try {
         if (host_events_json) events = JSON.parse(host_events_json);
@@ -48,7 +59,7 @@ export function renderHostEvents(host_events_json, type = 'host') {
     `;
 }
 
-export async function fetchHosts() {
+async function fetchHosts() {
     try {
         const response = await fetch(API_HOSTS);
         if (!response.ok) throw new Error('Failed to fetch hosts');
@@ -69,7 +80,7 @@ export async function fetchHosts() {
     }
 }
 
-export function renderHosts() {
+function renderHosts() {
     renderHostNodes('host-nodes-container', {
         icon: 'fa-solid fa-server',
         showOSInfo: true,
@@ -77,7 +88,7 @@ export function renderHosts() {
     });
 }
 
-export function selectHost(id) {
+function selectHost(id) {
     if (state.selectedHostId !== id) {
         state.selectedHostId = id;
         state.lastRenderedVMsHash = "";
@@ -86,7 +97,7 @@ export function selectHost(id) {
     renderVMs();
 }
 
-export async function fetchVMs() {
+async function fetchVMs() {
     try {
         const response = await fetch(API_VMS);
         if (!response.ok) throw new Error('Failed to fetch VMs');
@@ -104,7 +115,39 @@ export async function fetchVMs() {
     }
 }
 
-export function renderVMs() {
+async function startVM(serverID, vmName) {
+    try {
+        const response = await fetch(`/api/kvm/vms/${serverID}/${vmName}/start`, { method: 'POST' });
+        if (response.ok) {
+            console.log(`[KVM] VM ${vmName} started`);
+            fetchVMs(); // Refresh UI
+        } else {
+            const err = await response.text();
+            console.error(`[KVM] Failed to start VM: ${err}`);
+            alert(`Error starting VM: ${err}`);
+        }
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+async function stopVM(serverID, vmName) {
+    try {
+        const response = await fetch(`/api/kvm/vms/${serverID}/${vmName}/stop`, { method: 'POST' });
+        if (response.ok) {
+            console.log(`[KVM] VM ${vmName} stopped`);
+            fetchVMs(); // Refresh UI
+        } else {
+            const err = await response.text();
+            console.error(`[KVM] Failed to stop VM: ${err}`);
+            alert(`Error stopping VM: ${err}`);
+        }
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+function renderVMs() {
     const grid = document.getElementById('vm-grid');
     if (!grid) return;
 
@@ -274,7 +317,13 @@ export function renderVMs() {
             return `
                 <div class="vm-row state-${vm.state.toLowerCase()}" style="grid-template-columns: ${gridCols};">
                     <div style="display: flex; align-items: center; gap: 12px; overflow: hidden;">
-                        <i class="fa-solid fa-desktop" style="color: ${isRunning ? '#4ade80' : '#ef4444'}; font-size: 1.1rem; opacity: 0.8;"></i>
+                        <button onclick="${isRunning ? 'stopVM' : 'startVM'}(${vm.host_id}, '${vm.name}')"
+                                title="${isRunning ? 'Detener VM' : 'Iniciar VM'}"
+                                style="background: none; border: none; padding: 0; cursor: pointer; display: flex; align-items: center; transition: transform 0.2s;"
+                                onmouseover="this.style.transform='scale(1.2)'"
+                                onmouseout="this.style.transform='scale(1)'">
+                            <i class="fa-solid fa-desktop" style="color: ${isRunning ? '#4ade80' : '#ef4444'}; font-size: 1.1rem; opacity: 0.8;"></i>
+                        </button>
                         <div style="display: flex; flex-direction: column; gap: 2px; overflow: hidden;">
                             <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${vm.name}">${vm.name}</span>
                             <div style="display: flex; align-items: center; gap: 8px; font-size: 0.7rem; font-weight: 400; color: var(--text-secondary); opacity: 0.8;">

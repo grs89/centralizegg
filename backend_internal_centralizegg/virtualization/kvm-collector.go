@@ -912,3 +912,93 @@ func (mc *MultiCollector) getSSHClient(s data_centralizegg.KVMServer) (*ssh.Clie
 	addr := fmt.Sprintf("%s:%d", s.IPAddress, s.SSHPort)
 	return ssh.Dial("tcp", addr, config)
 }
+
+func (mc *MultiCollector) getLibvirtClient(s data_centralizegg.KVMServer) (*libvirt.Libvirt, *ssh.Client, net.Conn, error) {
+	sshClient, err := mc.getSSHClient(s)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	conn, err := sshClient.Dial("unix", "/var/run/libvirt/libvirt-sock")
+	if err != nil {
+		sshClient.Close()
+		return nil, nil, nil, err
+	}
+
+	l := libvirt.New(conn)
+	if err := l.Connect(); err != nil {
+		conn.Close()
+		sshClient.Close()
+		return nil, nil, nil, err
+	}
+
+	return l, sshClient, conn, nil
+}
+
+func (mc *MultiCollector) StartVM(serverID int64, vmName string) error {
+	servers, err := mc.DB.GetServers()
+	if err != nil {
+		return err
+	}
+	var s data_centralizegg.KVMServer
+	found := false
+	for _, srv := range servers {
+		if srv.ID == serverID {
+			s = srv
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("server not found")
+	}
+
+	l, sshClient, conn, err := mc.getLibvirtClient(s)
+	if err != nil {
+		return err
+	}
+	defer l.Disconnect()
+	defer conn.Close()
+	defer sshClient.Close()
+
+	dom, err := l.DomainLookupByName(vmName)
+	if err != nil {
+		return err
+	}
+
+	return l.DomainCreate(dom)
+}
+
+func (mc *MultiCollector) StopVM(serverID int64, vmName string) error {
+	servers, err := mc.DB.GetServers()
+	if err != nil {
+		return err
+	}
+	var s data_centralizegg.KVMServer
+	found := false
+	for _, srv := range servers {
+		if srv.ID == serverID {
+			s = srv
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("server not found")
+	}
+
+	l, sshClient, conn, err := mc.getLibvirtClient(s)
+	if err != nil {
+		return err
+	}
+	defer l.Disconnect()
+	defer conn.Close()
+	defer sshClient.Close()
+
+	dom, err := l.DomainLookupByName(vmName)
+	if err != nil {
+		return err
+	}
+
+	return l.DomainDestroy(dom)
+}

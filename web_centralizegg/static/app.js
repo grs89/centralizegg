@@ -17,11 +17,14 @@ import {
     updateNetworkHistory, updateBridgeHistory, updateContainerHistory, updateFirewallHistory
 } from './js/history.js';
 import {
-    fetchHosts, renderHosts, selectHost, fetchVMs, renderVMs, renderHostEvents
-} from './js/tool-kvm.js';
+    fetchHosts, renderHosts, selectHost, fetchVMs, renderVMs, renderHostEvents,
+    startVM, stopVM
+} from './js/tool-kvm.js?v=2';
 
 // Expose functions to global scope for event handlers
 window.selectHost = selectHost;
+window.startVM = startVM;
+window.stopVM = stopVM;
 
 
 // Note: We are migrating these to the 'state' object for better performance and modularity.

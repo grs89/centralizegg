@@ -422,6 +422,39 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	}).Methods("POST")
 
+	// KVM VM control
+	r.HandleFunc("/api/kvm/vms/{serverID}/{vmName}/start", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		serverID, err := strconv.ParseInt(vars["serverID"], 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid Server ID", http.StatusBadRequest)
+			return
+		}
+		vmName := vars["vmName"]
+
+		if err := col.StartVM(serverID, vmName); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	}).Methods("POST")
+
+	r.HandleFunc("/api/kvm/vms/{serverID}/{vmName}/stop", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		serverID, err := strconv.ParseInt(vars["serverID"], 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid Server ID", http.StatusBadRequest)
+			return
+		}
+		vmName := vars["vmName"]
+
+		if err := col.StopVM(serverID, vmName); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	}).Methods("POST")
+
 	// Kubernetes nodes API
 	r.HandleFunc("/api/kubernetes/nodes", func(w http.ResponseWriter, r *http.Request) {
 		nodes, err := db.GetKubernetesNodes()
