@@ -921,6 +921,64 @@ func (pc *PodmanCollector) GetContainerLogs(serverID int64, containerID string) 
 
 	return output, nil
 }
+
+func (pc *PodmanCollector) StartContainer(serverID int64, containerID string) error {
+	servers, err := pc.DB.GetGenericServers("podman")
+	if err != nil {
+		return err
+	}
+	var targetServer data_centralizegg.GenericServer
+	found := false
+	for _, s := range servers {
+		if s.ID == serverID {
+			targetServer = s
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("server not found")
+	}
+
+	client, err := pc.getSSHClient(targetServer)
+	if err != nil {
+		return fmt.Errorf("ssh connection failed: %w", err)
+	}
+	defer client.Close()
+
+	cmd := fmt.Sprintf("podman start %s", containerID)
+	_, err = pc.runCommand(client, cmd)
+	return err
+}
+
+func (pc *PodmanCollector) StopContainer(serverID int64, containerID string) error {
+	servers, err := pc.DB.GetGenericServers("podman")
+	if err != nil {
+		return err
+	}
+	var targetServer data_centralizegg.GenericServer
+	found := false
+	for _, s := range servers {
+		if s.ID == serverID {
+			targetServer = s
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("server not found")
+	}
+
+	client, err := pc.getSSHClient(targetServer)
+	if err != nil {
+		return fmt.Errorf("ssh connection failed: %w", err)
+	}
+	defer client.Close()
+
+	cmd := fmt.Sprintf("podman stop %s", containerID)
+	_, err = pc.runCommand(client, cmd)
+	return err
+}
 func (pc *PodmanCollector) GetHostLogs(id int64) (string, error) {
 	servers, err := pc.DB.GetGenericServers("podman")
 	if err != nil {

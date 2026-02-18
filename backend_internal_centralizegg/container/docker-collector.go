@@ -786,6 +786,64 @@ func (dc *DockerCollector) GetContainerLogs(serverID int64, containerID string) 
 
 	return output, nil
 }
+
+func (dc *DockerCollector) StartContainer(serverID int64, containerID string) error {
+	servers, err := dc.DB.GetGenericServers("docker")
+	if err != nil {
+		return err
+	}
+	var targetServer data_centralizegg.GenericServer
+	found := false
+	for _, s := range servers {
+		if s.ID == serverID {
+			targetServer = s
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("server not found")
+	}
+
+	client, err := dc.getSSHClient(targetServer)
+	if err != nil {
+		return fmt.Errorf("ssh connection failed: %w", err)
+	}
+	defer client.Close()
+
+	cmd := fmt.Sprintf("docker start %s", containerID)
+	_, err = dc.runCommand(client, cmd)
+	return err
+}
+
+func (dc *DockerCollector) StopContainer(serverID int64, containerID string) error {
+	servers, err := dc.DB.GetGenericServers("docker")
+	if err != nil {
+		return err
+	}
+	var targetServer data_centralizegg.GenericServer
+	found := false
+	for _, s := range servers {
+		if s.ID == serverID {
+			targetServer = s
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("server not found")
+	}
+
+	client, err := dc.getSSHClient(targetServer)
+	if err != nil {
+		return fmt.Errorf("ssh connection failed: %w", err)
+	}
+	defer client.Close()
+
+	cmd := fmt.Sprintf("docker stop %s", containerID)
+	_, err = dc.runCommand(client, cmd)
+	return err
+}
 func (dc *DockerCollector) GetHostLogs(id int64) (string, error) {
 	servers, err := dc.DB.GetGenericServers("docker")
 	if err != nil {

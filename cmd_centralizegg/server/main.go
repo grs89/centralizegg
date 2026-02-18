@@ -338,6 +338,39 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]string{"logs": logs})
 	}).Methods("GET")
 
+	// Docker container control
+	r.HandleFunc("/api/containers/{serverID}/{containerID}/start", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		serverID, err := strconv.ParseInt(vars["serverID"], 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid Server ID", http.StatusBadRequest)
+			return
+		}
+		containerID := vars["containerID"]
+
+		if err := dockerCol.StartContainer(serverID, containerID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	}).Methods("POST")
+
+	r.HandleFunc("/api/containers/{serverID}/{containerID}/stop", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		serverID, err := strconv.ParseInt(vars["serverID"], 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid Server ID", http.StatusBadRequest)
+			return
+		}
+		containerID := vars["containerID"]
+
+		if err := dockerCol.StopContainer(serverID, containerID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	}).Methods("POST")
+
 	// Podman logs API
 	r.HandleFunc("/api/podman/containers/{serverID}/{containerID}/logs", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
@@ -355,6 +388,39 @@ func main() {
 		}
 		json.NewEncoder(w).Encode(map[string]string{"logs": logs})
 	}).Methods("GET")
+
+	// Podman container control
+	r.HandleFunc("/api/podman/containers/{serverID}/{containerID}/start", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		serverID, err := strconv.ParseInt(vars["serverID"], 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid Server ID", http.StatusBadRequest)
+			return
+		}
+		containerID := vars["containerID"]
+
+		if err := podmanCol.StartContainer(serverID, containerID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	}).Methods("POST")
+
+	r.HandleFunc("/api/podman/containers/{serverID}/{containerID}/stop", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		serverID, err := strconv.ParseInt(vars["serverID"], 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid Server ID", http.StatusBadRequest)
+			return
+		}
+		containerID := vars["containerID"]
+
+		if err := podmanCol.StopContainer(serverID, containerID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	}).Methods("POST")
 
 	// Kubernetes nodes API
 	r.HandleFunc("/api/kubernetes/nodes", func(w http.ResponseWriter, r *http.Request) {
