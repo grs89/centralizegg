@@ -1183,10 +1183,16 @@ function renderDockerHostDetails(hostId) {
             const memPercent = c.memory_limit > 0 ? (c.memory_usage / c.memory_limit * 100) : 0;
 
             return `
-                <div style="display: grid; grid-template-columns: 2fr 1fr 0.8fr 1.2fr 1.6fr 0.8fr 1.2fr; gap: 15px; align-items: center; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.05); transition: all 0.2s ease;">
+                <div style="display: grid; grid-template-columns: 2fr 1fr 0.8fr 1.2fr 1.6fr 1fr; gap: 15px; align-items: center; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.05); transition: all 0.2s ease;">
                     <!-- Name & Image -->
                     <div style="display: flex; align-items: center; gap: 10px; overflow: hidden;">
-                        <i class="fa-brands fa-docker" style="color: ${isRunning ? '#4ade80' : '#ef4444'}; font-size: 1.2rem; opacity: 0.9;"></i>
+                        <button onclick="${isRunning ? 'stopContainer' : 'startContainer'}('docker', ${c.host_id}, '${c.name || c.id}')"
+                                title="${isRunning ? 'Stop Container' : 'Start Container'}"
+                                style="background: none; border: none; padding: 0; cursor: pointer; display: flex; align-items: center; transition: transform 0.2s;"
+                                onmouseover="this.style.transform='scale(1.2)'"
+                                onmouseout="this.style.transform='scale(1)'">
+                            <i class="fa-brands fa-docker" style="color: ${isRunning ? '#4ade80' : '#ef4444'}; font-size: 1.2rem; opacity: 0.9;"></i>
+                        </button>
                         <div style="display: flex; flex-direction: column; overflow: hidden;">
                             <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${c.name}">${c.name}</span>
                             <span style="font-size: 0.7rem; color: var(--text-secondary); opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${c.image}</span>
@@ -1257,20 +1263,6 @@ function renderDockerHostDetails(hostId) {
                         </div>
                     </div>
 
-                    <!-- Actions -->
-                    <div style="display: flex; justify-content: flex-end; gap: 8px;">
-                        <button onclick="stopContainer('docker', ${c.host_id}, '${c.name || c.id}')" 
-                                ${!isRunning ? 'disabled' : ''} 
-                                title="Stop Container"
-                                style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: #ef4444; width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: ${isRunning ? 'pointer' : 'not-allowed'}; transition: all 0.2s ease;">
-                            <i class="fa-solid fa-stop"></i>
-                        </button>
-                        <button onclick="startContainer('docker', ${c.host_id}, '${c.name || c.id}')" 
-                                ${isRunning ? 'disabled' : ''} 
-                                title="Start Container"
-                                style="background: rgba(74, 222, 128, 0.1); border: 1px solid rgba(74, 222, 128, 0.2); color: #4ade80; width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: ${!isRunning ? 'pointer' : 'not-allowed'}; transition: all 0.2s ease;">
-                            <i class="fa-solid fa-play"></i>
-                        </button>
                     </div>
                 </div>
             `;
@@ -1484,14 +1476,13 @@ function renderDockerHostDetails(hostId) {
                     Contenedores
                 </div>
                 
-                <div style="display: grid; grid-template-columns: 2fr 1fr 0.8fr 1.2fr 1.6fr 0.8fr 1.2fr; gap: 15px; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary);">
+                <div style="display: grid; grid-template-columns: 2fr 1fr 0.8fr 1.2fr 1.6fr 1fr; gap: 15px; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary);">
                     <div>Nombre / Imagen</div>
                     <div>Puerto</div>
                     <div>CPU</div>
                     <div>Memoria</div>
                     <div>Red (RX/TX)</div>
-                    <div>Disco</div>
-                    <div style="text-align: right;">Acciones</div>
+                    <div style="text-align: right;">Disco</div>
                 </div>
 
                 <div id="docker-containers-list" style="display: flex; flex-direction: column;">
@@ -3122,10 +3113,16 @@ function renderPodmanHostDetails(hostId) {
             }
 
             return `
-            <div style="display: grid; grid-template-columns: 2fr 1fr 0.8fr 1.2fr 1.6fr 0.8fr 1.2fr; gap: 15px; align-items: center; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.05); transition: all 0.2s ease;">
+            <div style="display: grid; grid-template-columns: 2fr 1fr 0.8fr 1.2fr 1.6fr 1fr; gap: 15px; align-items: center; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.05); transition: all 0.2s ease;">
                      <!--Name & Image-->
                      <div style="display: flex; align-items: center; gap: 10px; overflow: hidden;">
-                         <i class="fa-solid fa-otter" style="color: ${isRunning ? '#4ade80' : '#ef4444'}; font-size: 1.2rem; opacity: 0.9;"></i>
+                        <button onclick="${isRunning ? 'stopContainer' : 'startContainer'}('podman', ${c.host_id}, '${c.name || c.id}')"
+                                title="${isRunning ? 'Stop Container' : 'Start Container'}"
+                                style="background: none; border: none; padding: 0; cursor: pointer; display: flex; align-items: center; transition: transform 0.2s;"
+                                onmouseover="this.style.transform='scale(1.2)'"
+                                onmouseout="this.style.transform='scale(1)'">
+                            <i class="fa-solid fa-otter" style="color: ${isRunning ? '#4ade80' : '#ef4444'}; font-size: 1.2rem; opacity: 0.9;"></i>
+                        </button>
                          <div style="display: flex; flex-direction: column; overflow: hidden;">
                              <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${c.name}">${c.name}</span>
                              <span style="font-size: 0.7rem; color: var(--text-secondary); opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${c.image}</span>
@@ -3203,21 +3200,7 @@ function renderPodmanHostDetails(hostId) {
                 </div>
             </div>
 
-            <!--Actions -->
-                <div style="display: flex; justify-content: flex-end; gap: 8px;">
-                    <button onclick="stopContainer('podman', ${c.host_id}, '${c.name || c.id}')"
-                        ${!isRunning ? 'disabled' : ''}
-                        title="Stop Container"
-                        style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: #ef4444; width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: ${isRunning ? 'pointer' : 'not-allowed'}; transition: all 0.2s ease;">
-                        <i class="fa-solid fa-stop"></i>
-                    </button>
-                    <button onclick="startContainer('podman', ${c.host_id}, '${c.name || c.id}')"
-                        ${isRunning ? 'disabled' : ''}
-                        title="Start Container"
-                        style="background: rgba(74, 222, 128, 0.1); border: 1px solid rgba(74, 222, 128, 0.2); color: #4ade80; width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: ${!isRunning ? 'pointer' : 'not-allowed'}; transition: all 0.2s ease;">
-                        <i class="fa-solid fa-play"></i>
-                    </button>
-                </div>
+            </div>
         </div>
         `;
         }).join('');
@@ -3426,14 +3409,13 @@ function renderPodmanHostDetails(hostId) {
                     <i class="fa-solid fa-otter" style="margin-right: 8px;"></i>Contenedores
                 </div>
                 
-                <div style="display: grid; grid-template-columns: 2fr 1fr 0.8fr 1.2fr 1.6fr 0.8fr 1.2fr; gap: 15px; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary);">
+                <div style="display: grid; grid-template-columns: 2fr 1fr 0.8fr 1.2fr 1.6fr 1fr; gap: 15px; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary);">
                     <div>Nombre / Imagen</div>
                     <div>Puerto</div>
                     <div>CPU</div>
                     <div>Memoria</div>
                     <div>Red (RX/TX)</div>
-                    <div>Disco</div>
-                    <div style="text-align: right;">Acciones</div>
+                    <div style="text-align: right;">Disco</div>
                 </div>
 
                 <div id="podman-containers-list" style="display: flex; flex-direction: column;">
