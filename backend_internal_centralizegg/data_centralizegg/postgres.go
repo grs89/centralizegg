@@ -79,6 +79,7 @@ type Host struct {
 	HostEvents        string     `json:"host_events"`
 	ActiveConnections string     `json:"active_connections"`
 	OfflineSince      *time.Time `json:"offline_since"`
+	Status            string     `json:"status"`
 }
 
 type DockerHost struct {
@@ -1327,7 +1328,7 @@ func (d *DB) DeleteServer(id int64) error {
 
 func (d *DB) GetHosts() ([]Host, error) {
 	rows, err := d.Conn.Query(`
-		SELECT h.id, h.server_id, h.hostname, s.name, s.ip_address, h.public_ip, h.dns_servers, h.uptime, h.update_status, h.temperature, h.disks, h.bridge_interfaces, h.oom_events, h.host_events, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, COALESCE(h.active_connections, '[]'), s.offline_since, h.architecture
+		SELECT h.id, h.server_id, h.hostname, s.name, s.ip_address, h.public_ip, h.dns_servers, h.uptime, h.update_status, h.temperature, h.disks, h.bridge_interfaces, h.oom_events, h.host_events, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, COALESCE(h.active_connections, '[]'), s.offline_since, h.architecture, s.status
 		FROM virtualization.hosts h
 		JOIN virtualization.kvm_servers s ON h.server_id = s.id`)
 	if err != nil {
@@ -1339,7 +1340,7 @@ func (d *DB) GetHosts() ([]Host, error) {
 	for rows.Next() {
 		var h Host
 		var osName sql.NullString
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.PublicIP, &h.DNSServers, &h.Uptime, &h.UpdateStatus, &h.Temperature, &h.Disks, &h.BridgeInterfaces, &h.OOMEvents, &h.HostEvents, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &osName, &h.ActiveConnections, &h.OfflineSince, &h.Architecture); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.PublicIP, &h.DNSServers, &h.Uptime, &h.UpdateStatus, &h.Temperature, &h.Disks, &h.BridgeInterfaces, &h.OOMEvents, &h.HostEvents, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &osName, &h.ActiveConnections, &h.OfflineSince, &h.Architecture, &h.Status); err != nil {
 			return nil, err
 		}
 		h.OSName = osName.String
@@ -1387,6 +1388,7 @@ type FirewallHost struct {
 	ActiveConnections string              `json:"active_connections"`
 	HostEvents        string              `json:"host_events"`
 	OfflineSince      *time.Time          `json:"offline_since"`
+	Status            string              `json:"status"`
 	Interfaces        []FirewallInterface `json:"interfaces"`
 	Gateways          []FirewallGateway   `json:"gateways"`
 }
@@ -1517,7 +1519,7 @@ func (d *DB) UpsertFirewallGateway(gw FirewallGateway) error {
 
 func (d *DB) GetFirewallHosts() ([]FirewallHost, error) { // Fetch Hosts
 	rows, err := d.Conn.Query(`
-		SELECT fh.id, fh.server_id, fh.hostname, s.name, s.ip_address, fh.cpu_model, fh.cpu_cores, fh.total_memory, fh.free_memory, fh.cpu_usage, fh.os_name, fh.net_rx_total, fh.net_tx_total, fh.net_rx_bytes_per_sec, fh.net_tx_bytes_per_sec, fh.uptime, fh.update_status, COALESCE(fh.dns_servers, ''), COALESCE(fh.active_connections, '[]'), COALESCE(fh.state_table_size, 0), COALESCE(fh.state_table_limit, 0), COALESCE(fh.temperature, 0), COALESCE(fh.host_events, '[]'), s.offline_since, fh.architecture
+		SELECT fh.id, fh.server_id, fh.hostname, s.name, s.ip_address, fh.cpu_model, fh.cpu_cores, fh.total_memory, fh.free_memory, fh.cpu_usage, fh.os_name, fh.net_rx_total, fh.net_tx_total, fh.net_rx_bytes_per_sec, fh.net_tx_bytes_per_sec, fh.uptime, fh.update_status, COALESCE(fh.dns_servers, ''), COALESCE(fh.active_connections, '[]'), COALESCE(fh.state_table_size, 0), COALESCE(fh.state_table_limit, 0), COALESCE(fh.temperature, 0), COALESCE(fh.host_events, '[]'), s.offline_since, fh.architecture, s.status
 		FROM firewall.hosts fh
 		JOIN firewall.pfsense_servers s ON fh.server_id = s.id
 	`)
@@ -1529,7 +1531,7 @@ func (d *DB) GetFirewallHosts() ([]FirewallHost, error) { // Fetch Hosts
 	var hosts []FirewallHost
 	for rows.Next() {
 		var h FirewallHost
-		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.NetRXTotal, &h.NetTXTotal, &h.NetRXBytesPerSec, &h.NetTXBytesPerSec, &h.Uptime, &h.UpdateStatus, &h.DNSServers, &h.ActiveConnections, &h.StateTableSize, &h.StateTableLimit, &h.Temperature, &h.HostEvents, &h.OfflineSince, &h.Architecture); err != nil {
+		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.NetRXTotal, &h.NetTXTotal, &h.NetRXBytesPerSec, &h.NetTXBytesPerSec, &h.Uptime, &h.UpdateStatus, &h.DNSServers, &h.ActiveConnections, &h.StateTableSize, &h.StateTableLimit, &h.Temperature, &h.HostEvents, &h.OfflineSince, &h.Architecture, &h.Status); err != nil {
 			return nil, err
 		}
 
