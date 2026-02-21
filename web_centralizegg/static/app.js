@@ -6054,6 +6054,7 @@ class KVMTopologyMap {
                 nodes.push({
                     id: brId,
                     name: br.name,
+                    ip: br.ip || 'No IP',
                     type: 'network',
                     color: '#38bdf8'
                 });
@@ -6187,6 +6188,14 @@ class KVMTopologyMap {
 
         this.nodes.forEach(node => {
             const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            group.style.cursor = 'pointer';
+            group.setAttribute('data-node-id', node.id);
+
+            // Tooltip (Hover)
+            const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+            title.textContent = `${node.name}\nIP: ${node.ip || 'N/A'}`;
+            group.appendChild(title);
+
             const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             circle.setAttribute('cx', node.x);
             circle.setAttribute('cy', node.y);
@@ -6195,12 +6204,25 @@ class KVMTopologyMap {
             circle.setAttribute('stroke', node.color);
             circle.setAttribute('stroke-width', '2');
 
+            // IP Label (Initially hidden, shown on click)
+            const ipLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            ipLabel.setAttribute('x', node.x);
+            ipLabel.setAttribute('y', node.y - (node.type === 'container' ? 20 : 30));
+            ipLabel.setAttribute('text-anchor', 'middle');
+            ipLabel.setAttribute('fill', '#facc15'); // Contrast color
+            ipLabel.setAttribute('font-size', '10px');
+            ipLabel.setAttribute('font-weight', 'bold');
+            ipLabel.style.display = 'none';
+            ipLabel.style.pointerEvents = 'none';
+            ipLabel.textContent = node.ip || '';
+
             const foSize = node.type === 'container' ? 24 : 32;
             const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
             fo.setAttribute('x', node.x - foSize / 2);
             fo.setAttribute('y', node.y - foSize / 2);
             fo.setAttribute('width', foSize);
             fo.setAttribute('height', foSize);
+            fo.style.pointerEvents = 'none';
 
             let icon = 'fa-solid fa-desktop';
             if (node.type === 'internet') icon = 'fa-solid fa-globe';
@@ -6212,18 +6234,31 @@ class KVMTopologyMap {
                 </div>
             `;
 
-            const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            label.setAttribute('x', node.x);
-            label.setAttribute('y', node.y + (node.type === 'container' ? 30 : 40));
-            label.setAttribute('text-anchor', 'middle');
-            label.setAttribute('fill', 'var(--text-primary)');
-            label.setAttribute('font-size', '10px');
-            label.style.pointerEvents = 'none';
-            label.textContent = node.name;
+            const nameLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            nameLabel.setAttribute('x', node.x);
+            nameLabel.setAttribute('y', node.y + (node.type === 'container' ? 30 : 40));
+            nameLabel.setAttribute('text-anchor', 'middle');
+            nameLabel.setAttribute('fill', 'var(--text-primary)');
+            nameLabel.setAttribute('font-size', '10px');
+            nameLabel.style.pointerEvents = 'none';
+            nameLabel.textContent = node.name;
+
+            // Click interaction
+            group.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isVisible = ipLabel.style.display !== 'none';
+                ipLabel.style.display = isVisible ? 'none' : 'block';
+
+                // Optional: Auto-hide after 5 seconds
+                if (!isVisible) {
+                    setTimeout(() => { ipLabel.style.display = 'none'; }, 5000);
+                }
+            });
 
             group.appendChild(circle);
             group.appendChild(fo);
-            group.appendChild(label);
+            group.appendChild(nameLabel);
+            group.appendChild(ipLabel);
             nodesGroup.appendChild(group);
         });
     }

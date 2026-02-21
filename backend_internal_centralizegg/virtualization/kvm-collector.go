@@ -28,6 +28,7 @@ type DiskStat struct {
 type BridgeStat struct {
 	Name   string `json:"name"`
 	Status string `json:"status"`
+	IP     string `json:"ip"`
 	NetRX  uint64 `json:"net_rx"`
 	NetTX  uint64 `json:"net_tx"`
 }
@@ -386,22 +387,23 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 	sessionBridges, err := sshClient.NewSession()
 	if err == nil {
 		defer sessionBridges.Close()
-		// Get Bridge and Interface names, status, RX bytes, and TX bytes
+		// Get Bridge and Interface names, status, RX bytes, and TX bytes, plus IP
 		// Capturing bridges (br, virbr) AND physical interfaces (eth, enp, eno, bond, ib) to ensure graph shows data
-		cmd := `awk -F: '/(br|virbr|eth|enp|eno|bond|ib)/ {iface=$1; gsub(/ /, "", iface); cmd="cat /sys/class/net/"iface"/operstate 2>/dev/null"; cmd | getline status; close(cmd); if(status == "") status="unknown"; print iface, status, $2, $10}' /proc/net/dev`
+		cmd := `awk -F: '/(br|virbr|eth|enp|eno|bond|ib)/ {iface=$1; gsub(/ /, "", iface); cmd="cat /sys/class/net/"iface"/operstate 2>/dev/null"; cmd | getline status; close(cmd); if(status == "") status="unknown"; cmd2="ip -4 -o addr show "iface" 2>/dev/null | awk \"{print \\$4}\" | cut -d/ -f1 | head -n1"; cmd2 | getline ip; close(cmd2); if(ip == "") ip="No IP"; print iface, status, ip, $2, $10}' /proc/net/dev`
 		brOutput, err := sessionBridges.Output(cmd)
 		if err == nil {
 			output := string(brOutput)
 			lines := strings.Split(strings.TrimSpace(output), "\n")
 			for _, line := range lines {
 				parts := strings.Fields(line)
-				if len(parts) >= 4 {
+				if len(parts) >= 5 {
 					var rx, tx uint64
-					fmt.Sscanf(parts[2], "%d", &rx)
-					fmt.Sscanf(parts[3], "%d", &tx)
+					fmt.Sscanf(parts[3], "%d", &rx)
+					fmt.Sscanf(parts[4], "%d", &tx)
 					bridges = append(bridges, BridgeStat{
 						Name:   parts[0],
 						Status: parts[1],
+						IP:     parts[2],
 						NetRX:  rx,
 						NetTX:  tx,
 					})
