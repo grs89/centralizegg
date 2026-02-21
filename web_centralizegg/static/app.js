@@ -632,6 +632,37 @@ document.addEventListener('click', (e) => {
     }
 });
 
+// --- Theme Toggle Logic ---
+function initTheme() {
+    const themeBtn = document.getElementById('theme-toggle-btn');
+    const themeIcon = document.getElementById('theme-icon');
+    if (!themeBtn || !themeIcon) return;
+
+    // Load saved theme or default to dark
+    const savedTheme = localStorage.getItem('centralizegg_theme') || 'dark';
+
+    function applyTheme(theme) {
+        if (theme === 'light') {
+            document.body.classList.add('light-theme');
+            themeIcon.className = 'fa-solid fa-sun';
+        } else {
+            document.body.classList.remove('light-theme');
+            themeIcon.className = 'fa-solid fa-moon';
+        }
+    }
+
+    applyTheme(savedTheme);
+
+    themeBtn.addEventListener('click', () => {
+        const isLight = document.body.classList.contains('light-theme');
+        const newTheme = isLight ? 'dark' : 'light';
+        localStorage.setItem('centralizegg_theme', newTheme);
+        applyTheme(newTheme);
+    });
+}
+initTheme();
+// --------------------------
+
 function updateSuggestionSelection(items) {
     items.forEach((item, index) => {
         if (index === state.selectedSuggestionIndex) {

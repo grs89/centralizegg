@@ -22,6 +22,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.2.1"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 </head>
 
 <body>
@@ -49,6 +50,11 @@
 
 
             <div class="controls" style="display:flex; gap:15px; align-items:center;">
+                <!-- Theme Toggle -->
+                <button id="theme-toggle-btn" class="nav-config-btn" title="Alternar Modo Oscuro/Claro">
+                    <i class="fa-solid fa-moon" id="theme-icon"></i>
+                </button>
+
                 <button id="nala-ia-btn" class="nala-btn" title="analiza tus problemas con IA">
                     <i class="fa-solid fa-wand-magic-sparkles"></i> Nala IA
                 </button>
@@ -228,35 +234,74 @@
                             alertas operativas.</p>
                     </div>
 
-                    <div class="summary-grid" id="summary-health-grid"
-                        style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;">
-                        <!-- Health cards injected via JS -->
-                        <div style="grid-column: 1 / -1; text-align: center; padding: 100px; opacity: 0.5;">
-                            <i class="fa-solid fa-circle-notch fa-spin"
-                                style="font-size: 3rem; color: var(--accent-color); margin-bottom: 20px; display: block;"></i>
-                            Cargando estado de salud...
-                        </div>
-                    </div>
+                    <div class="summary-grid" id="summary-dashboard-widgets"
+                        style="display: flex; flex-direction: column; gap: 30px;">
 
-                    <div class="alerts-section glass-panel"
-                        style="margin-top: 40px; padding: 30px; border-radius: 20px;">
-                        <div
-                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
-                            <h3 style="font-size: 1.3rem; font-weight: 700;">
-                                <i class="fa-solid fa-triangle-exclamation"
-                                    style="color: #f59e0b; margin-right: 10px;"></i>
-                                Feed de Alertas & Eventos
-                            </h3>
-                            <span class="badge"
-                                style="background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border);">Últimas
-                                24h</span>
-                        </div>
-                        <div id="summary-alerts-list" class="alerts-list">
-                            <!-- Alerts injected via JS -->
-                            <div style="text-align: center; padding: 40px; opacity: 0.4;">
-                                No hay alertas críticas pendientes.
+                        <!-- Widget: Health Grid -->
+                        <div class="dashboard-widget glass-panel" data-widget-id="health-grid"
+                            style="border-radius: 20px; padding: 25px;">
+                            <div class="widget-header"
+                                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; cursor: move;">
+                                <h3 style="font-size: 1.3rem; font-weight: 700; margin: 0;">
+                                    <i class="fa-solid fa-grip-vertical"
+                                        style="color: var(--text-secondary); margin-right: 15px; opacity: 0.5;"></i>
+                                    <i class="fa-solid fa-heart-pulse"
+                                        style="color: var(--success); margin-right: 10px;"></i>
+                                    Estado de Sistemas
+                                </h3>
+                            </div>
+                            <div id="summary-health-grid"
+                                style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;">
+                                <div style="grid-column: 1 / -1; text-align: center; padding: 50px; opacity: 0.5;">
+                                    <i class="fa-solid fa-circle-notch fa-spin"
+                                        style="font-size: 3rem; color: var(--accent-color); margin-bottom: 20px; display: block;"></i>
+                                    Cargando estado de salud...
+                                </div>
                             </div>
                         </div>
+
+                        <!-- Widget: Network Traffic (Placeholder for now) -->
+                        <div class="dashboard-widget glass-panel" data-widget-id="network-traffic"
+                            style="border-radius: 20px; padding: 25px;">
+                            <div class="widget-header"
+                                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; cursor: move;">
+                                <h3 style="font-size: 1.3rem; font-weight: 700; margin: 0;">
+                                    <i class="fa-solid fa-grip-vertical"
+                                        style="color: var(--text-secondary); margin-right: 15px; opacity: 0.5;"></i>
+                                    <i class="fa-solid fa-network-wired"
+                                        style="color: var(--accent-color); margin-right: 10px;"></i>
+                                    Tráfico Global Combinado
+                                </h3>
+                            </div>
+                            <div id="network-sparkline-render-area"
+                                style="height: 150px; display: flex; align-items: center; justify-content: center; opacity: 0.3; border: 1px dashed var(--glass-border); border-radius: 10px;">
+                                <span>Sparkline Chart Render Area</span>
+                            </div>
+                        </div>
+
+                        <!-- Widget: Alerts -->
+                        <div class="dashboard-widget glass-panel" data-widget-id="alerts-feed"
+                            style="border-radius: 20px; padding: 25px;">
+                            <div class="widget-header"
+                                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; cursor: move;">
+                                <h3 style="font-size: 1.3rem; font-weight: 700; margin: 0;">
+                                    <i class="fa-solid fa-grip-vertical"
+                                        style="color: var(--text-secondary); margin-right: 15px; opacity: 0.5;"></i>
+                                    <i class="fa-solid fa-triangle-exclamation"
+                                        style="color: #f59e0b; margin-right: 10px;"></i>
+                                    Feed de Alertas & Eventos
+                                </h3>
+                                <span class="badge"
+                                    style="background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border);">Últimas
+                                    24h</span>
+                            </div>
+                            <div id="summary-alerts-list" class="alerts-list">
+                                <div style="text-align: center; padding: 40px; opacity: 0.4;">
+                                    No hay alertas críticas pendientes.
+                                </div>
+                            </div>
+                        </div>
+
                     </div>
                 </section>
             </div>
