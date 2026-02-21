@@ -3967,10 +3967,15 @@ async function fetchHostLogsDB(category) {
 
         content.innerHTML = filteredLogs.map(l => {
             const date = new Date(l.timestamp).toLocaleString();
-            return `<div class="log-line">
-                <span class="log-timestamp">[${date}]</span>
-                <span class="log-info">[Server ID: ${l.server_id}]</span>
-                <span class="log-message">${escapeHtml(l.message)}</span>
+            return `<div class="log-line" style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 4px; position: relative;">
+                <div style="flex: 1; display: flex;">
+                    <span class="log-timestamp" style="margin-right: 10px; color: #6ee7b7;">[${date}]</span>
+                    <span class="log-info" style="margin-right: 10px; color: #60a5fa;">[KVM-${l.server_id}]</span>
+                    <span class="log-message" style="color: rgba(255,255,255,0.9);">${escapeHtml(l.message)}</span>
+                </div>
+                <button class="nala-inline-btn" onclick="analyzeLogWithNala('${escapeHtml(l.message).replace(/'/g, "\\'")}')" style="background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); color: #c084fc; border-radius: 4px; padding: 2px 8px; cursor: pointer; transition: all 0.2s; font-size: 0.75rem; display: flex; align-items: center; gap: 5px; opacity: 0.6; flex-shrink: 0;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6" title="Analizar con Nala IA">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                </button>
             </div>`;
         }).join('');
     } catch (e) {
@@ -4079,11 +4084,17 @@ async function fetchAppLogs() {
             else if (l.level === 'DEBUG') levelClass = 'log-debug';
 
             return `
-                <div class="log-line ${levelClass}" style="margin-bottom: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; display: flex;">
-                    <span style="color: #6ee7b7; white-space: nowrap; margin-right: 10px;">[${date}]</span>
-                    <span style="color: ${l.level === 'ERROR' ? '#f87171' : l.level === 'WARNING' ? '#fbbf24' : '#60a5fa'}; font-weight: bold; width: 60px; display: inline-block;">${l.level}</span>
-                    <span style="color: #c084fc; margin-right: 10px; white-space: nowrap;">[${l.module}]</span>
-                    <span style="color: rgba(255,255,255,0.9); word-break: break-all;">${l.message}</span>
+                <div class="log-line ${levelClass}" style="margin-bottom: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; display: flex; position: relative;">
+                    <div style="flex: 1; display:flex;">
+                        <span style="color: #6ee7b7; white-space: nowrap; margin-right: 10px;">[${date}]</span>
+                        <span style="color: ${l.level === 'ERROR' ? '#f87171' : l.level === 'WARNING' ? '#fbbf24' : '#60a5fa'}; font-weight: bold; width: 60px; display: inline-block;">${l.level}</span>
+                        <span style="color: #c084fc; margin-right: 10px; white-space: nowrap;">[${l.module}]</span>
+                        <span style="color: rgba(255,255,255,0.9); word-break: break-all;">${l.message}</span>
+                    </div>
+                    ${l.level === 'ERROR' || l.level === 'WARNING' ? `
+                    <button class="nala-inline-btn" onclick="analyzeLogWithNala('${escapeHtml(l.message).replace(/'/g, "\\'")}')" style="background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); color: #c084fc; border-radius: 4px; padding: 2px 8px; cursor: pointer; transition: all 0.2s; font-size: 0.75rem; display: flex; align-items: center; gap: 5px; opacity: 0.6;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6" title="Analizar con Nala IA">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    </button>` : ''}
                 </div>
             `;
         }).join('');
@@ -4148,6 +4159,10 @@ function renderSettingsSidebar() {
         `).join('') + `
         <div style="flex: 1;"></div>
         <div style="border-top: 1px solid var(--glass-border); margin-top: 15px; padding-top: 15px;">
+            <div class="settings-menu-item ${settingsCurrentCategory === 'nala-ia' ? 'active' : ''}" data-category="nala-ia">
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                <span>Nala IA</span>
+            </div>
             <div class="settings-menu-item ${settingsCurrentCategory === 'status' ? 'active' : ''}" data-category="status">
                 <i class="fa-solid fa-circle-info"></i>
                 <span>Status</span>
@@ -4164,6 +4179,8 @@ function renderSettingsSidebar() {
             const category = item.dataset.category;
             if (category === 'status') {
                 showStatusPanel();
+            } else if (category === 'nala-ia') {
+                showNalaIAPanel();
             } else {
                 loadSettingsCategory(category);
             }
@@ -4350,6 +4367,73 @@ async function renderSettingsServerList() {
     } catch (e) {
         listContainer.innerHTML = '<div style="grid-column: 1/-1; color: var(--danger); text-align: center;">Error al cargar servidores.</div>';
     }
+}
+
+// Nala IA Panel
+async function showNalaIAPanel() {
+    settingsCurrentCategory = 'nala-ia';
+    const contentWrapper = document.querySelector('.settings-content-wrapper');
+    if (!contentWrapper) return;
+
+    // Update title
+    const titleEl = document.getElementById('settings-category-title');
+    if (titleEl) {
+        titleEl.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Configuración de Nala IA';
+    }
+
+    // Hide description paragraph
+    const descEl = titleEl?.parentElement?.querySelector('p');
+    if (descEl) descEl.style.display = 'none';
+
+    const formContainer = document.querySelector('.settings-form-container');
+    const managedServers = document.querySelector('.settings-managed-servers');
+    if (managedServers) managedServers.style.display = 'none';
+
+    if (formContainer) {
+        // Load config from localStorage
+        const nalaConfig = JSON.parse(localStorage.getItem('centralizegg_nala_config') || '{}');
+        const provider = nalaConfig.provider || 'gemini';
+        const apiKey = nalaConfig.apiKey || '';
+        const baseUrl = nalaConfig.baseUrl || '';
+
+        formContainer.innerHTML = `
+            <form id="nala-ia-settings-form" onsubmit="saveNalaIAConfig(event)">
+                <div class="settings-form-grid">
+                    <div class="settings-input-group">
+                        <label>Proveedor LLM</label>
+                        <select id="nala-provider" class="glass-input">
+                            <option value="gemini" ${provider === 'gemini' ? 'selected' : ''}>Google Gemini</option>
+                            <option value="chatgpt" ${provider === 'chatgpt' ? 'selected' : ''}>OpenAI ChatGPT</option>
+                            <option value="anthropic" ${provider === 'anthropic' ? 'selected' : ''}>Anthropic Claude</option>
+                            <option value="ollama" ${provider === 'ollama' ? 'selected' : ''}>Ollama (Local)</option>
+                            <option value="lmstudio" ${provider === 'lmstudio' ? 'selected' : ''}>LM Studio (Local)</option>
+                        </select>
+                    </div>
+                    <div class="settings-input-group">
+                        <label>API Key (Vacío si es local)</label>
+                        <input type="password" id="nala-api-key" placeholder="••••••••••••••••" value="${apiKey}" class="glass-input">
+                    </div>
+                    <div class="settings-input-group" style="grid-column: 1 / -1;">
+                        <label>URL Base (Custom o Local, ej. http://localhost:11434/api)</label>
+                        <input type="text" id="nala-base-url" placeholder="Opcional. Por defecto usa la URL oficial del proveedor." value="${baseUrl}" class="glass-input">
+                    </div>
+                </div>
+                <div class="form-actions" style="display:flex; gap:12px; margin-top: 25px;">
+                    <button type="submit" class="primary-btn" style="padding: 12px 25px;"><i class="fa-solid fa-save"></i> Guardar Configuración</button>
+                </div>
+            </form>
+        `;
+    }
+}
+
+window.saveNalaIAConfig = function (event) {
+    if (event) event.preventDefault();
+    const provider = document.getElementById('nala-provider').value;
+    const apiKey = document.getElementById('nala-api-key').value;
+    const baseUrl = document.getElementById('nala-base-url').value;
+
+    localStorage.setItem('centralizegg_nala_config', JSON.stringify({ provider, apiKey, baseUrl }));
+    alert('Configuración de Nala IA guardada correctamente.');
 }
 
 // Show Status Panel
@@ -9469,6 +9553,90 @@ async function showContainerLogs(type, serverId, containerId, containerName, cpu
         contentEl.style.color = '#ef4444';
     }
 }
+
+// --- Nala IA Integration ---
+function initNalaIA() {
+    const nalaBtn = document.getElementById('nala-ia-btn');
+    if (nalaBtn) {
+        nalaBtn.addEventListener('click', () => {
+            const modal = document.getElementById('nala-modal');
+            if (modal) modal.classList.add('active');
+        });
+    }
+}
+
+window.analyzeLogWithNala = function (logMessage) {
+    const modal = document.getElementById('nala-modal');
+    if (modal) {
+        modal.classList.add('active');
+        const input = document.getElementById('nala-prompt-input');
+        if (input) {
+            input.value = `Analiza este log y dime qué significa o cómo solucionarlo: "${logMessage}"`;
+            input.focus();
+        }
+    }
+}
+
+window.submitNalaPrompt = async function (event) {
+    event.preventDefault();
+    const input = document.getElementById('nala-prompt-input');
+    const history = document.getElementById('nala-chat-history');
+    if (!input || !history || !input.value.trim()) return;
+
+    const userText = input.value.trim();
+    input.value = '';
+
+    // Append user message
+    history.innerHTML += `
+        <div style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255,255,255,0.1); padding: 15px; border-radius: 12px; align-self: flex-end; max-width: 85%;">
+            <strong style="color: #60a5fa;"><i class="fa-solid fa-user"></i> Tú</strong>
+            <div style="margin-top: 5px; color: var(--text-primary); font-size: 0.9rem;">${escapeHtml(userText)}</div>
+        </div>
+    `;
+    history.parentElement.scrollTop = history.parentElement.scrollHeight;
+
+    // Load config to show which LLM is being used
+    const nalaConfig = JSON.parse(localStorage.getItem('centralizegg_nala_config') || '{}');
+    const provider = nalaConfig.provider || 'gemini';
+
+    // Append loading bubble
+    const loadingId = 'nala-loading-' + Date.now();
+    history.innerHTML += `
+        <div id="${loadingId}" style="background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.2); left: 0; padding: 15px; border-radius: 12px; color: var(--text-secondary); width: fit-content;">
+            <i class="fa-solid fa-circle-notch fa-spin" style="color: #c084fc;"></i> Analizando con ${provider}...
+        </div>
+    `;
+    history.parentElement.scrollTop = history.parentElement.scrollHeight;
+
+    // Simulate LLM API Call (Mock implementation for MVP)
+    setTimeout(() => {
+        const loadingEl = document.getElementById(loadingId);
+        if (loadingEl) loadingEl.remove();
+
+        // Very basic mock response recognizing some keywords
+        let mockResponse = `He analizado tu solicitud utilizando **${provider}**.<br><br>`;
+        if (userText.toLowerCase().includes('error') || userText.toLowerCase().includes('fail')) {
+            mockResponse += `Este error parece indicar un fallo de conexión o permisos insuficientes. Te sugiero revisar los credenciales o el estado del servicio objetivo.`;
+        } else if (userText.toLowerCase().includes('timeout')) {
+            mockResponse += `Se ha detectado un "Timeout". Esto suele deberse a problemas de red subyacentes o a que el servicio está bajo mucha carga. Verifica la latencia y los logs del firewall.`;
+        } else {
+            mockResponse += `No se detectan errores críticos evidentes en tu texto. Si tienes un problema específico, pega la línea exacta del error.`;
+        }
+
+        history.innerHTML += `
+            <div style="background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.2); left: 0; padding: 15px; border-radius: 12px; color: var(--text-primary); max-width: 90%;">
+                <strong style="color: #c084fc;"><i class="fa-solid fa-wand-magic-sparkles"></i> Nala IA</strong>
+                <div style="margin-top: 5px; font-size: 0.9rem; line-height: 1.5;">${mockResponse}</div>
+            </div>
+        `;
+        history.parentElement.scrollTop = history.parentElement.scrollHeight;
+    }, 1500);
+}
+
+// Call init when script loads
+document.addEventListener('DOMContentLoaded', () => {
+    initNalaIA();
+});
 
 // Expose NetworkMap globally for history-map.js
 if (typeof NetworkMap !== 'undefined') {

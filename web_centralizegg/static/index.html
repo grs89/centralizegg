@@ -864,6 +864,42 @@
                     </div>
                 </div>
             </div>
+            <!-- Nala IA Modal -->
+            <div id="nala-modal" class="modal slide-over">
+                <div class="slide-over-content glass-panel"
+                    style="width: 500px; display: flex; flex-direction: column;">
+                    <div class="modal-header"
+                        style="padding-bottom: 20px; border-bottom: 1px solid var(--glass-border); display: flex; justify-content: space-between; align-items: center;">
+                        <h2 style="display: flex; align-items: center; gap: 10px; color: #c084fc; margin: 0;">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i> Nala IA
+                        </h2>
+                        <button class="close-modal"
+                            onclick="document.getElementById('nala-modal').classList.remove('active')"
+                            style="background: none; border: none; color: inherit; cursor: pointer; font-size: 1.5rem; padding: 0;"
+                            aria-label="Cerrar Modal Nala IA">&times;</button>
+                    </div>
+                    <div id="nala-body" class="modal-body doc-body-scroll"
+                        style="flex: 1; padding: 20px; display: flex; flex-direction: column; gap: 15px; overflow-y: auto;">
+                        <div id="nala-chat-history" style="flex: 1; display: flex; flex-direction: column; gap: 15px;">
+                            <div
+                                style="background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.2); left: 0; padding: 15px; border-radius: 12px; color: var(--text-primary); font-size: 0.9rem;">
+                                👋 Hola, soy Nala. Selecciona un log del visor o pregúntame algo sobre tu
+                                infraestructura.
+                            </div>
+                        </div>
+                    </div>
+                    <div style="padding: 20px; border-top: 1px solid var(--glass-border); background: rgba(0,0,0,0.2);">
+                        <form id="nala-chat-form" onsubmit="submitNalaPrompt(event)" style="display: flex; gap: 10px;">
+                            <input type="text" id="nala-prompt-input" class="glass-input"
+                                placeholder="Pregunta sobre este error..."
+                                style="flex: 1; border-radius: 20px; padding: 12px 20px;" autocomplete="off">
+                            <button type="submit" class="primary-btn"
+                                style="border-radius: 50%; width: 45px; height: 45px; padding: 0; display: flex; align-items: center; justify-content: center; background: #c084fc; border-color: #a855f7; color: white;"><i
+                                    class="fa-solid fa-paper-plane"></i></button>
+                        </form>
+                    </div>
+                </div>
+            </div>
         </main>
 
     </div>
