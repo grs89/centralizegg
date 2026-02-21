@@ -676,6 +676,7 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 		var diskRead, diskWrite, netRX, netTX uint64
 		var diskCapacity, diskAllocation uint64
 		var diskStats []DiskStat
+		var networkData = "[]"
 
 		xmlData, err := l.DomainGetXMLDesc(dom, 0)
 		if err == nil {
@@ -702,16 +703,38 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 						}
 					}
 				}
-				for _, iface := range doc.FindElements("//devices/interface/target") {
-					dev := iface.SelectAttrValue("dev", "")
+				var netInbound []map[string]string
+				for _, iface := range doc.FindElements("//devices/interface") {
+					target := iface.SelectElement("target")
+					source := iface.SelectElement("source")
+
+					dev := ""
+					if target != nil {
+						dev = target.SelectAttrValue("dev", "")
+					}
+
+					bridge := ""
+					if source != nil {
+						bridge = source.SelectAttrValue("bridge", "")
+					}
+
 					if dev != "" {
 						rxB, _, _, _, txB, _, _, _, err := l.DomainInterfaceStats(dom, dev)
 						if err == nil {
 							netRX += uint64(rxB)
 							netTX += uint64(txB)
 						}
+
+						if bridge != "" {
+							netInbound = append(netInbound, map[string]string{
+								"interface": dev,
+								"bridge":    bridge,
+							})
+						}
 					}
 				}
+				netData, _ := json.Marshal(netInbound)
+				networkData = string(netData)
 			}
 		}
 
@@ -813,6 +836,7 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 			OSName:         osName,
 			GuestIPs:       guestIPs,
 			GuestFSUsage:   guestFSUsage,
+			NetworkData:    networkData,
 			HostID:         hostID,
 		}
 

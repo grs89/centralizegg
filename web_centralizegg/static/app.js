@@ -6013,6 +6013,224 @@ class DockerTopologyMap {
 
 window.DockerTopologyMap = DockerTopologyMap;
 
+class KVMTopologyMap {
+    constructor(containerId) {
+        this.containerId = containerId;
+        this.svg = null;
+        this.width = 0;
+        this.height = 400;
+        this.nodes = [];
+        this.links = [];
+    }
+
+    render(bridgesJSON, vms = []) {
+        const container = document.getElementById(this.containerId);
+        if (!container) return;
+
+        this.width = container.clientWidth || 800;
+
+        let bridges = [];
+        try {
+            bridges = (bridgesJSON && bridgesJSON !== "null") ? JSON.parse(bridgesJSON) : [];
+            if (!Array.isArray(bridges)) bridges = [];
+        } catch (e) {
+            console.error('[KVMTopologyMap] Error parsing bridges:', e);
+            bridges = [];
+        }
+
+        const nodes = [];
+        const links = [];
+        const nodeMap = new Map();
+
+        // 1. Internet Node
+        const internetId = 'internet-node';
+        nodes.push({ id: internetId, name: 'Internet', type: 'internet', color: '#ff4d4d' });
+        nodeMap.set(internetId, 0);
+
+        // 2. Bridges
+        bridges.forEach(br => {
+            const brId = `br-${br.name}`;
+            if (!nodeMap.has(brId)) {
+                nodes.push({
+                    id: brId,
+                    name: br.name,
+                    type: 'network',
+                    color: '#38bdf8'
+                });
+                nodeMap.set(brId, nodes.length - 1);
+                links.push({ source: brId, target: internetId, type: 'external' });
+            }
+        });
+
+        // 3. VMs
+        vms.forEach(vm => {
+            const vmNodeId = `vm-${vm.id}`;
+            let networkData = [];
+            try {
+                networkData = (vm.network_data && vm.network_data !== "null") ? JSON.parse(vm.network_data) : [];
+                if (!Array.isArray(networkData)) networkData = [];
+            } catch (e) {
+                console.error("Error parsing VM network data", e);
+                networkData = [];
+            }
+
+            if (!nodeMap.has(vmNodeId)) {
+                nodes.push({
+                    id: vmNodeId,
+                    name: vm.name,
+                    type: 'container',
+                    color: vm.state.toLowerCase() === 'running' ? '#4ade80' : '#94a3b8',
+                    ip: vm.guest_ips ? vm.guest_ips.split(' ')[0] : 'Sin IP'
+                });
+                nodeMap.set(vmNodeId, nodes.length - 1);
+
+                networkData.forEach(net => {
+                    const brId = `br-${net.bridge}`;
+                    if (nodeMap.has(brId)) {
+                        links.push({ source: vmNodeId, target: brId, type: 'internal' });
+                    }
+                });
+            }
+        });
+
+        this.nodes = nodes;
+        this.links = links;
+
+        this.draw();
+    }
+
+    draw() {
+        const container = document.getElementById(this.containerId);
+        if (!container) return;
+
+        const maxNodesInCol = Math.max(
+            this.nodes.filter(n => n.type === 'internet').length,
+            this.nodes.filter(n => n.type === 'network').length,
+            this.nodes.filter(n => n.type === 'container').length
+        );
+        this.height = Math.max(300, maxNodesInCol * 70);
+
+        container.innerHTML = `
+            <div style="margin-bottom: 15px; display: flex; align-items: center; justify-content: space-between; padding: 0 5px;">
+                <div style="font-size: 0.9rem; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                    <i class="fa-solid fa-diagram-project" style="color: var(--accent-color);"></i>
+                    Mapa de Red KVM
+                </div>
+                <div style="font-size: 0.7rem; color: var(--text-secondary); opacity: 0.7;">
+                    Puentes de Host & Máquinas Virtuales
+                </div>
+            </div>
+            <div class="topology-map-wrapper" style="background: rgba(0,0,0,0.2); border: 1px solid var(--glass-border); border-radius: 12px; overflow: hidden; position: relative;">
+                <svg width="100%" height="${this.height}" style="background: transparent; overflow: visible;">
+                    <defs>
+                        <filter id="kvm-glow" x="-50%" y="-50%" width="200%" height="200%">
+                            <feGaussianBlur stdDeviation="4" result="blur" />
+                            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                        </filter>
+                    </defs>
+                    <g id="kvm-links-group"></g>
+                    <g id="kvm-nodes-group"></g>
+                </svg>
+            </div>
+        `;
+
+        const linksGroup = container.querySelector('#kvm-links-group');
+        const nodesGroup = container.querySelector('#kvm-nodes-group');
+        const centerY = this.height / 2;
+
+        const internetNode = this.nodes.find(n => n.type === 'internet');
+        if (internetNode) {
+            internetNode.x = 60;
+            internetNode.y = centerY;
+        }
+
+        const networkNodes = this.nodes.filter(n => n.type === 'network');
+        const netYSpacing = networkNodes.length > 1 ? (this.height - 100) / (networkNodes.length - 1) : 0;
+        const netStartY = networkNodes.length > 1 ? 50 : centerY;
+        networkNodes.forEach((node, i) => {
+            node.x = this.width * 0.4;
+            node.y = netStartY + (i * netYSpacing);
+        });
+
+        const containerNodes = this.nodes.filter(n => n.type === 'container');
+        const contYSpacing = containerNodes.length > 1 ? (this.height - 60) / (containerNodes.length - 1) : 0;
+        const contStartY = containerNodes.length > 1 ? 30 : centerY;
+        containerNodes.forEach((node, i) => {
+            node.x = this.width - 80;
+            node.y = contStartY + (i * contYSpacing);
+        });
+
+        this.links.forEach(link => {
+            const source = this.nodes.find(n => n.id === link.source);
+            const target = this.nodes.find(n => n.id === link.target);
+            if (source && target) {
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', source.x);
+                line.setAttribute('y1', source.y);
+                line.setAttribute('x2', target.x);
+                line.setAttribute('y2', target.y);
+                line.setAttribute('stroke', link.type === 'external' ? 'rgba(255,100,100,0.5)' : 'rgba(56,189,248,0.4)');
+                line.setAttribute('stroke-width', link.type === 'external' ? '2' : '1.5');
+                line.setAttribute('stroke-dasharray', '5,5');
+
+                const anim = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+                anim.setAttribute('attributeName', 'stroke-dashoffset');
+                anim.setAttribute('from', '20');
+                anim.setAttribute('to', '0');
+                anim.setAttribute('dur', '2s');
+                anim.setAttribute('repeatCount', 'indefinite');
+                line.appendChild(anim);
+
+                linksGroup.appendChild(line);
+            }
+        });
+
+        this.nodes.forEach(node => {
+            const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('cx', node.x);
+            circle.setAttribute('cy', node.y);
+            circle.setAttribute('r', node.type === 'container' ? 14 : 22);
+            circle.setAttribute('fill', 'rgba(0,0,0,0.6)');
+            circle.setAttribute('stroke', node.color);
+            circle.setAttribute('stroke-width', '2');
+
+            const foSize = node.type === 'container' ? 24 : 32;
+            const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+            fo.setAttribute('x', node.x - foSize / 2);
+            fo.setAttribute('y', node.y - foSize / 2);
+            fo.setAttribute('width', foSize);
+            fo.setAttribute('height', foSize);
+
+            let icon = 'fa-solid fa-desktop';
+            if (node.type === 'internet') icon = 'fa-solid fa-globe';
+            else if (node.type === 'network') icon = 'fa-solid fa-bridge';
+
+            fo.innerHTML = `
+                <div xmlns="http://www.w3.org/1999/xhtml" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: ${node.color}; font-size: ${foSize * 0.6}px;">
+                    <i class="${icon}"></i>
+                </div>
+            `;
+
+            const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            label.setAttribute('x', node.x);
+            label.setAttribute('y', node.y + (node.type === 'container' ? 30 : 40));
+            label.setAttribute('text-anchor', 'middle');
+            label.setAttribute('fill', 'var(--text-primary)');
+            label.setAttribute('font-size', '10px');
+            label.style.pointerEvents = 'none';
+            label.textContent = node.name;
+
+            group.appendChild(circle);
+            group.appendChild(fo);
+            group.appendChild(label);
+            nodesGroup.appendChild(group);
+        });
+    }
+}
+
+window.KVMTopologyMap = KVMTopologyMap;
+
 class KubernetesTopologyMap {
     constructor(containerId) {
         this.containerId = containerId;

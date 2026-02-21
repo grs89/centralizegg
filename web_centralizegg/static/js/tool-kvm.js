@@ -449,6 +449,13 @@ function renderVMs() {
         const vmListEl = document.getElementById('kvm-vm-list-rows');
         if (vmListEl) vmListEl.innerHTML = renderVMRows();
 
+        if (window.KVMTopologyMap) {
+            if (!window.currentKVMMap) {
+                window.currentKVMMap = new KVMTopologyMap('kvm-network-map-container');
+            }
+            window.currentKVMMap.render(host.bridge_interfaces, filteredVMs);
+        }
+
         return;
     }
 
@@ -553,6 +560,7 @@ function renderVMs() {
                 </div>
                 <div id="kvm-vm-list-rows" style="display: flex; flex-direction: column; gap: 4px;">${renderVMRows()}</div>
             </div>
+            <div id="kvm-network-map-container" style="width: 100%; margin-top: 25px; margin-bottom: 25px;"></div>
             <div style="width: 100%; margin-top: 30px;">
                 <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); width: 100%; display: flex; align-items: center; gap: 10px;">
                     <i class="fa-solid fa-terminal" style="color: var(--accent-color); font-size: 1rem;"></i>Eventos del host
@@ -560,5 +568,12 @@ function renderVMs() {
                 <div id="kvm-host-events">${renderHostEventsUI()}</div>
             </div>
         `;
+
+        if (window.KVMTopologyMap) {
+            if (!window.currentKVMMap) {
+                window.currentKVMMap = new KVMTopologyMap('kvm-network-map-container');
+            }
+            window.currentKVMMap.render(host.bridge_interfaces, filteredVMs);
+        }
     }
 }
