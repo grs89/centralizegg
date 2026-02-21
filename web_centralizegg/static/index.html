@@ -85,10 +85,6 @@
                     title="Panel General de Salud">
                     <i class="fa-solid fa-gauge-high"></i>
                 </button>
-                <button class="dropbtn nav-control-btn" data-tool="history" id="history-btn"
-                    title="Historial Global y Mapa">
-                    <i class="fa-solid fa-clock-rotate-left"></i>
-                </button>
                 <!-- Virtualización Dropdown -->
                 <div class="dropdown">
                     <button class="dropbtn" id="virtualization-btn">
@@ -160,10 +156,16 @@
                     </div>
                 </div>
 
-                <button class="dropbtn nav-control-btn" data-tool="logs" id="log-btn"
-                    title="Visor de Logs en Tiempo Real" style="margin-left: auto;">
-                    <i class="fa-solid fa-file-lines"></i>
-                </button>
+                <div style="margin-left: auto; display: flex; gap: 10px;">
+                    <button class="dropbtn nav-control-btn" data-tool="history" id="history-btn"
+                        title="Historial Global y Mapa">
+                        <i class="fa-solid fa-clock-rotate-left"></i>
+                    </button>
+                    <button class="dropbtn nav-control-btn" data-tool="logs" id="log-btn"
+                        title="Visor de Logs en Tiempo Real">
+                        <i class="fa-solid fa-file-lines"></i>
+                    </button>
+                </div>
                 <button id="config-btn" class="nav-config-btn" data-tool="settings" title="Configuración de servidores">
                     <i class="fa-solid fa-gear"></i>
                 </button>
