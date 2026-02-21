@@ -4158,7 +4158,7 @@ function renderSettingsSidebar() {
         </div>
         `).join('') + `
         <div style="flex: 1;"></div>
-        <div style="border-top: 1px solid var(--glass-border); margin-top: 15px; padding-top: 15px;">
+        <div style="border-top: 1px solid var(--glass-border); margin-top: 15px; padding-top: 15px; display: flex; flex-direction: column; gap: 8px;">
             <div class="settings-menu-item ${settingsCurrentCategory === 'nala-ia' ? 'active' : ''}" data-category="nala-ia">
                 <i class="fa-solid fa-wand-magic-sparkles"></i>
                 <span>Nala IA</span>
