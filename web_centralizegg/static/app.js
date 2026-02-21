@@ -1265,8 +1265,6 @@ function renderDockerHostDetails(hostId) {
                             <i class="fa-solid fa-pen-to-square" style="font-size: 0.7rem;"></i> ${formatBytes(c.block_out, 0)}
                         </div>
                     </div>
-
-                    </div>
                 </div>
             `;
         }).join('');
@@ -1488,7 +1486,7 @@ function renderDockerHostDetails(hostId) {
                     <div style="text-align: right;">Disco</div>
                 </div>
 
-                <div id="docker-containers-list" style="display: flex; flex-direction: column;">
+                <div id="docker-containers-list" style="display: flex; flex-direction: column; overflow-x: auto; min-width: 0;">
                     ${renderContainerRows()}
                 </div>
 
@@ -3202,8 +3200,6 @@ function renderPodmanHostDetails(hostId) {
                     <i class="fa-solid fa-pen-to-square" style="font-size: 0.7rem;"></i> ${formatBytes(c.block_out, 0)}
                 </div>
             </div>
-
-            </div>
         </div>
         `;
         }).join('');
@@ -3421,7 +3417,7 @@ function renderPodmanHostDetails(hostId) {
                     <div style="text-align: right;">Disco</div>
                 </div>
 
-                <div id="podman-containers-list" style="display: flex; flex-direction: column;">
+                <div id="podman-containers-list" style="display: flex; flex-direction: column; overflow-x: auto; min-width: 0;">
                     ${renderContainerRows()}
                 </div>
 
