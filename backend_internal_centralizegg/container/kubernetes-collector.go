@@ -146,6 +146,9 @@ func (kc *KubernetesCollector) collectOne(s data_centralizegg.GenericServer) err
 		defer client.Close()
 	}
 
+	// Fetch logs and save to DB
+	kc.storeHostLogs(client, isLocal, s.ID)
+
 	kubeconfigPath := ""
 	if s.KubeconfigContent != "" {
 		if isLocal {
@@ -1466,4 +1469,24 @@ func (kc *KubernetesCollector) GetHostLogs(id int64) (string, error) {
 	defer client.Close()
 
 	return kc.runCommand(client, "journalctl -n 50 --no-pager", "")
+}
+
+func (kc *KubernetesCollector) storeHostLogs(client *ssh.Client, isLocal bool, serverID int64) {
+	var output string
+	var err error
+
+	if isLocal {
+		output, err = kc.runLocalCommand("journalctl -n 10 --no-pager")
+	} else if client != nil {
+		output, err = kc.runCommand(client, "journalctl -n 10 --no-pager", "")
+	}
+
+	if err != nil {
+		return
+	}
+
+	logs := strings.TrimSpace(output)
+	if logs != "" {
+		_ = kc.DB.SaveHostLog("kubernetes", serverID, logs)
+	}
 }

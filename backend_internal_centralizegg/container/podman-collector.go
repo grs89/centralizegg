@@ -76,6 +76,9 @@ func (pc *PodmanCollector) collectOne(s data_centralizegg.GenericServer) error {
 	}
 	defer client.Close()
 
+	// Fetch logs and save to DB
+	pc.storeHostLogs(client, s.ID)
+
 	// 1. Host Info
 	hostnameRaw, _ := pc.runCommand(client, "hostname")
 	hostname := strings.TrimSpace(hostnameRaw)
@@ -825,6 +828,24 @@ func (pc *PodmanCollector) runCommand(client *ssh.Client, cmd string) (string, e
 
 	output, err := session.CombinedOutput(cmd)
 	return string(output), err
+}
+
+func (pc *PodmanCollector) storeHostLogs(client *ssh.Client, serverID int64) {
+	session, err := client.NewSession()
+	if err != nil {
+		return
+	}
+	defer session.Close()
+
+	output, err := session.CombinedOutput("journalctl -n 10 --no-pager")
+	if err != nil {
+		return
+	}
+
+	logs := strings.TrimSpace(string(output))
+	if logs != "" {
+		_ = pc.DB.SaveHostLog("podman", serverID, logs)
+	}
 }
 
 func (pc *PodmanCollector) parsePercent(s string) float64 {

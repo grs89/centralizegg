@@ -21,6 +21,17 @@ type AppLog struct {
 	Message   string    `json:"message"`
 }
 
+type HostLog struct {
+	ID        int64     `json:"id"`
+	ServerID  int64     `json:"server_id"`
+	Timestamp time.Time `json:"timestamp"`
+	Message   string    `json:"message"`
+}
+
+type RetentionSetting struct {
+	Days int `json:"days"`
+}
+
 type ServerMetric struct {
 	ID             int64     `json:"id"`
 	ServerID       int64     `json:"server_id"`
@@ -1131,6 +1142,30 @@ func ensureSchema(db *sql.DB) {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_app_logs_timestamp ON logging.app_logs (timestamp DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_app_logs_message_trgm ON logging.app_logs USING gin (message gin_trgm_ops)`,
+		// Retention Settings Table
+		`CREATE TABLE IF NOT EXISTS logging.retention_settings (
+			id SERIAL PRIMARY KEY,
+			days INT DEFAULT 7,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`,
+		// Host Logs Tables by Category
+		`CREATE TABLE IF NOT EXISTS logging.host_logs_kvm (id SERIAL PRIMARY KEY, server_id INT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP, message TEXT)`,
+		`CREATE TABLE IF NOT EXISTS logging.host_logs_docker (id SERIAL PRIMARY KEY, server_id INT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP, message TEXT)`,
+		`CREATE TABLE IF NOT EXISTS logging.host_logs_podman (id SERIAL PRIMARY KEY, server_id INT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP, message TEXT)`,
+		`CREATE TABLE IF NOT EXISTS logging.host_logs_kubernetes (id SERIAL PRIMARY KEY, server_id INT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP, message TEXT)`,
+		`CREATE TABLE IF NOT EXISTS logging.host_logs_pfsense (id SERIAL PRIMARY KEY, server_id INT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP, message TEXT)`,
+		`CREATE TABLE IF NOT EXISTS logging.host_logs_proxmox (id SERIAL PRIMARY KEY, server_id INT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP, message TEXT)`,
+		`CREATE TABLE IF NOT EXISTS logging.host_logs_nas (id SERIAL PRIMARY KEY, server_id INT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP, message TEXT)`,
+		`CREATE TABLE IF NOT EXISTS logging.host_logs_ceph (id SERIAL PRIMARY KEY, server_id INT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP, message TEXT)`,
+		// Indexes for Host Logs
+		`CREATE INDEX IF NOT EXISTS idx_host_logs_kvm_sid_ts ON logging.host_logs_kvm (server_id, timestamp DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_host_logs_docker_sid_ts ON logging.host_logs_docker (server_id, timestamp DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_host_logs_podman_sid_ts ON logging.host_logs_podman (server_id, timestamp DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_host_logs_kubernetes_sid_ts ON logging.host_logs_kubernetes (server_id, timestamp DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_host_logs_pfsense_sid_ts ON logging.host_logs_pfsense (server_id, timestamp DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_host_logs_proxmox_sid_ts ON logging.host_logs_proxmox (server_id, timestamp DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_host_logs_nas_sid_ts ON logging.host_logs_nas (server_id, timestamp DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_host_logs_ceph_sid_ts ON logging.host_logs_ceph (server_id, timestamp DESC)`,
 		`CREATE TABLE IF NOT EXISTS storage.ceph_hosts (
 			id SERIAL PRIMARY KEY,
 			server_id INT REFERENCES storage.ceph_servers(id) ON DELETE CASCADE,
@@ -1905,6 +1940,84 @@ func (d *DB) GetAppLogs(limit int, filter string) ([]AppLog, error) {
 		logs = append(logs, l)
 	}
 	return logs, nil
+}
+
+// SaveHostLog inserts a log entry into the category-specific table
+func (d *DB) SaveHostLog(category string, serverID int64, message string) error {
+	tableName := fmt.Sprintf("logging.host_logs_%s", category)
+	query := fmt.Sprintf("INSERT INTO %s (server_id, message) VALUES ($1, $2)", tableName)
+	_, err := d.Conn.Exec(query, serverID, message)
+	return err
+}
+
+// GetHostLogsFromDB retrieves persisted host logs for a specific server
+func (d *DB) GetHostLogsFromDB(category string, serverID int64, limit int) ([]HostLog, error) {
+	tableName := fmt.Sprintf("logging.host_logs_%s", category)
+	query := fmt.Sprintf("SELECT id, server_id, timestamp, message FROM %s WHERE server_id = $1 ORDER BY timestamp DESC LIMIT $2", tableName)
+
+	rows, err := d.Conn.Query(query, serverID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var logs []HostLog
+	for rows.Next() {
+		var l HostLog
+		if err := rows.Scan(&l.ID, &l.ServerID, &l.Timestamp, &l.Message); err != nil {
+			return nil, err
+		}
+		logs = append(logs, l)
+	}
+	return logs, nil
+}
+
+// GetRetentionDays returns the configured retention days
+func (d *DB) GetRetentionDays() (int, error) {
+	var days int
+	err := d.Conn.QueryRow("SELECT days FROM logging.retention_settings ORDER BY id DESC LIMIT 1").Scan(&days)
+	if err == sql.ErrNoRows {
+		// Initialize with default 7 days if not set
+		_, _ = d.Conn.Exec("INSERT INTO logging.retention_settings (days) VALUES (7)")
+		return 7, nil
+	}
+	return days, err
+}
+
+// UpdateRetentionPolicy updates the retention period
+func (d *DB) UpdateRetentionPolicy(days int) error {
+	_, err := d.Conn.Exec("INSERT INTO logging.retention_settings (days) VALUES ($1)", days)
+	return err
+}
+
+// CleanupAllLogs removes ALL host logs and app logs (per user request "limpiar (eliminar los datos)")
+func (d *DB) CleanupAllLogs() error {
+	categories := []string{"kvm", "docker", "podman", "kubernetes", "pfsense", "proxmox", "nas", "ceph"}
+	for _, cat := range categories {
+		tableName := fmt.Sprintf("logging.host_logs_%s", cat)
+		_, _ = d.Conn.Exec(fmt.Sprintf("TRUNCATE TABLE %s", tableName))
+	}
+	_, err := d.Conn.Exec("TRUNCATE TABLE logging.app_logs")
+	return err
+}
+
+// CleanupExpiredLogs removes logs older than configured retention period
+func (d *DB) CleanupExpiredLogs() error {
+	days, err := d.GetRetentionDays()
+	if err != nil {
+		return err
+	}
+
+	interval := fmt.Sprintf("%d days", days)
+	categories := []string{"kvm", "docker", "podman", "kubernetes", "pfsense", "proxmox", "nas", "ceph"}
+
+	for _, cat := range categories {
+		tableName := fmt.Sprintf("logging.host_logs_%s", cat)
+		_, _ = d.Conn.Exec(fmt.Sprintf("DELETE FROM %s WHERE timestamp < NOW() - INTERVAL '%s'", tableName, interval))
+	}
+
+	_, err = d.Conn.Exec("DELETE FROM logging.app_logs WHERE timestamp < NOW() - INTERVAL '" + interval + "'")
+	return err
 }
 
 func (d *DB) GetHistory(limit int) ([]InfrastructureHistoryEvent, error) {

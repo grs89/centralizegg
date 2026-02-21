@@ -70,6 +70,9 @@ func (nc *NasCollector) collectOne(s data_centralizegg.GenericServer) error {
 	}
 	defer client.Close()
 
+	// Fetch logs and save to DB
+	nc.storeHostLogs(client, s.ID)
+
 	// 1. Get System Info
 	hostname, _ := nc.runCommand(client, "hostname")
 	uname, _ := nc.runCommand(client, "uname -srm")
@@ -278,6 +281,24 @@ func (nc *NasCollector) runCommand(client *ssh.Client, cmd string) (string, erro
 
 	output, err := session.CombinedOutput(cmd)
 	return string(output), err
+}
+
+func (nc *NasCollector) storeHostLogs(client *ssh.Client, serverID int64) {
+	session, err := client.NewSession()
+	if err != nil {
+		return
+	}
+	defer session.Close()
+
+	output, err := session.CombinedOutput("journalctl -n 10 --no-pager")
+	if err != nil {
+		return
+	}
+
+	logs := strings.TrimSpace(string(output))
+	if logs != "" {
+		_ = nc.DB.SaveHostLog("nas", serverID, logs)
+	}
 }
 func (nc *NasCollector) GetHostLogs(id int64) (string, error) {
 	servers, err := nc.DB.GetGenericServers("nas")

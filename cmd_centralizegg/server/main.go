@@ -263,7 +263,76 @@ func main() {
 		json.NewEncoder(w).Encode(metrics)
 	}).Methods("GET")
 
-	// Host Logs API
+	// Retention APIs
+	r.HandleFunc("/api/logging/retention", func(w http.ResponseWriter, r *http.Request) {
+		days, err := db.GetRetentionDays()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]int{"days": days})
+	}).Methods("GET")
+
+	r.HandleFunc("/api/logging/retention", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Days int `json:"days"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := db.UpdateRetentionPolicy(req.Days); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}).Methods("POST")
+
+	r.HandleFunc("/api/logging/cleanup", func(w http.ResponseWriter, r *http.Request) {
+		if err := db.CleanupAllLogs(); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}).Methods("POST")
+
+	r.HandleFunc("/api/logging/host-logs", func(w http.ResponseWriter, r *http.Request) {
+		category := r.URL.Query().Get("category")
+		serverIDStr := r.URL.Query().Get("serverId")
+		limitStr := r.URL.Query().Get("limit")
+
+		if category == "" || serverIDStr == "" {
+			http.Error(w, "missing category or serverId", http.StatusBadRequest)
+			return
+		}
+
+		serverID, err := strconv.ParseInt(serverIDStr, 10, 64)
+		if err != nil {
+			http.Error(w, "invalid serverId", http.StatusBadRequest)
+			return
+		}
+
+		limit := 100
+		if limitStr != "" {
+			if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+				limit = l
+			}
+		}
+
+		logs, err := db.GetHostLogsFromDB(category, serverID, limit)
+		if err != nil {
+			http.Error(w, "failed to get host logs", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"logs": logs,
+		})
+	}).Methods("GET")
+
+	// Host Logs API (Live fetch via SSH)
+
 	r.HandleFunc("/api/hosts/{category}/{id}/logs", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		category := vars["category"]
@@ -909,5 +978,17 @@ func main() {
 	}
 
 	log.Println("Server running on :8080")
+
+	// Start Log Cleanup Goroutine (every 12 hours)
+	go func() {
+		ticker := time.NewTicker(12 * time.Hour)
+		for range ticker.C {
+			log.Println("[Cleanup] Running expired logs cleanup...")
+			if err := db.CleanupExpiredLogs(); err != nil {
+				log.Printf("[Cleanup] Error: %v", err)
+			}
+		}
+	}()
+
 	log.Fatal(srv.ListenAndServe())
 }

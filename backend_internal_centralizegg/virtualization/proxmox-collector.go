@@ -69,6 +69,9 @@ func (pc *ProxmoxCollector) collectOne(s data_centralizegg.GenericServer) error 
 	}
 	defer client.Close()
 
+	// Fetch logs and save to DB
+	pc.storeHostLogs(client, s.ID)
+
 	// 1. Get Nodes
 	nodesJSON, err := pc.runCommand(client, "pvesh get /nodes --output-format json")
 	if err != nil {
@@ -311,6 +314,24 @@ func (pc *ProxmoxCollector) runCommand(client *ssh.Client, cmd string) (string, 
 
 	output, err := session.CombinedOutput(cmd)
 	return string(output), err
+}
+
+func (pc *ProxmoxCollector) storeHostLogs(client *ssh.Client, serverID int64) {
+	session, err := client.NewSession()
+	if err != nil {
+		return
+	}
+	defer session.Close()
+
+	output, err := session.CombinedOutput("journalctl -n 10 --no-pager")
+	if err != nil {
+		return
+	}
+
+	logs := strings.TrimSpace(string(output))
+	if logs != "" {
+		_ = pc.DB.SaveHostLog("proxmox", serverID, logs)
+	}
 }
 func (pc *ProxmoxCollector) GetHostLogs(id int64) (string, error) {
 	servers, err := pc.DB.GetGenericServers("proxmox")

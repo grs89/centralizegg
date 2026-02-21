@@ -70,6 +70,9 @@ func (cc *CephCollector) collectOne(s data_centralizegg.GenericServer) error {
 	}
 	defer client.Close()
 
+	// Fetch logs and save to DB
+	cc.storeHostLogs(client, s.ID)
+
 	// 1. Get System Info
 	hostname, _ := cc.runCommand(client, "hostname")
 	uname, _ := cc.runCommand(client, "uname -srm")
@@ -241,6 +244,24 @@ func (cc *CephCollector) runCommand(client *ssh.Client, cmd string) (string, err
 
 	output, err := session.CombinedOutput(cmd)
 	return string(output), err
+}
+
+func (cc *CephCollector) storeHostLogs(client *ssh.Client, serverID int64) {
+	session, err := client.NewSession()
+	if err != nil {
+		return
+	}
+	defer session.Close()
+
+	output, err := session.CombinedOutput("journalctl -n 10 --no-pager")
+	if err != nil {
+		return
+	}
+
+	logs := strings.TrimSpace(string(output))
+	if logs != "" {
+		_ = cc.DB.SaveHostLog("ceph", serverID, logs)
+	}
 }
 func (cc *CephCollector) GetHostLogs(id int64) (string, error) {
 	servers, err := cc.DB.GetGenericServers("ceph")

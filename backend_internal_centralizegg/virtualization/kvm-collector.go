@@ -141,6 +141,9 @@ func (mc *MultiCollector) collectOne(s data_centralizegg.KVMServer) error {
 	}
 	defer l.Disconnect()
 
+	// Fetch logs and save to DB
+	mc.storeHostLogs(sshClient, s.ID)
+
 	hostBytes, err := l.ConnectGetHostname()
 	hostName := s.Name
 	if err == nil {
@@ -906,6 +909,26 @@ func (mc *MultiCollector) runCommand(client *ssh.Client, cmd string) (string, er
 
 	output, err := session.CombinedOutput(cmd)
 	return string(output), err
+}
+
+func (mc *MultiCollector) storeHostLogs(client *ssh.Client, serverID int64) {
+	session, err := client.NewSession()
+	if err != nil {
+		return
+	}
+	defer session.Close()
+
+	// Fetch last 10 lines to keep it light
+	output, err := session.CombinedOutput("journalctl -n 10 --no-pager")
+	if err != nil {
+		return
+	}
+
+	logs := strings.TrimSpace(string(output))
+	if logs != "" {
+		// Save to DB
+		_ = mc.DB.SaveHostLog("kvm", serverID, logs)
+	}
 }
 
 func (mc *MultiCollector) getSSHClient(s data_centralizegg.KVMServer) (*ssh.Client, error) {

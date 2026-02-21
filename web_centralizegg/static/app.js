@@ -3859,11 +3859,24 @@ function renderLogsSidebar() {
                 <input type="text" id="logs-search-input" placeholder="Filtrar logs..." style="background: none; border: none; color: white; outline: none; width: 100%; font-size: 0.9rem;">
             </div>
         </div>
-        <div style="margin-top: 10px;">
-            <div class="settings-menu-item active" data-category="all">
+        <div style="padding: 10px;">
+            <button class="secondary-btn" onclick="openRetentionModal()" style="width: 100%; display: flex; justify-content: center; gap: 8px; padding: 10px;">
+                <i class="fa-solid fa-clock-rotate-left"></i> Políticas de Retención
+            </button>
+        </div>
+        <div style="margin-top: 10px;" id="logs-categories-list">
+            <div class="settings-menu-item active" data-category="all" onclick="selectLogCategory('all')">
                 <i class="fa-solid fa-list-ul"></i>
-                <span>Todos los Logs</span>
+                <span>App Logs (Centralizegg)</span>
             </div>
+            <div class="settings-menu-item" data-category="kvm" onclick="selectLogCategory('kvm')"><i class="fa-solid fa-server"></i><span>KVM Logs</span></div>
+            <div class="settings-menu-item" data-category="docker" onclick="selectLogCategory('docker')"><i class="fa-brands fa-docker"></i><span>Docker Logs</span></div>
+            <div class="settings-menu-item" data-category="podman" onclick="selectLogCategory('podman')"><i class="fa-solid fa-otter"></i><span>Podman Logs</span></div>
+            <div class="settings-menu-item" data-category="kubernetes" onclick="selectLogCategory('kubernetes')"><i class="fa-solid fa-dharmachakra"></i><span>Kubernetes Logs</span></div>
+            <div class="settings-menu-item" data-category="pfsense" onclick="selectLogCategory('pfsense')"><i class="fa-brands fa-freebsd"></i><span>pfSense Logs</span></div>
+            <div class="settings-menu-item" data-category="proxmox" onclick="selectLogCategory('proxmox')"><i class="fa-solid fa-cube"></i><span>Proxmox Logs</span></div>
+            <div class="settings-menu-item" data-category="nas" onclick="selectLogCategory('nas')"><i class="fa-solid fa-hdd"></i><span>NAS Logs</span></div>
+            <div class="settings-menu-item" data-category="ceph" onclick="selectLogCategory('ceph')"><i class="fa-solid fa-cubes"></i><span>Ceph Logs</span></div>
         </div>
     `;
 
@@ -3872,10 +3885,142 @@ function renderLogsSidebar() {
         searchInput.value = logsFilter;
         searchInput.oninput = (e) => {
             logsFilter = e.target.value;
-            fetchAppLogs();
+            if (currentLogCategory === 'all') {
+                fetchAppLogs();
+            } else {
+                fetchHostLogsDB(currentLogCategory);
+            }
         };
     }
 }
+
+let currentLogCategory = 'all';
+
+window.selectLogCategory = function (cat) {
+    currentLogCategory = cat;
+    document.querySelectorAll('#logs-categories-list .settings-menu-item').forEach(el => el.classList.remove('active'));
+    document.querySelector(`#logs-categories-list .settings-menu-item[data-category="${cat}"]`).classList.add('active');
+
+    if (cat === 'all') {
+        document.getElementById('logs-category-title').innerText = "Logs de Sistema (App)";
+        fetchAppLogs();
+    } else {
+        document.getElementById('logs-category-title').innerText = `Logs de Host (${cat.toUpperCase()})`;
+        fetchHostLogsDB(cat);
+    }
+}
+
+async function fetchHostLogsDB(category) {
+    const content = document.getElementById('logs-content');
+    if (!content) return;
+
+    try {
+        const res = await fetch(`/api/logging/host-logs?category=${category}&limit=200`);
+        if (!res.ok) throw new Error('Failed to fetch host logs');
+        const data = await res.json();
+        const logs = data.logs || [];
+
+        // Apply local filtering if searching
+        const filteredLogs = logs.filter(l => {
+            if (!logsFilter) return true;
+            return (l.message || '').toLowerCase().includes(logsFilter.toLowerCase());
+        });
+
+        if (!filteredLogs || filteredLogs.length === 0) {
+            content.innerHTML = `<div style="text-align: center; padding: 40px; opacity: 0.5;">
+                <i class="fa-solid fa-inbox" style="font-size: 3rem; margin-bottom: 1rem; display: block;"></i>
+                No se encontraron logs de host para ${category} ${logsFilter ? `con filtro "${logsFilter}"` : ''}
+            </div>`;
+            return;
+        }
+
+        content.innerHTML = filteredLogs.map(l => {
+            const date = new Date(l.timestamp).toLocaleString();
+            return `<div class="log-line">
+                <span class="log-timestamp">[${date}]</span>
+                <span class="log-info">[Server ID: ${l.server_id}]</span>
+                <span class="log-message">${escapeHtml(l.message)}</span>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        content.innerHTML = `<div style="color: #f87171; padding: 20px;">Error: ${e.message}</div>`;
+    }
+}
+
+function escapeHtml(unsafe) {
+    if (!unsafe) return "";
+    return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+window.openRetentionModal = async function () {
+    const modal = document.getElementById('retention-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        try {
+            const res = await fetch('/api/logging/retention');
+            if (res.ok) {
+                const data = await res.json();
+                document.getElementById('retention-days-input').value = data.days || 7;
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    }
+}
+
+window.closeRetentionModal = function () {
+    const modal = document.getElementById('retention-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+window.saveRetentionPolicy = async function () {
+    const days = document.getElementById('retention-days-input').value;
+    try {
+        const res = await fetch('/api/logging/retention', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ days: parseInt(days) })
+        });
+        if (res.ok) {
+            alert('Política de retención guardada correctamente.');
+            closeRetentionModal();
+        } else {
+            alert('Error al guardar la política.');
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Error de conexión.');
+    }
+}
+
+window.cleanupAllLogs = async function () {
+    if (!confirm("¿Estás seguro de que quieres eliminar TODOS los logs de host persistidos y los logs de la app? Esta acción no se puede deshacer.")) {
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/logging/cleanup', {
+            method: 'POST'
+        });
+        if (res.ok) {
+            alert('Limpieza completada correctamente.');
+            closeRetentionModal();
+            if (currentLogCategory === 'all') fetchAppLogs();
+            else fetchHostLogsDB(currentLogCategory);
+        } else {
+            alert('Error durante la limpieza.');
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Error de conexión al limpiar.');
+    }
+}
+
 
 async function fetchAppLogs() {
     const content = document.getElementById('logs-content');

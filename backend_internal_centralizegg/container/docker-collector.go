@@ -75,6 +75,9 @@ func (dc *DockerCollector) collectOne(s data_centralizegg.GenericServer) error {
 	}
 	defer client.Close()
 
+	// Fetch logs and save to DB
+	dc.storeHostLogs(client, s.ID)
+
 	// 1. Host Info
 	hostnameRaw, _ := dc.runCommand(client, "hostname")
 	hostname := strings.TrimSpace(hostnameRaw)
@@ -631,6 +634,24 @@ func (dc *DockerCollector) runCommand(client *ssh.Client, cmd string) (string, e
 
 	output, err := session.CombinedOutput(cmd)
 	return string(output), err
+}
+
+func (dc *DockerCollector) storeHostLogs(client *ssh.Client, serverID int64) {
+	session, err := client.NewSession()
+	if err != nil {
+		return
+	}
+	defer session.Close()
+
+	output, err := session.CombinedOutput("journalctl -n 10 --no-pager")
+	if err != nil {
+		return
+	}
+
+	logs := strings.TrimSpace(string(output))
+	if logs != "" {
+		_ = dc.DB.SaveHostLog("docker", serverID, logs)
+	}
 }
 
 func (dc *DockerCollector) scanVulnerabilities(client *ssh.Client, image string) string {

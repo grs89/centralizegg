@@ -1,7 +1,6 @@
 package firewall
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -597,12 +596,22 @@ func runCommand(client *ssh.Client, cmd string) (string, error) {
 	}
 	defer session.Close()
 
-	var b bytes.Buffer
-	session.Stdout = &b
-	if err := session.Run(cmd); err != nil {
-		return "", err
+	output, err := session.CombinedOutput(cmd)
+	return string(output), err
+}
+
+func (pc *PfsenseCollector) storeHostLogs(client *ssh.Client, serverID int64) {
+	// pfSense uses clog for system logs, fallback to tail
+	cmd := "clog /var/log/system.log | tail -n 10 || tail -n 10 /var/log/system.log"
+	output, err := runCommand(client, cmd)
+	if err != nil {
+		return
 	}
-	return b.String(), nil
+
+	logs := strings.TrimSpace(output)
+	if logs != "" {
+		_ = pc.DB.SaveHostLog("pfsense", serverID, logs)
+	}
 }
 
 func parseTopOutput(output string) (float64, uint64, uint64, int) {
