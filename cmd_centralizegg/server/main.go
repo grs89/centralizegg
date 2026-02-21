@@ -289,6 +289,9 @@ func main() {
 		json.NewEncoder(w).Encode(metrics)
 	}).Methods("GET")
 
+	// Terminal WebSockets API
+	r.HandleFunc("/api/terminal/{category}/{serverId}/{targetName}", TerminalHandler(db))
+
 	// Retention APIs
 	r.HandleFunc("/api/logging/retention", func(w http.ResponseWriter, r *http.Request) {
 		days, err := db.GetRetentionDays()
@@ -581,6 +584,66 @@ func main() {
 		}
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	}).Methods("POST")
+
+	r.HandleFunc("/api/kvm/vms/{serverID}/{vmName}/snapshots", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		serverID, err := strconv.ParseInt(vars["serverID"], 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid Server ID", http.StatusBadRequest)
+			return
+		}
+		vmName := vars["vmName"]
+
+		if r.Method == "GET" {
+			snapsRaw, err := col.GetSnapshots(serverID, vmName)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(snapsRaw))
+		} else if r.Method == "POST" {
+			var payload struct {
+				Name        string `json:"name"`
+				Description string `json:"description"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if err := col.CreateSnapshot(serverID, vmName, payload.Name, payload.Description); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		}
+	}).Methods("GET", "POST")
+
+	r.HandleFunc("/api/kvm/vms/{serverID}/{vmName}/snapshots/{snapName}/revert", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		serverID, _ := strconv.ParseInt(vars["serverID"], 10, 64)
+		vmName := vars["vmName"]
+		snapName := vars["snapName"]
+
+		if err := col.RevertSnapshot(serverID, vmName, snapName); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	}).Methods("POST")
+
+	r.HandleFunc("/api/kvm/vms/{serverID}/{vmName}/snapshots/{snapName}", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		serverID, _ := strconv.ParseInt(vars["serverID"], 10, 64)
+		vmName := vars["vmName"]
+		snapName := vars["snapName"]
+
+		if err := col.DeleteSnapshot(serverID, vmName, snapName); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	}).Methods("DELETE")
 
 	// Kubernetes nodes API
 	r.HandleFunc("/api/kubernetes/nodes", func(w http.ResponseWriter, r *http.Request) {

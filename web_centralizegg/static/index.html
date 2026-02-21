@@ -23,6 +23,9 @@
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.2.1"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
 </head>
 
 <body>
@@ -866,6 +869,60 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Terminal Modal -->
+            <div id="terminal-modal" class="modal hidden"
+                style="position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1050; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(5px);">
+                <div class="glass-panel"
+                    style="width: 80vw; height: 80vh; max-width: 1200px; padding: 20px; border-radius: 16px; position: relative; display: flex; flex-direction: column;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h3 id="terminal-title" style="margin: 0; color: var(--accent-color);"><i
+                                class="fa-solid fa-terminal"></i> Terminal Console</h3>
+                        <button onclick="closeTerminalModal()"
+                            style="background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 1.5rem;"><i
+                                class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <div id="terminal-container"
+                        style="flex: 1; background: #000; padding: 10px; border-radius: 8px; overflow: hidden; position: relative; width: 100%;">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Snapshots Modal -->
+            <div id="snapshots-modal" class="modal hidden"
+                style="position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1050; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(5px);">
+                <div class="glass-panel"
+                    style="width: 600px; max-width: 90vw; padding: 30px; border-radius: 16px; position: relative; max-height: 80vh; overflow-y: auto;">
+                    <button onclick="closeSnapshotsModal()"
+                        style="position: absolute; right: 20px; top: 20px; background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 1.5rem;"><i
+                            class="fa-solid fa-xmark"></i></button>
+                    <h3 id="snapshots-title"
+                        style="margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
+                        <i class="fa-solid fa-camera-retro" style="color: var(--accent-color);"></i> Snapshots
+                    </h3>
+
+                    <div
+                        style="margin-bottom: 20px; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; border: 1px solid var(--glass-border);">
+                        <h4 style="margin-top: 0; margin-bottom: 10px; font-size: 0.95rem;">Crear Nuevo Snapshot</h4>
+                        <input type="text" id="snapshot-new-name" class="glass-input"
+                            placeholder="Nombre (sin espacios)" style="width: 100%; margin-bottom: 10px;">
+                        <input type="text" id="snapshot-new-desc" class="glass-input" placeholder="Descripción breve"
+                            style="width: 100%; margin-bottom: 10px;">
+                        <button class="primary-btn" onclick="createSnapshot()" style="width: 100%;"><i
+                                class="fa-solid fa-plus"></i> Crear</button>
+                    </div>
+
+                    <div>
+                        <h4 style="margin-bottom: 10px; font-size: 0.95rem;">Snapshots Existentes</h4>
+                        <div id="snapshots-list-container" style="display: flex; flex-direction: column; gap: 10px;">
+                            <div style="text-align: center; color: var(--text-secondary); padding: 20px;"><i
+                                    class="fa-solid fa-circle-notch fa-spin"></i> Cargando...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Nala IA Modal -->
             <div id="nala-modal" class="modal slide-over">
                 <div class="slide-over-content glass-panel"
@@ -907,6 +964,8 @@
     </div>
 
     <script src="history-map.js"></script>
+    <script src="js/terminal.js"></script>
+    <script src="js/snapshots.js"></script>
     <script type="module" src="app.js?v=1.1.32"></script>
 
 

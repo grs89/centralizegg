@@ -1051,3 +1051,149 @@ func (mc *MultiCollector) StopVM(serverID int64, vmName string) error {
 
 	return l.DomainDestroy(dom)
 }
+
+// Snapshot Management for KVM
+func (mc *MultiCollector) GetSnapshots(serverID int64, vmName string) (string, error) {
+	servers, err := mc.DB.GetServers()
+	if err != nil {
+		return "", err
+	}
+	var s data_centralizegg.KVMServer
+	found := false
+	for _, srv := range servers {
+		if srv.ID == serverID {
+			s = srv
+			found = true
+			break
+		}
+	}
+	if !found {
+		return "", fmt.Errorf("server not found")
+	}
+
+	_, sshClient, conn, err := mc.getLibvirtClient(s)
+	if err != nil {
+		return "", err
+	}
+	defer conn.Close()
+	defer sshClient.Close()
+
+	cmd := fmt.Sprintf("virsh snapshot-list %s", vmName)
+	output, err := mc.runCommand(sshClient, cmd)
+	if err != nil {
+		return "", err
+	}
+
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	type SnapshotInfo struct {
+		Name    string `json:"name"`
+		Created string `json:"created"`
+		State   string `json:"state"`
+	}
+	var snaps []SnapshotInfo
+	for i, line := range lines {
+		if i < 2 || strings.TrimSpace(line) == "" {
+			continue // skip header
+		}
+		parts := strings.Fields(line)
+		if len(parts) >= 3 {
+			name := parts[0]
+			var created string
+			var state string
+			if len(parts) >= 5 {
+				created = parts[1] + " " + parts[2] + " " + parts[3]
+				state = parts[4]
+			} else {
+				created = parts[1]
+				state = parts[2]
+			}
+			snaps = append(snaps, SnapshotInfo{Name: name, Created: created, State: state})
+		}
+	}
+	b, _ := json.Marshal(snaps)
+	return string(b), nil
+}
+
+func (mc *MultiCollector) CreateSnapshot(serverID int64, vmName string, snapName string, desc string) error {
+	servers, err := mc.DB.GetServers()
+	if err != nil {
+		return err
+	}
+	var s data_centralizegg.KVMServer
+	for _, srv := range servers {
+		if srv.ID == serverID {
+			s = srv
+			break
+		}
+	}
+	if s.ID == 0 {
+		return fmt.Errorf("server not found")
+	}
+
+	_, sshClient, conn, err := mc.getLibvirtClient(s)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	defer sshClient.Close()
+
+	cmd := fmt.Sprintf("virsh snapshot-create-as --domain %s --name %s --description \"%s\"", vmName, snapName, desc)
+	_, err = mc.runCommand(sshClient, cmd)
+	return err
+}
+
+func (mc *MultiCollector) RevertSnapshot(serverID int64, vmName string, snapName string) error {
+	servers, err := mc.DB.GetServers()
+	if err != nil {
+		return err
+	}
+	var s data_centralizegg.KVMServer
+	for _, srv := range servers {
+		if srv.ID == serverID {
+			s = srv
+			break
+		}
+	}
+	if s.ID == 0 {
+		return fmt.Errorf("server not found")
+	}
+
+	_, sshClient, conn, err := mc.getLibvirtClient(s)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	defer sshClient.Close()
+
+	cmd := fmt.Sprintf("virsh snapshot-revert --domain %s --snapshotname %s", vmName, snapName)
+	_, err = mc.runCommand(sshClient, cmd)
+	return err
+}
+
+func (mc *MultiCollector) DeleteSnapshot(serverID int64, vmName string, snapName string) error {
+	servers, err := mc.DB.GetServers()
+	if err != nil {
+		return err
+	}
+	var s data_centralizegg.KVMServer
+	for _, srv := range servers {
+		if srv.ID == serverID {
+			s = srv
+			break
+		}
+	}
+	if s.ID == 0 {
+		return fmt.Errorf("server not found")
+	}
+
+	_, sshClient, conn, err := mc.getLibvirtClient(s)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	defer sshClient.Close()
+
+	cmd := fmt.Sprintf("virsh snapshot-delete --domain %s --snapshotname %s", vmName, snapName)
+	_, err = mc.runCommand(sshClient, cmd)
+	return err
+}

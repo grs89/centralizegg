@@ -320,15 +320,25 @@ function renderVMs() {
             const currentTx = net.tx.length > 0 ? net.tx[net.tx.length - 1] : 0;
 
             return `
-                <div class="vm-row state-${vm.state.toLowerCase()}" style="grid-template-columns: ${gridCols};">
+                 <div class="vm-row state-${vm.state.toLowerCase()}" style = "grid-template-columns: ${gridCols};">
                     <div style="display: flex; align-items: center; gap: 12px; overflow: hidden;">
-                        <button onclick="${isRunning ? 'stopVM' : 'startVM'}(${vm.host_id}, '${vm.name}')"
-                                title="${isRunning ? 'Detener VM' : 'Iniciar VM'}"
-                                style="background: none; border: none; padding: 0; cursor: pointer; display: flex; align-items: center; transition: transform 0.2s;"
-                                onmouseover="this.style.transform='scale(1.2)'"
-                                onmouseout="this.style.transform='scale(1)'">
-                            <i class="fa-solid fa-desktop" style="color: ${isRunning ? '#4ade80' : '#ef4444'}; font-size: 1.1rem; opacity: 0.8;"></i>
-                        </button>
+                        <div style="display: flex; flex-direction: column; gap: 4px; align-items: center;">
+                            <button onclick="${isRunning ? 'stopVM' : 'startVM'}(${vm.host_id}, '${vm.name}')"
+                                    title="${isRunning ? 'Detener VM' : 'Iniciar VM'}"
+                                    style="background: none; border: none; padding: 0; cursor: pointer; display: flex; align-items: center; transition: transform 0.2s;"
+                                    onmouseover="this.style.transform='scale(1.2)'"
+                                    onmouseout="this.style.transform='scale(1)'">
+                                <i class="fa-solid fa-desktop" style="color: ${isRunning ? '#4ade80' : '#ef4444'}; font-size: 1.1rem; opacity: 0.8;"></i>
+                            </button>
+                            ${isRunning ? `
+                            <button onclick="window.openTerminal('kvm', ${vm.host_id}, '${vm.name}')" title="Abrir Terminal" style="background: none; border: none; padding: 0; cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">
+                                <i class="fa-solid fa-terminal" style="color: #38bdf8; font-size: 0.9rem; opacity: 0.8;"></i>
+                            </button>
+                            ` : ''}
+                            <button onclick="window.openSnapshotsModal('kvm', ${vm.host_id}, '${vm.name}')" title="Configurar Snapshots" style="background: none; border: none; padding: 0; cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">
+                                <i class="fa-solid fa-camera-retro" style="color: #a855f7; font-size: 0.9rem; opacity: 0.8;"></i>
+                            </button>
+                        </div>
                         <div style="display: flex; flex-direction: column; gap: 2px; overflow: hidden;">
                             <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${vm.name}">${vm.name}</span>
                             <div style="display: flex; align-items: center; gap: 8px; font-size: 0.7rem; font-weight: 400; color: var(--text-secondary); opacity: 0.8;">
@@ -406,7 +416,7 @@ function renderVMs() {
                             </div>
                         </div>
                     </div>
-                </div>`;
+                </div> `;
         }).join('');
     };
 
@@ -414,7 +424,7 @@ function renderVMs() {
         const updatesEl = document.getElementById('kvm-host-updates');
         if (updatesEl) {
             updatesEl.innerHTML = host.update_status && host.update_status.includes('Updates Available')
-                ? `<span style="color: #facc15; font-size: 0.65rem; background: rgba(234, 179, 8, 1.0); border: 1px solid rgba(234, 179, 8, 0.2); padding: 1px 6px; border-radius: 4px; font-weight: 600; display: flex; align-items: center; gap: 4px;"><i class="fa-solid fa-circle-exclamation"></i> ${host.update_status.replace('Updates Available', 'Actualizaciones')}</span>`
+                ? `< span style = "color: #facc15; font-size: 0.65rem; background: rgba(234, 179, 8, 1.0); border: 1px solid rgba(234, 179, 8, 0.2); padding: 1px 6px; border-radius: 4px; font-weight: 600; display: flex; align-items: center; gap: 4px;"> <i class="fa-solid fa-circle-exclamation"></i> ${host.update_status.replace('Updates Available', 'Actualizaciones')}</span > `
                 : '<span style="color: #4ade80; font-size: 0.65rem; background: rgba(34, 197, 94, 0.05); border: 1px solid rgba(34, 197, 94, 0.1); padding: 1px 6px; border-radius: 4px; font-weight: 600;">Actualizado</span>';
         }
 
@@ -425,12 +435,12 @@ function renderVMs() {
         if (tempContainer) {
             const temp = host.temperature;
             if (!temp || temp <= 0) {
-                tempContainer.innerHTML = `<div style="font-weight: 500; font-size: 0.9rem; color: var(--text-secondary); opacity: 0.7;">Unknown</div>`;
+                tempContainer.innerHTML = ` <div style = "font-weight: 500; font-size: 0.9rem; color: var(--text-secondary); opacity: 0.7;"> Unknown</div> `;
             } else {
                 let color = '#4ade80';
                 if (temp >= 50) color = '#facc15';
                 if (temp >= 70) color = '#ef4444';
-                tempContainer.innerHTML = `<div style="font-weight: 600; font-size: 1.1rem; color: ${color};">${temp}°C</div>`;
+                tempContainer.innerHTML = ` <div style = "font-weight: 600; font-size: 1.1rem; color: ${color};"> ${temp}°C</div> `;
             }
         }
 
@@ -462,7 +472,7 @@ function renderVMs() {
     if (hostInfoLeft) {
         hostInfoLeft.setAttribute('data-host-id', state.selectedHostId);
         hostInfoLeft.innerHTML = `
-            <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">Sistema y Red</div>
+         <div style = "font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);"> Sistema y Red</div>
             <div style="display: flex; flex-direction: column; gap: 10px;">
                 <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
@@ -500,8 +510,8 @@ function renderVMs() {
                     </div>
                 </div>
                 <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 10px;">
-                     <div style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary); margin-bottom: 8px;">Red y DNS</div>
-                     <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <div style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary); margin-bottom: 8px;">Red y DNS</div>
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
                         <div style="display: flex; justify-content: space-between; font-size: 0.8rem;">
                             <span style="color: var(--text-secondary);">IP Local:</span>
                             <span style="font-family: monospace; color: var(--accent-color);">${host.ip_address || 'N/A'}</span>
@@ -515,7 +525,7 @@ function renderVMs() {
                                 <span style="color: var(--text-secondary);">DNS:</span>
                                 <span style="font-family: monospace; color: var(--text-primary);">${dns}</span>
                             </div>`).join('')}
-                     </div>
+                    </div>
                 </div>
                 <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; margin-top: 15px; border-bottom: 1px solid rgba(255,255,255,0.1);">Interfaces Bridge</div>
                 <div id="kvm-host-bridges" style="display: flex; flex-direction: column; gap: 8px;">${renderBridgesList()}</div>
@@ -524,13 +534,13 @@ function renderVMs() {
                 <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; padding-bottom: 10px; margin-top: 15px; border-bottom: 1px solid rgba(255,255,255,0.1);">Avisos del Sistema</div>
                 <div id="kvm-host-alerts" style="display: flex; flex-direction: column; gap: 10px;">${renderKvmAlerts()}</div>
             </div>
-        `;
+    `;
     }
 
 
     if (!isHostOnline) {
         grid.innerHTML = `
-            <div style="width: 100%; padding: 20px; text-align: center; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 8px; margin-bottom: 20px;">
+         <div style = "width: 100%; padding: 20px; text-align: center; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 8px; margin-bottom: 20px;">
                 <i class="fa-solid fa-triangle-exclamation" style="color: #ef4444; font-size: 1.5rem; margin-bottom: 10px;"></i>
                 <div style="color: #fca5a5; font-weight: 500;">Host Offline</div>
                 <div style="color: rgba(255,255,255,0.6); font-size: 0.85rem; margin-top: 5px;">
@@ -550,10 +560,10 @@ function renderVMs() {
                 </div>
                 <div id="kvm-host-events">${renderHostEventsUI()}</div>
             </div>
-         `;
+    `;
     } else {
         grid.innerHTML = `
-            <div style="width: 100%; padding-bottom: 10px;">
+         <div style = "width: 100%; padding-bottom: 10px;">
                 <div style="font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); opacity: 0.9; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); width: 100%;">Máquinas Virtuales</div>
                 <div class="vm-list-header" style="display: grid; grid-template-columns: ${gridCols}; gap: 15px; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 8px;">
                     <div>Nombre / Sistema</div><div>CPU</div><div>Memoria</div><div>Disco</div><div>RED (RX/TX)</div>
@@ -567,7 +577,7 @@ function renderVMs() {
                 </div>
                 <div id="kvm-host-events">${renderHostEventsUI()}</div>
             </div>
-        `;
+    `;
 
         if (window.KVMTopologyMap) {
             if (!window.currentKVMMap) {
