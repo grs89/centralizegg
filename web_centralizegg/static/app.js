@@ -4158,7 +4158,7 @@ function renderSettingsSidebar() {
         </div>
         `).join('') + `
         <div style="flex: 1;"></div>
-        <div style="border-top: 1px solid var(--glass-border); margin-top: 15px; padding-top: 15px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="border-top: 1px solid var(--glass-border); margin-top: 15px; padding-top: 15px; display: flex; flex-direction: column; gap: 15px;">
             <div class="settings-menu-item ${settingsCurrentCategory === 'nala-ia' ? 'active' : ''}" data-category="nala-ia">
                 <i class="fa-solid fa-wand-magic-sparkles"></i>
                 <span>Nala IA</span>
@@ -9607,6 +9607,19 @@ window.submitNalaPrompt = async function (event) {
         </div>
     `;
     history.parentElement.scrollTop = history.parentElement.scrollHeight;
+
+    // Log the action to the backend
+    try {
+        fetch('/api/app-logs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                level: 'INFO',
+                module: 'NalaIA',
+                message: `Análisis solicitado usando ${provider}: "${userText.substring(0, 100)}${userText.length > 100 ? '...' : ''}"`
+            })
+        });
+    } catch (e) { console.error('Error logging Nala IA usage', e); }
 
     // Simulate LLM API Call (Mock implementation for MVP)
     setTimeout(() => {

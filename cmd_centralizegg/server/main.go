@@ -241,6 +241,32 @@ func main() {
 		json.NewEncoder(w).Encode(logs)
 	}).Methods("GET")
 
+	r.HandleFunc("/api/app-logs", func(w http.ResponseWriter, r *http.Request) {
+		var logEntry struct {
+			Level   string `json:"level"`
+			Module  string `json:"module"`
+			Message string `json:"message"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&logEntry); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if logEntry.Level == "" {
+			logEntry.Level = "INFO"
+		}
+		if logEntry.Module == "" {
+			logEntry.Module = "API"
+		}
+
+		err := db.LogAppMessage(logEntry.Level, logEntry.Module, logEntry.Message)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusCreated)
+	}).Methods("POST")
+
 	r.HandleFunc("/api/metrics/{category}/{id}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		category := vars["category"]
