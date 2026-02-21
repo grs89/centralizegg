@@ -4395,6 +4395,7 @@ async function showNalaIAPanel() {
         const provider = nalaConfig.provider || 'gemini';
         const apiKey = nalaConfig.apiKey || '';
         const baseUrl = nalaConfig.baseUrl || '';
+        const systemPrompt = nalaConfig.systemPrompt || 'Eres un experto DevOps encargado de analizar y explicar logs de infraestructura. Por favor, sé conciso y sugiere soluciones prácticas.';
 
         formContainer.innerHTML = `
             <form id="nala-ia-settings-form" onsubmit="saveNalaIAConfig(event)">
@@ -4417,9 +4418,15 @@ async function showNalaIAPanel() {
                         <label>URL Base (Custom o Local, ej. http://localhost:11434/api)</label>
                         <input type="text" id="nala-base-url" placeholder="Opcional. Por defecto usa la URL oficial del proveedor." value="${baseUrl}" class="glass-input">
                     </div>
+                    <div class="settings-input-group" style="grid-column: 1 / -1;">
+                        <label>Rol de la IA (System Prompt)</label>
+                        <textarea id="nala-system-prompt" class="glass-input" rows="4" style="resize: vertical;">${systemPrompt}</textarea>
+                    </div>
                 </div>
-                <div class="form-actions" style="display:flex; gap:12px; margin-top: 25px;">
+                <div class="form-actions" style="display:flex; gap:12px; margin-top: 25px; align-items: center;">
                     <button type="submit" class="primary-btn" style="padding: 12px 25px;"><i class="fa-solid fa-save"></i> Guardar Configuración</button>
+                    <button type="button" class="secondary-btn" style="padding: 12px 25px;" onclick="testNalaIA()"><i class="fa-solid fa-flask"></i> Probar Conexión/Prompt</button>
+                    <span id="nala-test-status" style="margin-left: 10px; color: var(--text-secondary); font-size: 0.9rem;"></span>
                 </div>
             </form>
         `;
@@ -4431,9 +4438,45 @@ window.saveNalaIAConfig = function (event) {
     const provider = document.getElementById('nala-provider').value;
     const apiKey = document.getElementById('nala-api-key').value;
     const baseUrl = document.getElementById('nala-base-url').value;
+    const systemPrompt = document.getElementById('nala-system-prompt').value;
 
-    localStorage.setItem('centralizegg_nala_config', JSON.stringify({ provider, apiKey, baseUrl }));
+    localStorage.setItem('centralizegg_nala_config', JSON.stringify({ provider, apiKey, baseUrl, systemPrompt }));
     alert('Configuración de Nala IA guardada correctamente.');
+}
+
+window.testNalaIA = async function () {
+    // 1. First save the current form state so the test uses the latest inputs
+    const provider = document.getElementById('nala-provider').value;
+    const apiKey = document.getElementById('nala-api-key').value;
+    const baseUrl = document.getElementById('nala-base-url').value;
+    const systemPrompt = document.getElementById('nala-system-prompt').value;
+    localStorage.setItem('centralizegg_nala_config', JSON.stringify({ provider, apiKey, baseUrl, systemPrompt }));
+
+    // 2. Visual feedback
+    const statusEl = document.getElementById('nala-test-status');
+    if (statusEl) {
+        statusEl.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Probando...';
+        statusEl.style.color = '#60a5fa';
+    }
+
+    // 3. Simulate API call
+    try {
+        const aiResponse = await callNalaIA(provider, apiKey, baseUrl, systemPrompt, "Hola Nala IA, responde esta solicitud únicamente con la palabra 'Conectado' para verificar tu estado.");
+        if (statusEl) {
+            statusEl.innerHTML = '<i class="fa-solid fa-check-circle"></i> ' + escapeHtml(aiResponse.substring(0, 30));
+            statusEl.style.color = '#10b981';
+
+            // Revert message after 3 seconds
+            setTimeout(() => {
+                statusEl.innerHTML = '';
+            }, 3000);
+        }
+    } catch (e) {
+        if (statusEl) {
+            statusEl.innerHTML = '<i class="fa-solid fa-times-circle"></i> Error: ' + escapeHtml(e.message.substring(0, 40));
+            statusEl.style.color = '#ef4444';
+        }
+    }
 }
 
 // Show Status Panel
@@ -9577,6 +9620,102 @@ window.analyzeLogWithNala = function (logMessage) {
     }
 }
 
+function simpleMarkdownParse(text) {
+    if (!text) return '';
+    let html = escapeHtml(text);
+    html = html.replace(/```([\s\S]*?)```/g, '<pre style="background:rgba(0,0,0,0.3);padding:10px;border-radius:5px;overflow-x:auto;"><code>$1</code></pre>');
+    html = html.replace(/`([^`]+)`/g, '<code style="background:rgba(0,0,0,0.3);padding:2px 4px;border-radius:3px;color:#fca5a5;">$1</code>');
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    return html.replace(/\n/g, '<br>');
+}
+
+async function callNalaIA(provider, apiKey, baseUrl, systemPrompt, userMessage) {
+    let url = baseUrl;
+    let headers = { 'Content-Type': 'application/json' };
+    let body = {};
+
+    if (provider === 'gemini') {
+        url = url || `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent`;
+        if (!url.includes('key=')) {
+            url += (url.includes('?') ? '&' : '?') + `key=${apiKey}`;
+        }
+        body = {
+            system_instruction: { parts: [{ text: systemPrompt }] },
+            contents: [{ parts: [{ text: userMessage }] }]
+        };
+    } else if (provider === 'chatgpt') {
+        url = url || 'https://api.openai.com/v1/chat/completions';
+        headers['Authorization'] = `Bearer ${apiKey}`;
+        body = {
+            model: 'gpt-4o',
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userMessage }
+            ]
+        };
+    } else if (provider === 'anthropic') {
+        url = url || 'https://api.anthropic.com/v1/messages';
+        headers['x-api-key'] = apiKey;
+        headers['anthropic-version'] = '2023-06-01';
+        headers['anthropic-dangerously-allow-browser'] = 'true';
+        body = {
+            model: 'claude-3-5-sonnet-20241022',
+            system: systemPrompt,
+            messages: [{ role: 'user', content: userMessage }],
+            max_tokens: 1024
+        };
+    } else if (provider === 'ollama') {
+        url = url || 'http://localhost:11434/api/chat';
+        body = {
+            model: 'llama3',
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userMessage }
+            ],
+            stream: false
+        };
+    } else if (provider === 'lmstudio') {
+        url = url || 'http://localhost:1234/v1/chat/completions';
+        if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+        body = {
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userMessage }
+            ],
+            temperature: 0.7
+        };
+    }
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+        let errText = await response.text();
+        try {
+            const errJson = JSON.parse(errText);
+            errText = errJson.error?.message || errJson.error || errText;
+        } catch (e) { }
+        throw new Error(`${response.status}: ${errText}`);
+    }
+
+    const data = await response.json();
+
+    if (provider === 'gemini') {
+        return data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sin respuesta';
+    } else if (provider === 'chatgpt' || provider === 'lmstudio') {
+        return data.choices?.[0]?.message?.content || 'Sin respuesta';
+    } else if (provider === 'anthropic') {
+        return data.content?.[0]?.text || 'Sin respuesta';
+    } else if (provider === 'ollama') {
+        return data.message?.content || 'Sin respuesta';
+    }
+    return JSON.stringify(data);
+}
+
 window.submitNalaPrompt = async function (event) {
     event.preventDefault();
     const input = document.getElementById('nala-prompt-input');
@@ -9598,6 +9737,9 @@ window.submitNalaPrompt = async function (event) {
     // Load config to show which LLM is being used
     const nalaConfig = JSON.parse(localStorage.getItem('centralizegg_nala_config') || '{}');
     const provider = nalaConfig.provider || 'gemini';
+    const apiKey = nalaConfig.apiKey || '';
+    const baseUrl = nalaConfig.baseUrl || '';
+    const systemPrompt = nalaConfig.systemPrompt || 'Eres un experto DevOps encargado de analizar y explicar logs de infraestructura. Por favor, sé conciso y sugiere soluciones prácticas.';
 
     // Append loading bubble
     const loadingId = 'nala-loading-' + Date.now();
@@ -9621,29 +9763,29 @@ window.submitNalaPrompt = async function (event) {
         });
     } catch (e) { console.error('Error logging Nala IA usage', e); }
 
-    // Simulate LLM API Call (Mock implementation for MVP)
-    setTimeout(() => {
+    try {
+        const aiResponse = await callNalaIA(provider, apiKey, baseUrl, systemPrompt, userText);
         const loadingEl = document.getElementById(loadingId);
         if (loadingEl) loadingEl.remove();
-
-        // Very basic mock response recognizing some keywords
-        let mockResponse = `He analizado tu solicitud utilizando **${provider}**.<br><br>`;
-        if (userText.toLowerCase().includes('error') || userText.toLowerCase().includes('fail')) {
-            mockResponse += `Este error parece indicar un fallo de conexión o permisos insuficientes. Te sugiero revisar los credenciales o el estado del servicio objetivo.`;
-        } else if (userText.toLowerCase().includes('timeout')) {
-            mockResponse += `Se ha detectado un "Timeout". Esto suele deberse a problemas de red subyacentes o a que el servicio está bajo mucha carga. Verifica la latencia y los logs del firewall.`;
-        } else {
-            mockResponse += `No se detectan errores críticos evidentes en tu texto. Si tienes un problema específico, pega la línea exacta del error.`;
-        }
 
         history.innerHTML += `
             <div style="background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.2); left: 0; padding: 15px; border-radius: 12px; color: var(--text-primary); max-width: 90%;">
                 <strong style="color: #c084fc;"><i class="fa-solid fa-wand-magic-sparkles"></i> Nala IA</strong>
-                <div style="margin-top: 5px; font-size: 0.9rem; line-height: 1.5;">${mockResponse}</div>
+                <div style="margin-top: 5px; font-size: 0.9rem; line-height: 1.5;">${simpleMarkdownParse(aiResponse)}</div>
             </div>
         `;
-        history.parentElement.scrollTop = history.parentElement.scrollHeight;
-    }, 1500);
+    } catch (e) {
+        const loadingEl = document.getElementById(loadingId);
+        if (loadingEl) loadingEl.remove();
+
+        history.innerHTML += `
+            <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); left: 0; padding: 15px; border-radius: 12px; color: #fca5a5; max-width: 90%;">
+                <strong style="color: #ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Error de Nala IA (${provider})</strong>
+                <div style="margin-top: 5px; font-size: 0.9rem;">${escapeHtml(e.message)}</div>
+            </div>
+        `;
+    }
+    history.parentElement.scrollTop = history.parentElement.scrollHeight;
 }
 
 // Call init when script loads
