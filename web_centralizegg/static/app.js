@@ -3842,59 +3842,96 @@ const SETTINGS_CONFIG = {
 };
 
 const LOGS_CONFIG = {
-    'kvm': { name: 'KVM (Virtualización)', icon: 'fa-solid fa-microchip', title: 'Logs de Virtualización' },
-    'proxmox': { name: 'Proxmox (Virtualización)', icon: 'fa-solid fa-server', title: 'Logs de Proxmox' },
-    'nas': { name: 'NAS (Almacenamiento)', icon: 'fa-solid fa-hdd', title: 'Logs de NAS' },
-    'ceph': { name: 'Ceph (Almacenamiento)', icon: 'fa-solid fa-cubes', title: 'Logs de Ceph' },
-    'pfsense': { name: 'Firewall (pfSense)', icon: 'fa-brands fa-freebsd', title: 'Logs de Firewall' },
-    'docker': { name: 'Docker (Contenedores)', icon: 'fa-brands fa-docker', title: 'Logs de Docker' },
-    'kubernetes': { name: 'Kubernetes (Contenedores)', icon: 'fa-solid fa-dharmachakra', title: 'Logs de Kubernetes' },
-    'podman': { name: 'Podman (Contenedores)', icon: 'fa-solid fa-otter', title: 'Logs de Podman' }
+    'all': { name: 'Todos los Logs', icon: 'fa-solid fa-list-ul', title: 'Visor Global de Logs' }
 };
+
+let logsAutoRefreshInterval = null;
+let logsFilter = '';
 
 function renderLogsSidebar() {
     const sidebar = document.getElementById('logs-sidebar');
     if (!sidebar) return;
 
-    sidebar.innerHTML = Object.entries(LOGS_CONFIG).map(([id, config]) => `
-        <div class="settings-menu-item ${id === logsCurrentCategory ? 'active' : ''}" data-category="${id}">
-            <i class="${config.icon}"></i>
-            <span>${config.name}</span>
+    sidebar.innerHTML = `
+        <div class="logs-search-container" style="padding: 10px;">
+            <div class="search-box" style="background: rgba(255,255,255,0.05); border-radius: 8px; padding: 5px 10px; display: flex; align-items: center; border: 1px solid var(--glass-border);">
+                <i class="fa-solid fa-magnifying-glass" style="opacity: 0.5; margin-right: 10px;"></i>
+                <input type="text" id="logs-search-input" placeholder="Filtrar logs..." style="background: none; border: none; color: white; outline: none; width: 100%; font-size: 0.9rem;">
+            </div>
         </div>
-        `).join('');
+        <div style="margin-top: 10px;">
+            <div class="settings-menu-item active" data-category="all">
+                <i class="fa-solid fa-list-ul"></i>
+                <span>Todos los Logs</span>
+            </div>
+        </div>
+    `;
 
-    const menuItems = sidebar.querySelectorAll('#logs-sidebar .settings-menu-item');
-    menuItems.forEach(item => {
-        item.addEventListener('click', () => {
-            menuItems.forEach(i => i.classList.remove('active'));
-            item.classList.add('active');
-            loadLogsCategory(item.dataset.category);
-        });
-    });
-}
-
-function loadLogsCategory(category) {
-    logsCurrentCategory = category;
-    const config = LOGS_CONFIG[category];
-    const title = document.getElementById('logs-category-title');
-    const content = document.getElementById('logs-content');
-
-    if (title && config) title.innerText = config.title;
-    if (content) {
-        content.innerHTML = `
-            <div style="color: #6ee7b7; margin-bottom: 5px;">[${new Date().toLocaleTimeString()}] Sistema de logs listo para ${config.name}</div>
-            <div style="opacity: 0.7;">> Esperando eventos entrantes de los colectores...</div>
-            <div style="opacity: 0.5; margin-top: 10px;">(Simulación de logs activa)</div>
-        `;
+    const searchInput = document.getElementById('logs-search-input');
+    if (searchInput) {
+        searchInput.value = logsFilter;
+        searchInput.oninput = (e) => {
+            logsFilter = e.target.value;
+            fetchAppLogs();
+        };
     }
 }
 
+async function fetchAppLogs() {
+    const content = document.getElementById('logs-content');
+    if (!content) return;
+
+    try {
+        const url = `/api/app-logs?limit=200${logsFilter ? `&filter=${encodeURIComponent(logsFilter)}` : ''}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Failed to fetch logs');
+        const logs = await res.json();
+
+        if (!logs || logs.length === 0) {
+            content.innerHTML = `<div style="text-align: center; padding: 40px; opacity: 0.5;">
+                <i class="fa-solid fa-inbox" style="font-size: 3rem; margin-bottom: 1rem; display: block;"></i>
+                No se encontraron logs ${logsFilter ? `para "${logsFilter}"` : ''}
+            </div>`;
+            return;
+        }
+
+        content.innerHTML = logs.map(l => {
+            const date = new Date(l.timestamp).toLocaleString();
+            let levelClass = 'log-info';
+            if (l.level === 'ERROR') levelClass = 'log-error';
+            else if (l.level === 'WARNING') levelClass = 'log-warn';
+            else if (l.level === 'DEBUG') levelClass = 'log-debug';
+
+            return `
+                <div class="log-line ${levelClass}" style="margin-bottom: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; display: flex;">
+                    <span style="color: #6ee7b7; white-space: nowrap; margin-right: 10px;">[${date}]</span>
+                    <span style="color: ${l.level === 'ERROR' ? '#f87171' : l.level === 'WARNING' ? '#fbbf24' : '#60a5fa'}; font-weight: bold; width: 60px; display: inline-block;">${l.level}</span>
+                    <span style="color: #c084fc; margin-right: 10px; white-space: nowrap;">[${l.module}]</span>
+                    <span style="color: rgba(255,255,255,0.9); word-break: break-all;">${l.message}</span>
+                </div>
+            `;
+        }).join('');
+    } catch (e) {
+        console.error('[Logs] Fetch error:', e);
+        content.innerHTML = `<div style="color: #f87171; padding: 20px;">Error al cargar logs: ${e.message}</div>`;
+    }
+}
+
+function loadLogsCategory(category) {
+    // Only 'all' or filtering via search input
+    fetchAppLogs();
+}
+
 function initLogs() {
-    if (logsInitialized) return;
+    if (logsInitialized) {
+        startLogsRefresh();
+        return;
+    }
     renderLogsSidebar();
     const closeBtn = document.getElementById('close-logs-btn');
     if (closeBtn) {
         closeBtn.onclick = () => {
+            stopLogsRefresh();
             window.location.hash = '';
             document.getElementById('logs-tool').classList.add('hidden');
             document.getElementById('welcome-screen').style.display = 'flex';
@@ -3902,7 +3939,20 @@ function initLogs() {
         };
     }
     logsInitialized = true;
-    loadLogsCategory('kvm');
+    fetchAppLogs();
+    startLogsRefresh();
+}
+
+function startLogsRefresh() {
+    stopLogsRefresh();
+    logsAutoRefreshInterval = setInterval(fetchAppLogs, 3000); // 3s refresh
+}
+
+function stopLogsRefresh() {
+    if (logsAutoRefreshInterval) {
+        clearInterval(logsAutoRefreshInterval);
+        logsAutoRefreshInterval = null;
+    }
 }
 
 let logsCurrentCategory = 'kvm';
@@ -4169,14 +4219,24 @@ async function showStatusPanel() {
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         };
 
+        const schemaLabels = {
+            'virtualization': 'Virtualización',
+            'firewall': 'Firewall (pfSense)',
+            'storage': 'Almacenamiento',
+            'containers': 'Contenedores',
+            'kubernetes': 'Kubernetes',
+            'logging': 'Logs de Sistema'
+        };
+
         const dbSizes = status.db_size || {};
         const maxDbSize = Math.max(...Object.values(dbSizes), 1);
         const schemaRows = Object.entries(dbSizes).map(([schema, size]) => {
             const percentage = Math.max((size / maxDbSize) * 100, 2); // min 2% for visibility
+            const label = schemaLabels[schema] || schema.charAt(0).toUpperCase() + schema.slice(1);
             return `
                 <div style="margin-bottom: 20px;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9rem;">
-                        <span style="text-transform: capitalize; font-weight: 600; color: var(--text-primary);">${schema}</span>
+                        <span style="font-weight: 600; color: var(--text-primary);">${label}</span>
                         <span style="color: var(--accent-color); font-weight: 700;">${formatBytes(size)}</span>
                     </div>
                     <div style="height: 10px; background: rgba(255,255,255,0.05); border-radius: 5px; overflow: hidden; position: relative;">

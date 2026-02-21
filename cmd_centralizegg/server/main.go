@@ -19,9 +19,12 @@ import (
 	"github.com/grs/centralizegg/backend_internal_centralizegg/container"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/data_centralizegg"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/firewall"
+	"github.com/grs/centralizegg/backend_internal_centralizegg/logger"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/storage"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/virtualization"
 )
+
+var systemLog *log.Logger
 
 const AppVersion = "1.0.1"
 
@@ -87,8 +90,10 @@ func RequestLoggerMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		next.ServeHTTP(w, r)
-		// Concise logging with latency
-		log.Printf("%s %s %v", r.Method, r.URL.Path, time.Since(start))
+		// Concise logging with latency to systemLog (Console + DB)
+		if systemLog != nil {
+			systemLog.Printf("%s %s %v", r.Method, r.URL.Path, time.Since(start))
+		}
 	})
 }
 
@@ -100,7 +105,7 @@ func updateDBStats(db *data_centralizegg.DB) {
 			return
 		}
 		newStats := make(map[string]int64)
-		schemas := []string{"virtualization", "firewall", "storage", "containers", "kubernetes"}
+		schemas := []string{"virtualization", "firewall", "storage", "containers", "kubernetes", "logging"}
 		for _, schema := range schemas {
 			var size int64
 			err := db.Conn.QueryRow(`
@@ -151,7 +156,15 @@ func main() {
 		log.Printf("Waiting for DB... (%v)", err)
 		time.Sleep(2 * time.Second)
 	}
-	log.Println("Connected to Database")
+	// Global Log Interceptor (Now only to DB to keep clean container logs for most things)
+	dbLogWriter := logger.SetupGlobalLogger(db)
+	log.SetOutput(dbLogWriter)
+
+	// Selective Console Logger (Show API calls and DB connection events in Docker logs)
+	systemLog = log.New(io.MultiWriter(os.Stderr, dbLogWriter), "", log.LstdFlags)
+
+	systemLog.Println("Connected to Database")
+	systemLog.Println("[System] Log capture system initialized (Selective Console Output)")
 
 	// Start Performance Background Jobs
 	updateDBStats(db)
@@ -207,6 +220,25 @@ func main() {
 			return
 		}
 		json.NewEncoder(w).Encode(events)
+	}).Methods("GET")
+
+	// New App Logs API with search support
+	r.HandleFunc("/api/app-logs", func(w http.ResponseWriter, r *http.Request) {
+		limitStr := r.URL.Query().Get("limit")
+		limit := 100
+		if limitStr != "" {
+			if l, err := strconv.Atoi(limitStr); err == nil {
+				limit = l
+			}
+		}
+		filter := r.URL.Query().Get("filter")
+
+		logs, err := db.GetAppLogs(limit, filter)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(logs)
 	}).Methods("GET")
 
 	r.HandleFunc("/api/metrics/{category}/{id}", func(w http.ResponseWriter, r *http.Request) {

@@ -13,6 +13,14 @@ type DB struct {
 	Conn *sql.DB
 }
 
+type AppLog struct {
+	ID        int64     `json:"id"`
+	Timestamp time.Time `json:"timestamp"`
+	Level     string    `json:"level"`
+	Module    string    `json:"module"`
+	Message   string    `json:"message"`
+}
+
 type ServerMetric struct {
 	ID             int64     `json:"id"`
 	ServerID       int64     `json:"server_id"`
@@ -521,7 +529,10 @@ func (d *DB) UpdateKubernetesCertExpiration(serverID int64, expiration time.Time
 }
 
 func ensureSchema(db *sql.DB) {
-	schemas := []string{"virtualization", "firewall", "storage", "containers", "kubernetes"}
+	// Enable pg_trgm for fast text searching in logs
+	_, _ = db.Exec("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+
+	schemas := []string{"virtualization", "firewall", "storage", "containers", "kubernetes", "logging"}
 	for _, s := range schemas {
 		_, _ = db.Exec(fmt.Sprintf("CREATE SCHEMA IF NOT EXISTS %s", s))
 	}
@@ -1111,6 +1122,15 @@ func ensureSchema(db *sql.DB) {
 			UNIQUE(host_id, name)
 		)`,
 		// Ceph Tables
+		`CREATE TABLE IF NOT EXISTS logging.app_logs (
+			id SERIAL PRIMARY KEY,
+			timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			level VARCHAR(50) NOT NULL,
+			module VARCHAR(100) NOT NULL,
+			message TEXT NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_app_logs_timestamp ON logging.app_logs (timestamp DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_app_logs_message_trgm ON logging.app_logs USING gin (message gin_trgm_ops)`,
 		`CREATE TABLE IF NOT EXISTS storage.ceph_hosts (
 			id SERIAL PRIMARY KEY,
 			server_id INT REFERENCES storage.ceph_servers(id) ON DELETE CASCADE,
@@ -1848,6 +1868,43 @@ func (d *DB) LogEvent(event InfrastructureHistoryEvent) error {
 	}
 	_, err := d.Conn.Exec(query, event.Category, event.Source, event.EventType, event.Severity, event.Message, metadata)
 	return err
+}
+
+func (d *DB) LogAppMessage(level, module, message string) error {
+	query := `INSERT INTO logging.app_logs (level, module, message) VALUES ($1, $2, $3)`
+	_, err := d.Conn.Exec(query, level, module, message)
+	return err
+}
+
+func (d *DB) GetAppLogs(limit int, filter string) ([]AppLog, error) {
+	var rows *sql.Rows
+	var err error
+
+	if filter != "" {
+		query := `SELECT id, timestamp, level, module, message FROM logging.app_logs 
+		          WHERE message ILIKE $1 OR module ILIKE $1 
+		          ORDER BY timestamp DESC LIMIT $2`
+		rows, err = d.Conn.Query(query, "%"+filter+"%", limit)
+	} else {
+		query := `SELECT id, timestamp, level, module, message FROM logging.app_logs 
+		          ORDER BY timestamp DESC LIMIT $1`
+		rows, err = d.Conn.Query(query, limit)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var logs []AppLog
+	for rows.Next() {
+		var l AppLog
+		if err := rows.Scan(&l.ID, &l.Timestamp, &l.Level, &l.Module, &l.Message); err != nil {
+			return nil, err
+		}
+		logs = append(logs, l)
+	}
+	return logs, nil
 }
 
 func (d *DB) GetHistory(limit int) ([]InfrastructureHistoryEvent, error) {
