@@ -4878,8 +4878,69 @@ async function renderUserManagementInside(container) {
                         </tbody>
                     </table>
                 </div>
+
+                <!-- LDAP Settings Section -->
+                <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--glass-border);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <div>
+                            <h3 style="margin: 0; font-size: 1.2rem; display: flex; align-items: center; gap: 10px;">
+                                <i class="fa-solid fa-server" style="color: var(--accent-color);"></i> Integración LDAP / Active Directory
+                            </h3>
+                            <p style="margin: 5px 0 0; color: var(--text-secondary); font-size: 0.9rem;">Configura la autenticación contra un directorio centralizado. Los usuarios serán creados automáticamente tras el primer acceso exitoso.</p>
+                        </div>
+                        <label class="switch tooltip-target" title="Activar/Desactivar LDAP" style="position: relative; display: inline-block; width: 50px; height: 26px;">
+                            <input type="checkbox" id="ldap-enabled" style="opacity: 0; width: 0; height: 0;" onchange="toggleLDAPForm()">
+                            <span class="slider round" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--bg-hover); transition: .4s; border-radius: 26px; border: 1px solid var(--glass-border);"></span>
+                        </label>
+                    </div>
+
+                    <div id="ldap-settings-form" class="glass-panel" style="padding: 25px; border-radius: 12px; display: none;">
+                        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-bottom: 20px;">
+                            <div class="form-group">
+                                <label style="display: block; margin-bottom: 8px; color: var(--text-secondary); font-size: 0.9rem;">Servidor LDAP (URL/IP)</label>
+                                <input type="text" id="ldap-server" placeholder="ej. ldap.midominio.com" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--glass-border); background: var(--glass-bg); color: var(--text-primary); box-sizing: border-box;">
+                            </div>
+                            <div class="form-group">
+                                <label style="display: block; margin-bottom: 8px; color: var(--text-secondary); font-size: 0.9rem;">Puerto</label>
+                                <input type="number" id="ldap-port" value="389" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--glass-border); background: var(--glass-bg); color: var(--text-primary); box-sizing: border-box;">
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 20px;">
+                            <label style="display: block; margin-bottom: 8px; color: var(--text-secondary); font-size: 0.9rem;">Base DN</label>
+                            <input type="text" id="ldap-base-dn" placeholder="ej. DC=midominio,DC=com" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--glass-border); background: var(--glass-bg); color: var(--text-primary); box-sizing: border-box;">
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                            <div class="form-group">
+                                <label style="display: block; margin-bottom: 8px; color: var(--text-secondary); font-size: 0.9rem;">Usuario Bind DN (Lectura)</label>
+                                <input type="text" id="ldap-bind-dn" placeholder="ej. CN=LdapRead,OU=ServiceAccounts,DC=midominio,DC=com" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--glass-border); background: var(--glass-bg); color: var(--text-primary); box-sizing: border-box;">
+                            </div>
+                            <div class="form-group">
+                                <label style="display: block; margin-bottom: 8px; color: var(--text-secondary); font-size: 0.9rem;">Contraseña Bind</label>
+                                <input type="password" id="ldap-bind-password" placeholder="•••••••• (dejar en blanco para no cambiar)" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--glass-border); background: var(--glass-bg); color: var(--text-primary); box-sizing: border-box;">
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 25px;">
+                            <label style="display: block; margin-bottom: 8px; color: var(--text-secondary); font-size: 0.9rem;">Filtro de Usuario</label>
+                            <input type="text" id="ldap-user-filter" placeholder="ej. (sAMAccountName=%s) o (uid=%s)" value="(sAMAccountName=%s)" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--glass-border); background: var(--glass-bg); color: var(--text-primary); box-sizing: border-box; font-family: monospace;">
+                            <small style="color: var(--text-secondary); display: block; margin-top: 5px;">El %s será reemplazado por el nombre de usuario ingresado en el login.</small>
+                        </div>
+
+                        <div style="text-align: right;">
+                            <button class="primary-btn" onclick="saveLDAPConfig()">
+                                <i class="fa-solid fa-save"></i> Guardar Configuración LDAP
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
         `;
+
+        // After rendering HTML, load LDAP settings
+        loadLDAPConfig();
+
     } catch (e) {
         console.error('[Users] Error:', e);
         container.innerHTML = `
@@ -4985,7 +5046,7 @@ window.submitNewPassword = async function () {
     }
 
     try {
-        const resp = await fetchAuthenticated(`/ api / users / ${id}/password`, {
+        const resp = await fetchAuthenticated(`/api/users/${id}/password`, {
             method: 'PUT',
             body: JSON.stringify({ password })
         });
@@ -4993,7 +5054,7 @@ window.submitNewPassword = async function () {
         closeUserPasswordModal();
         showNotification('Contraseña actualizada exitosamente', 'success');
     } catch (err) {
-        alert('Error actualizando contraseña: ' + err.message);
+        alert('Error cambiando contraseña: ' + err.message);
     }
 };
 
@@ -5009,6 +5070,79 @@ window.deleteUser = async function (id, username) {
         alert('Error eliminando usuario: ' + err.message);
     }
 };
+
+// --- LDAP Configuration Logic ---
+window.toggleLDAPForm = function () {
+    const isEnabled = document.getElementById('ldap-enabled').checked;
+    const form = document.getElementById('ldap-settings-form');
+    if (isEnabled) {
+        form.style.display = 'block';
+    } else {
+        form.style.display = 'none';
+        // Auto-save when disabling
+        saveLDAPConfig(false);
+    }
+};
+
+window.loadLDAPConfig = async function () {
+    try {
+        const resp = await fetchAuthenticated('/api/settings/ldap');
+        if (!resp.ok) return; // If 404 or error, just ignore and let default HTML be
+
+        const config = await resp.json();
+        if (config) {
+            document.getElementById('ldap-enabled').checked = config.enabled || false;
+            document.getElementById('ldap-server').value = config.server_address || '';
+            document.getElementById('ldap-port').value = config.port || 389;
+            document.getElementById('ldap-base-dn').value = config.base_dn || '';
+            document.getElementById('ldap-bind-dn').value = config.bind_dn || '';
+            document.getElementById('ldap-user-filter').value = config.user_filter || '(sAMAccountName=%s)';
+            // Do not populate bind-password as it's masked
+
+            // Trigger UI update based on enabled state
+            if (config.enabled) {
+                document.getElementById('ldap-settings-form').style.display = 'block';
+            }
+        }
+    } catch (e) {
+        console.error("Failed to load LDAP settings", e);
+    }
+};
+
+window.saveLDAPConfig = async function (forceStatus = null) {
+    const isEnabled = forceStatus !== null ? forceStatus : document.getElementById('ldap-enabled').checked;
+
+    const config = {
+        enabled: isEnabled,
+        server_address: document.getElementById('ldap-server').value.trim(),
+        port: parseInt(document.getElementById('ldap-port').value) || 389,
+        base_dn: document.getElementById('ldap-base-dn').value.trim(),
+        bind_dn: document.getElementById('ldap-bind-dn').value.trim(),
+        bind_password: document.getElementById('ldap-bind-password').value,
+        user_filter: document.getElementById('ldap-user-filter').value.trim() || '(sAMAccountName=%s)'
+    };
+
+    if (isEnabled && (!config.server_address || !config.base_dn || !config.user_filter)) {
+        alert("Servidor LDAP, Base DN y Filtro de Usuario son campos obligatorios si el servicio está habilitado.");
+        return;
+    }
+
+    try {
+        const resp = await fetchAuthenticated('/api/settings/ldap', {
+            method: 'POST',
+            body: JSON.stringify(config)
+        });
+
+        if (!resp.ok) throw new Error(await resp.text());
+        showNotification('Configuración LDAP guardada', 'success');
+
+        // Clear password field after save
+        document.getElementById('ldap-bind-password').value = '';
+    } catch (err) {
+        alert('Error guardando configuración LDAP: ' + err.message);
+    }
+};
+
 
 async function renderNotificationsInside(container) {
     container.innerHTML = `

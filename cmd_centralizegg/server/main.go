@@ -189,12 +189,56 @@ func LoginHandler(db *data_centralizegg.DB) http.HandlerFunc {
 			return
 		}
 
-		if user == nil || !auth_centralizegg.CheckPasswordHash(req.Password, user.PasswordHash) {
+		authenticated := false
+		var userRole string
+		var userID int64
+
+		// 1. Try Local Authentication first
+		if user != nil && auth_centralizegg.CheckPasswordHash(req.Password, user.PasswordHash) {
+			authenticated = true
+			userRole = user.RoleName
+			userID = user.ID
+		} else {
+			// 2. Fallback to LDAP if local auth failed (or user doesn't exist)
+			ldapConfig, err := db.GetLDAPConfig()
+			if err == nil && ldapConfig.Enabled {
+				ldapSuccess, authErr := auth_centralizegg.AuthenticateLDAP(req.Username, req.Password, ldapConfig)
+				if ldapSuccess {
+					authenticated = true
+					// Provision or fetch the user locally to get an ID and Role
+					if user == nil {
+						// Auto-provision user with default 'viewer' role
+						viewerRoleID, err := db.GetRoleIDByName("viewer")
+						if err != nil {
+							http.Error(w, "Database error: missing viewer role", http.StatusInternalServerError)
+							return
+						}
+						// Password hash could be empty or a random string since LDAP is used for auth
+						newID, err := db.CreateUser(req.Username, "", viewerRoleID)
+						if err != nil {
+							http.Error(w, "Failed to auto-provision user", http.StatusInternalServerError)
+							return
+						}
+						userID = newID
+						userRole = "viewer"
+						AuditAction(r, db, "user.auto_provision", "User", req.Username, map[string]interface{}{"user_id": userID, "source": "LDAP"})
+					} else {
+						// User exists locally, but password was wrong locally. Authenticated via LDAP.
+						userID = user.ID
+						userRole = user.RoleName
+					}
+				} else {
+					log.Printf("LDAP Auth failed for %s: %v", req.Username, authErr)
+				}
+			}
+		}
+
+		if !authenticated {
 			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 			return
 		}
 
-		token, err := auth_centralizegg.GenerateToken(user.ID, user.Username, user.RoleName)
+		token, err := auth_centralizegg.GenerateToken(userID, req.Username, userRole)
 		if err != nil {
 			http.Error(w, "Token generation error", http.StatusInternalServerError)
 			return
@@ -202,8 +246,8 @@ func LoginHandler(db *data_centralizegg.DB) http.HandlerFunc {
 
 		json.NewEncoder(w).Encode(map[string]string{
 			"token": token,
-			"role":  user.RoleName,
-			"user":  user.Username,
+			"role":  userRole,
+			"user":  req.Username,
 		})
 	}
 }
@@ -453,19 +497,58 @@ func main() {
 			http.Error(w, "Invalid input", http.StatusBadRequest)
 			return
 		}
-		hash, err := auth_centralizegg.HashPassword(req.Password) // fixed auth package reference
+		hash, err := auth_centralizegg.HashPassword(req.Password)
 		if err != nil {
 			http.Error(w, "Failed to hash password", http.StatusInternalServerError)
 			return
 		}
+
 		err = db.UpdateUserPassword(userID, hash)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+
 		AuditAction(r, db, "user.password_reset", "User", strconv.FormatInt(userID, 10), nil)
 		json.NewEncoder(w).Encode(map[string]string{"message": "Password updated successfully"})
 	}))).Methods("PUT")
+
+	// LDAP Settings API (Protected, Requires Admin role)
+	r.Handle("/api/settings/ldap", RequiresPermission("admin", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case "GET":
+			config, err := db.GetLDAPConfig()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			// Mask password when sending to frontend
+			config.BindPassword = ""
+			json.NewEncoder(w).Encode(config)
+		case "POST":
+			var req data_centralizegg.LDAPConfig
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, "Invalid input", http.StatusBadRequest)
+				return
+			}
+			// If password is not provided in update, keep the old one
+			if req.BindPassword == "" {
+				oldConfig, err := db.GetLDAPConfig()
+				if err == nil {
+					req.BindPassword = oldConfig.BindPassword
+				}
+			}
+			if err := db.UpdateLDAPConfig(req); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			AuditAction(r, db, "settings.update_ldap", "Settings", "LDAP", map[string]interface{}{"enabled": req.Enabled})
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]string{"message": "LDAP configuration updated"})
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))).Methods("GET", "POST")
 
 	r.Handle("/api/roles", RequiresPermission("admin", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		roles, err := db.GetRoles()

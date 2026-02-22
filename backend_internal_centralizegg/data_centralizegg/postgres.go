@@ -65,6 +65,16 @@ type RetentionSetting struct {
 	Days int `json:"days"`
 }
 
+type LDAPConfig struct {
+	ServerAddress string `json:"server_address"`
+	Port          int    `json:"port"`
+	BaseDN        string `json:"base_dn"`
+	BindDN        string `json:"bind_dn"`
+	BindPassword  string `json:"bind_password"`
+	UserFilter    string `json:"user_filter"`
+	Enabled       bool   `json:"enabled"`
+}
+
 type ServerMetric struct {
 	ID             int64     `json:"id"`
 	ServerID       int64     `json:"server_id"`
@@ -579,7 +589,7 @@ func ensureSchema(db *sql.DB) {
 	// Enable pg_trgm for fast text searching in logs
 	_, _ = db.Exec("CREATE EXTENSION IF NOT EXISTS pg_trgm")
 
-	schemas := []string{"virtualization", "firewall", "storage", "containers", "kubernetes", "logging", "auth"}
+	schemas := []string{"virtualization", "firewall", "storage", "containers", "kubernetes", "logging", "auth", "settings"}
 	for _, s := range schemas {
 		_, _ = db.Exec(fmt.Sprintf("CREATE SCHEMA IF NOT EXISTS %s", s))
 	}
@@ -1300,6 +1310,60 @@ func ensureSchema(db *sql.DB) {
 			log.Printf("Migration warning (query: %s): %v", q, err)
 		}
 	}
+
+	// Create LDAP Settings table (Only single row allowed via ID=1)
+	_, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS settings.ldap_config (
+			id INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+			server_address VARCHAR(255) DEFAULT '',
+			port INT DEFAULT 389,
+			base_dn VARCHAR(255) DEFAULT '',
+			bind_dn VARCHAR(255) DEFAULT '',
+			bind_password VARCHAR(255) DEFAULT '',
+			user_filter VARCHAR(255) DEFAULT '(sAMAccountName=%s)',
+			enabled BOOLEAN DEFAULT FALSE,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		log.Printf("Failed to create settings.ldap_config table: %v", err)
+	}
+}
+
+func (d *DB) GetLDAPConfig() (*LDAPConfig, error) {
+	var config LDAPConfig
+	query := `
+		SELECT server_address, port, base_dn, bind_dn, bind_password, user_filter, enabled
+		FROM settings.ldap_config
+		WHERE id = 1`
+	err := d.Conn.QueryRow(query).Scan(
+		&config.ServerAddress, &config.Port, &config.BaseDN, &config.BindDN, &config.BindPassword, &config.UserFilter, &config.Enabled,
+	)
+	if err == sql.ErrNoRows {
+		// Return empty default config if not initialized yet
+		return &LDAPConfig{Port: 389, UserFilter: "(sAMAccountName=%s)"}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &config, nil
+}
+
+func (d *DB) UpdateLDAPConfig(config LDAPConfig) error {
+	query := `
+		INSERT INTO settings.ldap_config (id, server_address, port, base_dn, bind_dn, bind_password, user_filter, enabled)
+		VALUES (1, $1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (id) DO UPDATE SET
+			server_address = EXCLUDED.server_address,
+			port = EXCLUDED.port,
+			base_dn = EXCLUDED.base_dn,
+			bind_dn = EXCLUDED.bind_dn,
+			bind_password = EXCLUDED.bind_password,
+			user_filter = EXCLUDED.user_filter,
+			enabled = EXCLUDED.enabled,
+			updated_at = CURRENT_TIMESTAMP`
+	_, err := d.Conn.Exec(query, config.ServerAddress, config.Port, config.BaseDN, config.BindDN, config.BindPassword, config.UserFilter, config.Enabled)
+	return err
 }
 
 func (d *DB) GetUserByUsername(username string) (*User, error) {
