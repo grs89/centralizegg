@@ -75,6 +75,8 @@
     - Monitoreo de nodos, VMs y Contenedores LXC.
     - Métricas de almacenamiento ZFS y Ceph (vía API).
 *   **Control de VMs KVM**: Start/Stop de máquinas virtuales directamente desde la interfaz.
+    - **Consola Web Integrada**: Acceso a terminal en vivo usando WebSockets y XTerm.js para VMs y contenedores directamente desde el dashboard.
+    - **Gestión de Snapshots**: Creación, listado, reversión y eliminación de instantáneas de VMs impulsado por Libvirt.
 *   **Visualización Multi-Disco**: Barras de uso individuales para cada disco virtual adjunto a la VM.
 *   **Mapa de Tráfico Mundial**: Visualización geográfica premium con animaciones "Flight Path" (Bezier curvos).
     - **GeoIP Proxy Integrado**: Resolución de IPs backend para privacidad y seguridad (evita Mixed Content).
@@ -109,6 +111,7 @@
     - Navegación inteligente: Al seleccionar un resultado, cambia automáticamente a la herramienta correspondiente.
 *   **Logs Unificados**: Panel lateral deslizable para ver logs de recolección de todos los sistemas en un solo lugar.
 *   **Notificaciones Audibles**: Sonido de "ping" para nuevas alertas de servidores offline.
+*   **Inyección de Contexto en Nala IA**: El asistente de IA (Nala) ahora recoge datos en tiempo real de la infraestructura (CPU, Memoria, estados) enviándolos invisibles en el prompt para dar respuestas hiper-contextualizadas.
 *   **Seguridad**: Escaneo CVE con `docker scout` y soporte para autenticación robusta (Clave/Contraseña).
 *   **Auto-refresh**: Actualización automática de datos cada 5 segundos en el frontend.
 *   **Gráficos Avanzados**:
@@ -205,6 +208,8 @@ Centralizegg/
 │       │   ├── history.js         # Lógica de historial y gráficos
 │       │   ├── summary-dashboard.js # Dashboard de salud global
 │       │   ├── tool-kvm.js        # Renderizado y control KVM
+│       │   ├── terminal.js        # Consola Web (WebSockets/XTerm.js)
+│       │   ├── snapshots.js       # Gestión de Snapshots (Libvirt)
 │       │   ├── ui-components.js   # Componentes UI reutilizables
 │       │   └── utils.js           # Utilidades (formatBytes, etc.)
 │       ├── docs/                  # Documentación embebida (HTML)
@@ -271,6 +276,8 @@ docker-compose logs -f centralizegg_app
 ```
 
 Accede al dashboard en: `http://localhost:8080`
+
+> **Nota**: Durante el primer inicio, Centralizegg se conectará a PostgreSQL y automáticamente ejecutará las migraciones internas (ej., `InitConfigSchema()`) para inicializar las tablas necesarias de configuración y módulos.
 
 ### Usar Imagen de Docker Hub (Alternativa)
 
@@ -346,6 +353,15 @@ Los servidores KVM se configuran a través del dashboard web:
    - **Requisitos**: El usuario debe tener acceso al shell (`/bin/sh` o `/bin/tcsh`) y permisos para ejecutar `top`, `sysctl`, `netstat`, `pfctl`.
    - **No requiere agentes**: Todo se recopila de forma remota y segura.
 
+### Configuración de Nala IA
+
+La configuración para el asistente Nala IA se almacena centralizadamente en la base de datos PostgreSQL, permitiendo que las credenciales (API Key) y el **System Prompt** se compartan entre todos los usuarios del dashboard.
+
+1. Abre el panel de **Nala IA** desde el menú principal.
+2. Haz clic en el icono de configuración (⚙️).
+3. Ingresa tu `Gemini API Key` y ajusta el `System Prompt` para definir el comportamiento de la IA.
+4. (Opcional) Ajusta el modelo usado, por ejemplo: `gemini-3-flash-preview`.
+
 
 ## 🔧 Troubleshooting
 
@@ -382,6 +398,16 @@ Los servidores KVM se configuran a través del dashboard web:
 **Error**: `libvirt connect: authentication failed`
 - Verifica configuración de Libvirt en el servidor remoto
 - Revisa políticas de acceso en `/etc/libvirt/libvirt.conf`
+
+**Error al gestionar Snapshots**: `Snapshot not found` o fallos al revertir
+- Verifica que la VM soporte snapshots (ej. formato qcow2).
+- Asegúrate de que el usuario SSH tiene privilegios para ejecutar `virsh snapshot-create-as` y comandos relacionados en el hipervisor.
+
+### Problemas de Consola Web (WebSockets)
+
+**Error**: La terminal web se desconecta inmediatamente o muestra "Connection closed"
+- Asegúrate de que tu proxy inverso (Nginx, Traefik, etc.) esté configurado para permitir mejoras a `Upgrade: websocket`.
+- Verifica que el contenedor backend puede establecer sesiones PTY interactivas mediante SSH hacia el hipervisor objetivo.
 
 ---
 

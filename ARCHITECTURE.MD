@@ -136,21 +136,29 @@ graph TD
    - **Ceph**: Conexión SSH, estado del cluster, OSDs, pools
    - Almacena/actualiza datos en PostgreSQL
 
-2. **Historial Global & Logs**:
+2. **Consola Web & Snapshots**:
+   - **Terminal**: Conesiones WebSocket bidireccionales (`/api/terminal/kvm/{id}/{name}`) inician sesiones PTY vía SSH hacia hipervisores.
+   - **Snapshots**: APIs envían comandos integrados (`virsh snapshot-*`) para gestión de instantáneas.
+
+3. **Historial Global & Logs**:
    - Visualización histórica de CPU, Memoria, Red y Disco.
    - **Historial Detallado por Nodo (Kubernetes)**: Métricas individuales para nodos de cluster.
    - **Métricas de I/O de Disco**: Tasas de lectura/escritura por disco físico.
    - **Logs del Host**: Visualización de logs del sistema (`journalctl`/`clog`) en tiempo real vía SSH.
    - Soporta categorías: `kvm`, `docker`, `podman`, `kubernetes`, `pfsense`, `proxmox`, `nas`, `ceph`.
 
-3. **Mapa de Geolocalización**:
+4. **Persistencia & Configuraciones**:
+   - Variables globales (ej. Nala IA) consolidadas en el esquema `config.app_settings`.
+   - Generación automática de nuevos esquemas a través de migraciones Go de arranque (`InitConfigSchema`).
+
+5. **Mapa de Geolocalización**:
    - Visualización de conexiones activas en un mapa mundial interactivo.
    - **Heatmap**: Densidad de tráfico con gradiente de colores.
    - **Filtros Interactivos**: All/Inbound/Outbound para segmentar conexiones.
    - **Líneas Dinámicas (Ant-Path)**: Velocidad proporcional al volumen de tráfico.
    - **Marcadores Pulsantes**: Rojo (entrante) y Verde (saliente) con popup detallado.
 
-4. **API REST**: Procesa peticiones del frontend
+6. **API REST**: Procesa peticiones del frontend
    - `GET /api/hosts` - Retorna hosts con información completa
    - `GET /api/vms` - Retorna todas las VMs
    - `GET /api/hosts/{category}/{id}/logs` - Obtiene logs del sistema del host
@@ -160,7 +168,7 @@ graph TD
    - `GET /api/health/summary` - Estado de salud global de la infraestructura
    - `GET /api/history` - Eventos históricos (últimos 50)
 
-5. **Frontend**: Interfaz de usuario reactiva
+7. **Frontend**: Interfaz de usuario reactiva
    - Auto-refresh cada 5 segundos
    - Búsqueda en tiempo real
    - Filtrado por host seleccionado
@@ -202,6 +210,8 @@ Centralizegg/
 │       │   ├── history.js         # Lógica de historial y gráficos
 │       │   ├── summary-dashboard.js # Dashboard de salud global
 │       │   ├── tool-kvm.js        # Renderizado y control KVM
+│       │   ├── terminal.js        # Consola Web (WebSockets/XTerm.js)
+│       │   ├── snapshots.js       # Gestión de Snapshots (Libvirt)
 │       │   ├── ui-components.js   # Componentes UI reutilizables
 │       │   └── utils.js           # Utilidades (formatBytes, etc.)
 │       ├── docs/                  # Documentación embebida (HTML)
@@ -289,6 +299,18 @@ Obtiene la lista de todas las máquinas virtuales.
 |----------|--------|-------------|
 | `/api/kvm/vms/{serverID}/{vmName}/start` | POST | Inicia una VM |
 | `/api/kvm/vms/{serverID}/{vmName}/stop` | POST | Detiene una VM |
+| `/api/kvm/vms/{id}/{name}/snapshots` | GET | Lista snapshots |
+| `/api/kvm/vms/{id}/{name}/snapshot` | POST/DELETE | Crea o Elimina un snapshot |
+| `/api/kvm/vms/{id}/{name}/snapshot/revert` | POST | Revierte a un snapshot |
+
+#### Consola Web (WebSockets)
+
+| Endpoint | Protocolo | Descripción |
+|----------|-----------|-------------|
+| `/api/terminal/kvm/{serverID}/{vmName}` | WS | Inicia shell interactiva PTY por SSH |
+| `/api/terminal/docker/{serverID}/{containerID}` | WS | Shell en contenedor Docker |
+| `/api/terminal/podman/{serverID}/{containerID}` | WS | Shell en contenedor Podman |
+| `/api/terminal/proxmox/{serverID}/{vmID}` | WS | Shell en VM/LXC Proxmox |
 
 ### Endpoints de Configuración KVM
 
@@ -451,9 +473,30 @@ Proxy hacia ip-api.com para obtener datos de geolocalización. Soporta `self` pa
 
 Endpoint genérico para gestionar servidores de herramientas soportadas: `proxmox`, `nas`, `ceph`, `docker`, `podman`, `kubernetes`.
 
+### Endpoints de Nala IA
+
+| Endpoint | Método | Descripción |
+|----------|--------|-------------|
+| `/api/config/nala-ia` | GET | Obtiene la configuración guardada (API Key, Prompt) |
+| `/api/config/nala-ia` | POST | Guarda la configuración en `config.app_settings` |
+
 ## 🗄️ Base de Datos
 
-Centralizegg utiliza PostgreSQL 15 con 5 esquemas dedicados: `virtualization`, `firewall`, `storage`, `containers` y `kubernetes`.
+Centralizegg utiliza PostgreSQL 15 con esquemas principales y dedicados: `config`, `virtualization`, `firewall`, `storage`, `containers` y `kubernetes`.
+
+### Esquema `config`
+
+#### Tabla: `config.app_settings`
+
+Almacena la configuración global mutada a través de la interfaz.
+
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| `key` | VARCHAR(255) | Clave única de configuración (ej. `nala_ia_config`) |
+| `value` | JSONB | Valor de la configuración serializado en JSON |
+| `updated_at` | TIMESTAMP | Última modificación |
+
+*Nota: Este esquema y otros pueden autogenerarse en el arranque gracias a migraciones nativas en Go (ej. `InitConfigSchema()`).*
 
 ### Esquema `virtualization`
 
@@ -607,17 +650,20 @@ Configuración de servidores Podman (misma estructura que `kvm_servers`).
     - **Nodos Kubernetes**: Historial profundo de recursos (CPU, Mem, Red, Disco) por nodo.
 
 
-4. **Visualización de VMs**
+4. **Visualización de VMs / Contenedores**
    - Grid de tarjetas con estado visual
-    - Métricas de CPU, memoria, disco (multi-disco) y red (sparklines)
-    - IPs de guest y Nombre de SO (requiere Guest Agent)
-    - Colores dinámicos y badge de "Power-On" verde o rojo según estado
-    - **Control Start/Stop**: Botones para iniciar/detener VMs directamente desde la UI
+   - Métricas de CPU, memoria, disco (multi-disco) y red (sparklines)
+   - IPs de guest y Nombre de SO (requiere Guest Agent)
+   - Colores dinámicos y badge de "Power-On" verde o rojo según estado
+   - **Control Start/Stop**: Botones para iniciar/detener VMs directamente desde la UI
+   - **Consola Web (Terminal)**: Acceso interactivo PTY con `xterm.js` embebido.
+   - **Gestión de Snapshots**: Listado interactivo, "Crear Snapshot", "Revertir" y "Eliminar".
 
-5. **Configuración**
+5. **Configuración Global & Autenticación**
    - Modal para agregar/editar/eliminar servidores
    - Soporte para autenticación por clave o contraseña
    - Lista de servidores con estado en tiempo real
+   - **Configuraciones Centralizadas**: Parametros como métricas de IA (API Keys, Prompts) se almacenan en PostgreSQL y se recuperan vía AJAX usando `fetch`.
 
 6. **Docker / Podman**: Soporte avanzado para contenedores Docker y Podman. El icono de Podman se ha actualizado a una foca (`fa-otter`) en toda la interfaz, incluyendo el menú, Host Nodes y el listado de contenedores.
 - Mapa de red SVG reactivo con animaciones de flujo.
@@ -707,7 +753,7 @@ go build -o centralizegg ./cmd_centralizegg/server
 
 ## 🛠️ Tech Stack
 
-*   **Backend**: Go 1.23.2 (Golang) + Gorilla Mux + Libvirt + SSH
+*   **Backend**: Go 1.23.2 (Golang) + Gorilla Mux + Gorilla WebSockets + Libvirt + SSH
 *   **Database**: PostgreSQL 15 (Alpine)
 *   **Frontend**: Vanilla JavaScript + CSS3 (Glassmorphism design)
 *   **Deployment**: Docker Compose (multi-stage build)
@@ -715,9 +761,11 @@ go build -o centralizegg ./cmd_centralizegg/server
     - `github.com/digitalocean/go-libvirt` - Cliente Libvirt
     - `golang.org/x/crypto/ssh` - Cliente SSH
     - `github.com/gorilla/mux` - Router HTTP
+    - `github.com/gorilla/websocket` - Servidor WebSocket para PTY
     - `github.com/lib/pq` - Driver PostgreSQL
     - `github.com/beevik/etree` - Parser XML
     - **Frontend Libs**:
+        - `xterm.js` / `xterm-addon-fit.js` - Emulador de Terminal Web interactivo
         - `Leaflet.js` - Mapas interactivos con soporte táctil
         - `leaflet-ant-path` - Animaciones de tráfico fluidas (Bezier/Flight-Path)
         - `leaflet.heat` - Mapas de calor para densidad de tráfico
