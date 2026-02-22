@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/grs/centralizegg/backend_internal_centralizegg/ai"
+	"github.com/grs/centralizegg/backend_internal_centralizegg/notifications"
 	pq "github.com/lib/pq"
 )
 
@@ -1247,7 +1248,28 @@ func (d *DB) UpsertHost(h Host) (int64, error) {
 		_, err = d.Conn.Exec(`UPDATE virtualization.hosts SET hostname=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, public_ip=$8, dns_servers=$9, uptime=$10, update_status=$11, temperature=$12, disks=$13, bridge_interfaces=$14, oom_events=$15, host_events=$16, active_connections=$17, architecture=$18 WHERE id=$19`,
 			h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.PublicIP, h.DNSServers, h.Uptime, h.UpdateStatus, h.Temperature, h.Disks, h.BridgeInterfaces, h.OOMEvents, h.HostEvents, h.ActiveConnections, h.Architecture, id)
 	}
+	if err == nil {
+		d.checkCPUAlert(h.Hostname, h.CPUUsage, h.ServerID)
+	}
 	return id, err
+}
+
+func (d *DB) checkCPUAlert(hostname string, cpuUsage float64, serverID int64) {
+	go func() {
+		notifSettingsJSON, _ := d.GetConfigValue("notification_settings")
+		if notifSettingsJSON != "" {
+			var settings notifications.NotificationSettings
+			if json.Unmarshal([]byte(notifSettingsJSON), &settings) == nil && settings.Enabled {
+				threshold := settings.Thresholds.CPUCritical
+				if threshold == 0 {
+					threshold = 90 // Default
+				}
+				if cpuUsage > threshold {
+					notifications.Notify(notifSettingsJSON, "WARNING", fmt.Sprintf("Uso de CPU crítico en %s: %.2f%%", hostname, cpuUsage), fmt.Sprintf("cpu-high-%d", serverID))
+				}
+			}
+		}
+	}()
 }
 
 func (d *DB) UpsertVM(vm VM) error {
@@ -1521,6 +1543,9 @@ func (d *DB) UpsertFirewallHost(h FirewallHost) (int64, error) {
 	} else if err == nil {
 		_, err = d.Conn.Exec(`UPDATE firewall.hosts SET hostname=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, net_rx_total=$8, net_tx_total=$9, net_rx_bytes_per_sec=$10, net_tx_bytes_per_sec=$11, uptime=$12, update_status=$13, dns_servers=$14, active_connections=$15, state_table_size=$16, state_table_limit=$17, temperature=$18, host_events=$19, architecture=$20 WHERE id=$21`,
 			h.Hostname, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.NetRXTotal, h.NetTXTotal, h.NetRXBytesPerSec, h.NetTXBytesPerSec, h.Uptime, h.UpdateStatus, h.DNSServers, h.ActiveConnections, h.StateTableSize, h.StateTableLimit, h.Temperature, h.HostEvents, h.Architecture, id)
+	}
+	if err == nil {
+		d.checkCPUAlert(h.Hostname, h.CPUUsage, h.ServerID)
 	}
 	return id, err
 }
@@ -1855,6 +1880,14 @@ func (d *DB) SetPFSenseServerStatus(id int64, status string, metadata string) er
 		log.Printf("[DB] LogEvent failed: %v", err)
 	}
 
+	// Trigger external notification for offline status
+	if status == "offline" {
+		go func() {
+			notifSettings, _ := d.GetConfigValue("notification_settings")
+			notifications.Notify(notifSettings, "CRITICAL", fmt.Sprintf("Servidor pfSense (ID %d) está OFFLINE", id), fmt.Sprintf("pfsense-offline-%d", id))
+		}()
+	}
+
 	return nil
 }
 
@@ -1903,6 +1936,14 @@ func (d *DB) SetGenericServerStatus(toolType string, id int64, status string, me
 		log.Printf("[DB] LogEvent failed: %v", err)
 	}
 
+	// Trigger external notification for offline status
+	if status == "offline" {
+		go func() {
+			notifSettings, _ := d.GetConfigValue("notification_settings")
+			notifications.Notify(notifSettings, "CRITICAL", fmt.Sprintf("Servidor %s (ID %d) está OFFLINE", toolType, id), fmt.Sprintf("%s-offline-%d", toolType, id))
+		}()
+	}
+
 	// Propagate offline status to child host tables if the server just went offline
 	if status == "offline" {
 		switch toolType {
@@ -1936,6 +1977,14 @@ func (d *DB) LogEvent(event InfrastructureHistoryEvent) error {
 	// --- Integración Nala IA Vector Memory (RAG) ---
 	// Si el evento es crítico, error o advertencia, inyectarlo a la IA
 	if err == nil && (event.Severity == "error" || event.Severity == "critical" || event.Severity == "warning") {
+		// External Push Notifications
+		if event.Severity == "critical" {
+			go func() {
+				notifSettings, _ := d.GetConfigValue("notification_settings")
+				notifications.Notify(notifSettings, "CRITICAL", event.Message, "logevent-"+event.EventType)
+			}()
+		}
+
 		go func() {
 			// Obtener la API Key de Gemini desde config
 			apiKey, cfgErr := d.GetConfigValue("nala_ia_config")
@@ -2250,6 +2299,9 @@ func (d *DB) UpsertDockerHost(h DockerHost) (int64, error) {
 			h.LogsSize, h.Volumes, h.Networks, h.GPUInfo,
 			h.HostEvents, h.ActiveConnections, h.Architecture, id)
 	}
+	if err == nil {
+		d.checkCPUAlert(h.Hostname, h.CPUUsage, h.ServerID)
+	}
 	return id, err
 }
 
@@ -2346,6 +2398,9 @@ func (d *DB) UpsertKubernetesNode(n KubernetesNode) (int64, error) {
 	} else if err == nil {
 		_, err = d.Conn.Exec(`UPDATE kubernetes.nodes SET status=$1, roles=$2, version=$3, cpu_model=$4, cpu_cores=$5, total_memory=$6, free_memory=$7, cpu_usage=$8, os_name=$9, kernel_version=$10, container_runtime=$11, pods_count=$12, disk_total=$13, disk_used=$14, net_rx=$15, net_tx=$16, net_rx_rate=$17, net_tx_rate=$18, ip_address=$19, architecture=$20, active_connections=$21 WHERE id=$22`,
 			n.Status, n.Roles, n.Version, n.CPUModel, n.CPUCores, n.TotalMemory, n.FreeMemory, n.CPUUsage, n.OSName, n.KernelVer, n.ContainerRuntime, n.PodsCount, n.DiskTotal, n.DiskUsed, n.NetRX, n.NetTX, n.NetRXRate, n.NetTXRate, n.IPAddress, n.Architecture, n.ActiveConnections, id)
+	}
+	if err == nil {
+		d.checkCPUAlert(n.Hostname, n.CPUUsage, n.ServerID)
 	}
 	return id, err
 }
@@ -2447,6 +2502,9 @@ func (d *DB) UpsertPodmanHost(h PodmanHost) (int64, error) {
 			h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.Uptime, h.PodmanVer, h.ServiceStatus, h.APILatency, h.StorageUsed, h.StorageTotal, h.InodesUsage, h.Volumes, h.PodmanNetworks, h.GPUInfo, h.HostEvents, h.ActiveConnections, h.Architecture, id)
 	}
 
+	if err == nil {
+		d.checkCPUAlert(h.Hostname, h.CPUUsage, h.ServerID)
+	}
 	return id, err
 }
 
@@ -2548,6 +2606,9 @@ func (d *DB) UpsertProxmoxHost(h ProxmoxHost) (int64, error) {
 			h.Status, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.KernelVer, h.PVEVersion, h.Uptime, h.VMsCount, h.Containers, h.ActiveConnections, h.Architecture, id)
 	}
 
+	if err == nil {
+		d.checkCPUAlert(h.Hostname, h.CPUUsage, h.ServerID)
+	}
 	return id, err
 }
 
@@ -2649,6 +2710,9 @@ func (d *DB) UpsertNasHost(h NasHost) (int64, error) {
 			h.Status, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.KernelVer, h.Uptime, h.Model, h.Serial, h.ActiveConnections, h.Architecture, id)
 	}
 
+	if err == nil {
+		d.checkCPUAlert(h.Hostname, h.CPUUsage, h.ServerID)
+	}
 	return id, err
 }
 

@@ -21,6 +21,7 @@ import (
 	"github.com/grs/centralizegg/backend_internal_centralizegg/data_centralizegg"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/firewall"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/logger"
+	"github.com/grs/centralizegg/backend_internal_centralizegg/notifications"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/storage"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/virtualization"
 )
@@ -1099,6 +1100,26 @@ func main() {
 
 		json.NewEncoder(w).Encode(status)
 	}).Methods("GET")
+
+	// Test Notification Trigger
+	r.HandleFunc("/api/config/notifications/test", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		settingsJSON, _ := db.GetConfigValue("notification_settings")
+		if settingsJSON == "" || settingsJSON == "{}" {
+			http.Error(w, "Notification settings not configured", http.StatusBadRequest)
+			return
+		}
+
+		// Send a test message to all enabled channels
+		notifications.Notify(settingsJSON, "TEST", "🔔 Prueba de Notificación de Centralizegg: Todo funciona correctamente.", "")
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"ok","message":"Test notification sent"}`))
+	}).Methods("POST")
 
 	// Dynamic Config APIs (Catch-all for simple key-value configs like nala-ia)
 	// Defined here at the end to avoid shadowing specific endpoints like /api/config/servers

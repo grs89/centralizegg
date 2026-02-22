@@ -4163,6 +4163,10 @@ function renderSettingsSidebar() {
                 <i class="fa-solid fa-wand-magic-sparkles"></i>
                 <span>Nala IA</span>
             </div>
+            <div class="settings-menu-item ${settingsCurrentCategory === 'notifications' ? 'active' : ''}" data-category="notifications">
+                <i class="fa-solid fa-bell"></i>
+                <span>Notificaciones</span>
+            </div>
             <div class="settings-menu-item ${settingsCurrentCategory === 'status' ? 'active' : ''}" data-category="status">
                 <i class="fa-solid fa-circle-info"></i>
                 <span>Status</span>
@@ -4181,6 +4185,8 @@ function renderSettingsSidebar() {
                 showStatusPanel();
             } else if (category === 'nala-ia') {
                 showNalaIAPanel();
+            } else if (category === 'notifications') {
+                showNotificationSettingsPanel();
             } else {
                 loadSettingsCategory(category);
             }
@@ -4668,6 +4674,251 @@ async function showStatusPanel() {
         `;
     }
 }
+
+async function showNotificationSettingsPanel() {
+    settingsCurrentCategory = 'notifications';
+    const contentWrapper = document.querySelector('.settings-content-wrapper');
+    if (!contentWrapper) return;
+
+    // Update title
+    const titleEl = document.getElementById('settings-category-title');
+    if (titleEl) {
+        titleEl.innerHTML = '<i class="fa-solid fa-bell"></i> Notificaciones Externas';
+    }
+
+    // Hide description paragraph
+    const descEl = titleEl?.parentElement?.querySelector('p');
+    if (descEl) {
+        descEl.style.display = 'block';
+        descEl.textContent = 'Configura alertas automáticas para Telegram, Slack o Discord cuando ocurran eventos críticos.';
+    }
+
+    const formContainer = document.querySelector('.settings-form-container');
+    const managedServers = document.querySelector('.settings-managed-servers');
+
+    if (managedServers) managedServers.style.display = 'none';
+
+    if (formContainer) {
+        formContainer.innerHTML = `
+            <div style="text-align: center; padding: 40px;">
+                <i class="fa-solid fa-spinner fa-spin" style="font-size: 2rem; color: var(--accent-color);"></i>
+                <p style="margin-top: 15px; color: var(--text-secondary);">Cargando configuración...</p>
+            </div>
+        `;
+
+        try {
+            const resp = await fetch('/api/config/notification_settings');
+            let config = await resp.json();
+
+            // Ensure defaults
+            if (!config.telegram) config.telegram = { enabled: false, token: '', chatId: '' };
+            if (!config.slack) config.slack = { enabled: false, webhookUrl: '' };
+            if (!config.discord) config.discord = { enabled: false, webhookUrl: '' };
+            if (!config.google_chat) config.google_chat = { enabled: false, webhookUrl: '' };
+            if (!config.teams) config.teams = { enabled: false, webhookUrl: '' };
+            if (!config.thresholds) config.thresholds = { cpu_critical: 90, ram_critical: 95 };
+
+            formContainer.innerHTML = `
+                <div class="settings-form-grid" style="display: flex; flex-direction: column; gap: 25px;">
+                    <!-- Global Enable -->
+                    <div style="background: rgba(255,255,255,0.03); padding: 20px; border-radius: 12px; border: 1px solid var(--glass-border); display: flex; align-items: center; justify-content: space-between;">
+                        <div>
+                            <h4 style="margin: 0;">Activar Notificaciones</h4>
+                            <p style="margin: 5px 0 0; font-size: 0.85rem; color: var(--text-secondary);">Habilitar el envío de alertas a canales externos.</p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="notif-enabled" ${config.enabled ? 'checked' : ''}>
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+
+                    <!-- Telegram Section -->
+                    <div class="glass-panel" style="padding: 20px; border-radius: 12px;">
+                        <h4 style="margin-top: 0; display: flex; align-items: center; gap: 10px;">
+                            <i class="fa-brands fa-telegram" style="color: #0088cc;"></i> Telegram
+                        </h4>
+                        <div class="settings-form-grid" style="margin-top: 15px;">
+                            <div class="settings-input-group">
+                                <label>Token del Bot</label>
+                                <input type="password" id="notif-tg-token" value="${config.telegram.token || ''}" placeholder="123456:ABC-DEF...">
+                            </div>
+                            <div class="settings-input-group">
+                                <label>Chat ID / Grupo ID</label>
+                                <input type="text" id="notif-tg-chat" value="${config.telegram.chatId || ''}" placeholder="-100123456789">
+                            </div>
+                            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-top: 10px;">
+                                <input type="checkbox" id="notif-tg-enabled" ${config.telegram.enabled ? 'checked' : ''}>
+                                <span>Habilitar Telegram</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Slack & Discord Section -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div class="glass-panel" style="padding: 20px; border-radius: 12px;">
+                            <h4 style="margin-top: 0; display: flex; align-items: center; gap: 10px;">
+                                <i class="fa-brands fa-slack" style="color: #4A154B;"></i> Slack
+                        </h4>
+                            <div class="settings-input-group" style="margin-top: 15px;">
+                                <label>Webhook URL</label>
+                                <input type="password" id="notif-slack-url" value="${config.slack.webhookUrl || ''}" placeholder="https://hooks.slack.com/services/...">
+                            </div>
+                            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-top: 10px;">
+                                <input type="checkbox" id="notif-slack-enabled" ${config.slack.enabled ? 'checked' : ''}>
+                                <span>Habilitar Slack</span>
+                            </label>
+                        </div>
+                        <div class="glass-panel" style="padding: 20px; border-radius: 12px;">
+                            <h4 style="margin-top: 0; display: flex; align-items: center; gap: 10px;">
+                                <i class="fa-brands fa-discord" style="color: #5865F2;"></i> Discord
+                        </h4>
+                            <div class="settings-input-group" style="margin-top: 15px;">
+                                <label>Webhook URL</label>
+                                <input type="password" id="notif-discord-url" value="${config.discord.webhookUrl || ''}" placeholder="https://discord.com/api/webhooks/...">
+                            </div>
+                            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-top: 10px;">
+                                <input type="checkbox" id="notif-discord-enabled" ${config.discord.enabled ? 'checked' : ''}>
+                                <span>Habilitar Discord</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Google Chat & Teams Section -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div class="glass-panel" style="padding: 20px; border-radius: 12px;">
+                            <h4 style="margin-top: 0; display: flex; align-items: center; gap: 10px;">
+                                <i class="fa-solid fa-comment-dots" style="color: #34A853;"></i> Google Chat
+                        </h4>
+                            <div class="settings-input-group" style="margin-top: 15px;">
+                                <label>Webhook URL</label>
+                                <input type="password" id="notif-gchat-url" value="${config.google_chat.webhookUrl || ''}" placeholder="https://chat.googleapis.com/v1/spaces/...">
+                            </div>
+                            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-top: 10px;">
+                                <input type="checkbox" id="notif-gchat-enabled" ${config.google_chat.enabled ? 'checked' : ''}>
+                                <span>Habilitar Google Chat</span>
+                            </label>
+                        </div>
+                        <div class="glass-panel" style="padding: 20px; border-radius: 12px;">
+                            <h4 style="margin-top: 0; display: flex; align-items: center; gap: 10px;">
+                                <i class="fa-solid fa-users-rectangle" style="color: #6264A7;"></i> MS Teams
+                        </h4>
+                            <div class="settings-input-group" style="margin-top: 15px;">
+                                <label>Webhook URL</label>
+                                <input type="password" id="notif-teams-url" value="${config.teams.webhookUrl || ''}" placeholder="https://outlook.office.com/webhook/...">
+                            </div>
+                            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-top: 10px;">
+                                <input type="checkbox" id="notif-teams-enabled" ${config.teams.enabled ? 'checked' : ''}>
+                                <span>Habilitar MS Teams</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Thresholds Section -->
+                    <div class="glass-panel" style="padding: 20px; border-radius: 12px;">
+                        <h4 style="margin-top: 0;">Umbrales de Alerta</h4>
+                        <div class="settings-form-grid" style="margin-top: 15px;">
+                            <div class="settings-input-group">
+                                <label>Uso Crítico de CPU (%)</label>
+                                <input type="number" id="notif-threshold-cpu" value="${config.thresholds.cpu_critical}" min="1" max="100">
+                            </div>
+                            <div class="settings-input-group">
+                                <label>Uso Crítico de RAM (%)</label>
+                                <input type="number" id="notif-threshold-ram" value="${config.thresholds.ram_critical}" min="1" max="100">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div style="display: flex; gap: 15px; margin-top: 10px;">
+                        <button class="primary-btn" id="notif-save-btn" style="flex: 2;">
+                            <i class="fa-solid fa-floppy-disk"></i> Guardar Configuración
+                        </button>
+                        <button class="secondary-btn" id="notif-test-btn" style="flex: 1;">
+                            <i class="fa-solid fa-paper-plane"></i> Enviar Prueba
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            // Attach listeners
+            document.getElementById('notif-save-btn').onclick = () => saveNotificationSettings();
+            document.getElementById('notif-test-btn').onclick = () => testNotification();
+
+        } catch (err) {
+            console.error('Error loading notification settings:', err);
+            formContainer.innerHTML = `<p style="color: var(--danger-color); text-align: center;">Error al cargar la configuración: ${err.message}</p>`;
+        }
+    }
+}
+
+async function saveNotificationSettings() {
+    const settings = {
+        enabled: document.getElementById('notif-enabled').checked,
+        telegram: {
+            enabled: document.getElementById('notif-tg-enabled').checked,
+            token: document.getElementById('notif-tg-token').value,
+            chatId: document.getElementById('notif-tg-chat').value
+        },
+        slack: {
+            enabled: document.getElementById('notif-slack-enabled').checked,
+            webhookUrl: document.getElementById('notif-slack-url').value
+        },
+        discord: {
+            enabled: document.getElementById('notif-discord-enabled').checked,
+            webhookUrl: document.getElementById('notif-discord-url').value
+        },
+        google_chat: {
+            enabled: document.getElementById('notif-gchat-enabled').checked,
+            webhookUrl: document.getElementById('notif-gchat-url').value
+        },
+        teams: {
+            enabled: document.getElementById('notif-teams-enabled').checked,
+            webhookUrl: document.getElementById('notif-teams-url').value
+        },
+        thresholds: {
+            cpu_critical: parseFloat(document.getElementById('notif-threshold-cpu').value),
+            ram_critical: parseFloat(document.getElementById('notif-threshold-ram').value)
+        }
+    };
+
+    try {
+        const resp = await fetch('/api/config/notification_settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(settings)
+        });
+        if (resp.ok) {
+            alert('Configuración guardada correctamente.');
+        } else {
+            throw new Error('Error al guardar en el servidor');
+        }
+    } catch (err) {
+        alert('Error: ' + err.message);
+    }
+}
+
+async function testNotification() {
+    const btn = document.getElementById('notif-test-btn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Enviando...';
+    btn.disabled = true;
+
+    try {
+        const resp = await fetch('/api/config/notifications/test', { method: 'POST' });
+        if (resp.ok) {
+            alert('¡Mensaje de prueba enviado! Revisa tus canales habilitados.');
+        } else {
+            const data = await resp.json();
+            throw new Error(data.message || 'Error al enviar prueba');
+        }
+    } catch (err) {
+        alert('Error: ' + err.message);
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
+
 
 window.editSettingsServer = (srv) => {
     document.getElementById('settings-srv-id').value = srv.id;
