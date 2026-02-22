@@ -798,11 +798,11 @@ Alternativa en `.gitlab-ci.yml` con etapa `build`:
 ---
 
 
-## 🧠 Nala IA Context Injection
+## 🧠 Inyección de Contexto Nala IA
 
-The Nala IA tool now receives live infrastructure context automatically. A new helper `fetchInfrastructureContext()` in the frontend gathers data from `/api/hosts` and `/api/health/summary`, formats it as markdown, and injects it into the prompt sent to the LLM. This enables context‑aware responses without direct DB access.
+La herramienta Nala IA ahora recibe automáticamente el contexto de infraestructura en tiempo real. Un nuevo helper `fetchInfrastructureContext()` en el frontend recopila datos de `/api/hosts` y `/api/health/summary`, los formatea como markdown y los inyecta en el prompt enviado al LLM. Esto permite respuestas con contexto sin acceso directo a la base de datos.
 
-### Updated Architecture Diagram
+### Diagrama de Arquitectura Actualizado
 
 ```mermaid
 graph TD
