@@ -9838,7 +9838,30 @@ window.submitNalaPrompt = async function (event) {
 
     // Fetch live context (Hidden from UI, passed to AI)
     const injectedContext = await fetchInfrastructureContext();
-    const finalPrompt = userText + injectedContext;
+    let finalPrompt = userText + injectedContext;
+
+    // Fetch historical Vector RAG context from backend
+    try {
+        const askRes = await fetch('/api/ai/ask', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                apiKey: apiKey,
+                provider: provider,
+                baseUrl: baseUrl,
+                systemPrompt: systemPrompt,
+                userMessage: userMessage
+            })
+        });
+        if (askRes.ok) {
+            const askData = await askRes.json();
+            if (askData.injectedMemory) {
+                finalPrompt += askData.injectedMemory;
+            }
+        }
+    } catch (e) {
+        console.error('Error fetching RAG memory from backend', e);
+    }
 
     try {
         const aiResponse = await callNalaIA(provider, apiKey, baseUrl, systemPrompt, finalPrompt);

@@ -2,10 +2,12 @@ package data_centralizegg
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
 
+	"github.com/grs/centralizegg/backend_internal_centralizegg/ai"
 	pq "github.com/lib/pq"
 )
 
@@ -1902,6 +1904,34 @@ func (d *DB) LogEvent(event InfrastructureHistoryEvent) error {
 		metadata = "{}"
 	}
 	_, err := d.Conn.Exec(query, event.Category, event.Source, event.EventType, event.Severity, event.Message, metadata)
+
+	// --- Integración Nala IA Vector Memory (RAG) ---
+	// Si el evento es crítico, error o advertencia, inyectarlo a la IA
+	if err == nil && (event.Severity == "error" || event.Severity == "critical" || event.Severity == "warning") {
+		go func() {
+			// Obtener la API Key de Gemini desde config
+			apiKey, cfgErr := d.GetConfigValue("nala_ia_config")
+			if cfgErr == nil && apiKey != "" {
+				var configMap map[string]interface{}
+				if jsonErr := json.Unmarshal([]byte(apiKey), &configMap); jsonErr == nil {
+					keyStr, _ := configMap["apiKey"].(string)
+
+					// Insertar asíncronamente en pgvector si existe key
+					if keyStr != "" {
+						metaMap := map[string]interface{}{
+							"category": event.Category,
+							"source":   event.Source,
+							"severity": event.Severity,
+						}
+
+						memContent := fmt.Sprintf("[%s] %s: %s", event.Severity, event.EventType, event.Message)
+						_ = ai.SaveEventToMemory(d.Conn, keyStr, event.EventType, memContent, metaMap)
+					}
+				}
+			}
+		}()
+	}
+
 	return err
 }
 

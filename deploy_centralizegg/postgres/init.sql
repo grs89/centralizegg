@@ -1,3 +1,6 @@
+-- Habilitar extensión pgvector
+CREATE EXTENSION IF NOT EXISTS vector;
+
 CREATE SCHEMA IF NOT EXISTS virtualization;
 
 CREATE TABLE IF NOT EXISTS virtualization.kvm_servers (
@@ -185,3 +188,17 @@ CREATE TABLE IF NOT EXISTS config.app_settings (
     value TEXT NOT NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+);
+
+-- Vector Memory Config (Nala IA)
+CREATE TABLE IF NOT EXISTS config.event_memory (
+    id BIGSERIAL PRIMARY KEY,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    event_type VARCHAR(50),
+    content TEXT,
+    metadata JSONB,
+    embedding vector(768)
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_memory_embedding ON config.event_memory USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX IF NOT EXISTS idx_event_memory_metadata ON config.event_memory USING gin (metadata);

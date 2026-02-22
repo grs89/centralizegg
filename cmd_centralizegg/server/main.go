@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
+	"github.com/grs/centralizegg/backend_internal_centralizegg/ai"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/container"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/data_centralizegg"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/firewall"
@@ -246,6 +247,44 @@ func main() {
 		}
 		json.NewEncoder(w).Encode(logs)
 	}).Methods("GET")
+
+	// Nala IA - RAG QA Endpoint
+	r.HandleFunc("/api/ai/ask", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ApiKey       string `json:"apiKey"`
+			Provider     string `json:"provider"`
+			BaseUrl      string `json:"baseUrl"`
+			SystemPrompt string `json:"systemPrompt"`
+			UserMessage  string `json:"userMessage"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// Buscar memoria histórica (top 3)
+		historicalEvents, err := ai.SearchSimilarEvents(db.Conn, req.ApiKey, req.UserMessage, 3)
+
+		// Construir el contexto inyectado
+		var memoryContextStr string
+		if err == nil && len(historicalEvents) > 0 {
+			memoryContextStr = "\n\n### Memoria Histórica del Clúster (Eventos Previos Similares)\n"
+			for i, ev := range historicalEvents {
+				memoryContextStr += fmt.Sprintf("- Evento %d [%s]: %s\n", i+1, ev.EventType, ev.Content)
+			}
+			memoryContextStr += "Usa este contexto previo solo si es relevante para el fallo o consulta actual.\n"
+		}
+
+		// Aquí podrías procesar la llamada completa a Gemini desde Go.
+		// Para mantener la lógica de app.js (que procesa distintos llms),
+		// devolvemos el texto inyectado para que app.js simplemente lo adjunte.
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":        true,
+			"injectedMemory": memoryContextStr,
+		})
+	}).Methods("POST")
 
 	r.HandleFunc("/api/app-logs", func(w http.ResponseWriter, r *http.Request) {
 		var logEntry struct {

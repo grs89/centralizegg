@@ -8,7 +8,8 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/lib/pq v1.10.9
-	golang.org/x/crypto v0.29.0
+	github.com/pgvector/pgvector-go v0.3.0
+	golang.org/x/crypto v0.36.0
 )
 
-require golang.org/x/sys v0.27.0 // indirect
+require golang.org/x/sys v0.31.0 // indirect
