@@ -9622,6 +9622,49 @@ async function showContainerLogs(type, serverId, containerId, containerName, cpu
 }
 
 // --- Nala IA Integration ---
+async function fetchInfrastructureContext() {
+    try {
+        const [hostsRes, healthRes] = await Promise.all([
+            fetch('/api/hosts').catch(() => null),
+            fetch('/api/health/summary').catch(() => null)
+        ]);
+
+        let contextMd = "\n\n---\n### Contexto Actual del Sistema (Generado Automáticamente)\n";
+
+        if (hostsRes && hostsRes.ok) {
+            const hosts = await hostsRes.json();
+            contextMd += "**Estado de los Servidores:**\n";
+            hosts.forEach(h => {
+                const memGb = h.free_memory ? (h.free_memory / 1024 / 1024 / 1024).toFixed(1) : '?';
+                const cpu = h.cpu_usage !== undefined ? h.cpu_usage.toFixed(1) : '?';
+                contextMd += `- ${h.server_name} (IP: ${h.ip_address}): Estado ${h.status.toUpperCase()}, Uso CPU: ${cpu}%, RAM Libre: ${memGb}GB\n`;
+            });
+        } else {
+            contextMd += "- *No se pudo obtener el estado de los servidores.*\n";
+        }
+
+        if (healthRes && healthRes.ok) {
+            const health = await healthRes.json();
+            contextMd += "\n**Últimos Eventos Registrados:**\n";
+            if (health.recent_logs && health.recent_logs.length > 0) {
+                // Get the top 5 most recent
+                const logs = health.recent_logs.slice(0, 5);
+                logs.forEach(l => {
+                    contextMd += `- [${l.severity}] ${l.source || 'Sistema'}: ${l.message}\n`;
+                });
+            } else {
+                contextMd += "- *No hay alertas recientes.*\n";
+            }
+        }
+
+        contextMd += "---\n";
+        return contextMd;
+    } catch (e) {
+        console.error("Error fetching infrastructure context", e);
+        return "";
+    }
+}
+
 function initNalaIA() {
     const nalaBtn = document.getElementById('nala-ia-btn');
     if (nalaBtn) {
@@ -9660,9 +9703,9 @@ async function callNalaIA(provider, apiKey, baseUrl, systemPrompt, userMessage) 
     let body = {};
 
     if (provider === 'gemini') {
-        url = url || `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent`;
-        if (!url.includes('key=')) {
-            url += (url.includes('?') ? '&' : '?') + `key=${apiKey}`;
+        url = url || `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent`;
+        if (apiKey) {
+            headers['x-goog-api-key'] = apiKey;
         }
         body = {
             system_instruction: { parts: [{ text: systemPrompt }] },
@@ -9793,8 +9836,12 @@ window.submitNalaPrompt = async function (event) {
         });
     } catch (e) { console.error('Error logging Nala IA usage', e); }
 
+    // Fetch live context (Hidden from UI, passed to AI)
+    const injectedContext = await fetchInfrastructureContext();
+    const finalPrompt = userText + injectedContext;
+
     try {
-        const aiResponse = await callNalaIA(provider, apiKey, baseUrl, systemPrompt, userText);
+        const aiResponse = await callNalaIA(provider, apiKey, baseUrl, systemPrompt, finalPrompt);
         const loadingEl = document.getElementById(loadingId);
         if (loadingEl) loadingEl.remove();
 
