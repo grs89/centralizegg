@@ -337,37 +337,7 @@ func main() {
 	// Terminal WebSockets API
 	r.HandleFunc("/api/terminal/{category}/{serverId}/{targetName}", TerminalHandler(db))
 
-	// Config APIs
-	r.HandleFunc("/api/config/{key}", func(w http.ResponseWriter, r *http.Request) {
-		vars := mux.Vars(r)
-		key := vars["key"]
-
-		if r.Method == "GET" {
-			val, err := db.GetConfigValue(key)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			if val == "" {
-				val = "{}" // return empty JSON object instead of breaking
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(val))
-		} else if r.Method == "POST" {
-			body, err := io.ReadAll(r.Body)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			err = db.SetConfigValue(key, string(body))
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			w.WriteHeader(http.StatusOK)
-		}
-	}).Methods("GET", "POST")
-
+	// Removed Config API {} catch-all to prevent shadowing
 	// Retention APIs
 	r.HandleFunc("/api/logging/retention", func(w http.ResponseWriter, r *http.Request) {
 		days, err := db.GetRetentionDays()
@@ -989,7 +959,7 @@ func main() {
 	}).Methods("DELETE")
 
 	// Generic Server Config API for Proxmox, NAS, Ceph, Docker, Podman
-	r.HandleFunc("/api/config/{tool}", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/api/config/{tool:proxmox|nas|ceph|docker|podman|kubernetes}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		tool := vars["tool"]
 		// Skip "servers" as it's handled by the KVM-specific endpoint above
@@ -1004,7 +974,7 @@ func main() {
 		json.NewEncoder(w).Encode(servers)
 	}).Methods("GET")
 
-	r.HandleFunc("/api/config/{tool}", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/api/config/{tool:proxmox|nas|ceph|docker|podman|kubernetes}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		tool := vars["tool"]
 		if tool == "servers" {
@@ -1024,7 +994,7 @@ func main() {
 		json.NewEncoder(w).Encode(s)
 	}).Methods("POST")
 
-	r.HandleFunc("/api/config/{tool}/{id}", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/api/config/{tool:proxmox|nas|ceph|docker|podman|kubernetes}/{id:[0-9]+}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		tool := vars["tool"]
 		if tool == "servers" {
@@ -1048,7 +1018,7 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 	}).Methods("PUT")
 
-	r.HandleFunc("/api/config/{tool}/{id}", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/api/config/{tool:proxmox|nas|ceph|docker|podman|kubernetes}/{id:[0-9]+}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		tool := vars["tool"]
 		if tool == "servers" {
@@ -1129,6 +1099,38 @@ func main() {
 
 		json.NewEncoder(w).Encode(status)
 	}).Methods("GET")
+
+	// Dynamic Config APIs (Catch-all for simple key-value configs like nala-ia)
+	// Defined here at the end to avoid shadowing specific endpoints like /api/config/servers
+	r.HandleFunc("/api/config/{key}", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		key := vars["key"]
+
+		if r.Method == "GET" {
+			val, err := db.GetConfigValue(key)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if val == "" {
+				val = "{}"
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(val))
+		} else if r.Method == "POST" {
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			err = db.SetConfigValue(key, string(body))
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+		}
+	}).Methods("GET", "POST")
 
 	// Static Files
 	r.PathPrefix("/").Handler(http.FileServer(http.Dir("./web_centralizegg/static/")))

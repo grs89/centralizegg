@@ -1282,7 +1282,7 @@ func (d *DB) GetAllVMs() ([]VM, error) {
 	}
 	defer rows.Close()
 
-	var vms []VM
+	vms := make([]VM, 0)
 	for rows.Next() {
 		var vm VM
 		if err := rows.Scan(&vm.ID, &vm.Name, &vm.State, &vm.VCPU, &vm.CPUTime, &vm.CPUUsage, &vm.MemoryUsage, &vm.MaxMemory, &vm.DiskAllocation, &vm.DiskCapacity, &vm.DiskRead, &vm.DiskWrite, &vm.NetRX, &vm.NetTX, &vm.GuestIPs, &vm.GuestFSUsage, &vm.Disks, &vm.OSName, &vm.NetworkData, &vm.HostID, &vm.UpdatedAt); err != nil {
@@ -1318,7 +1318,7 @@ func (d *DB) GetServers() ([]KVMServer, error) {
 	}
 	defer rows.Close()
 
-	var servers []KVMServer
+	servers := make([]KVMServer, 0)
 	for rows.Next() {
 		var s KVMServer
 		var pwd sql.NullString
@@ -1418,7 +1418,7 @@ func (d *DB) GetHosts() ([]Host, error) {
 	}
 	defer rows.Close()
 
-	var hosts []Host
+	hosts := make([]Host, 0)
 	for rows.Next() {
 		var h Host
 		var osName sql.NullString
@@ -1549,7 +1549,7 @@ func (d *DB) GetPFSenseServers() ([]PFSenseServer, error) {
 	}
 	defer rows.Close()
 
-	var servers []PFSenseServer
+	servers := make([]PFSenseServer, 0)
 	for rows.Next() {
 		var s PFSenseServer
 		var pwd sql.NullString
@@ -1615,7 +1615,7 @@ func (d *DB) GetFirewallHosts() ([]FirewallHost, error) { // Fetch Hosts
 	}
 	defer rows.Close()
 
-	var hosts []FirewallHost
+	hosts := make([]FirewallHost, 0)
 	for rows.Next() {
 		var h FirewallHost
 		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.NetRXTotal, &h.NetTXTotal, &h.NetRXBytesPerSec, &h.NetTXBytesPerSec, &h.Uptime, &h.UpdateStatus, &h.DNSServers, &h.ActiveConnections, &h.StateTableSize, &h.StateTableLimit, &h.Temperature, &h.HostEvents, &h.OfflineSince, &h.Architecture, &h.Status); err != nil {
@@ -1714,7 +1714,7 @@ func (d *DB) GetGenericServers(toolType string) ([]GenericServer, error) {
 	}
 	defer rows.Close()
 
-	var servers []GenericServer
+	servers := make([]GenericServer, 0)
 	for rows.Next() {
 		var s GenericServer
 		var pwd sql.NullString
@@ -2288,7 +2288,7 @@ func (d *DB) GetDockerHosts() ([]DockerHost, error) {
 	}
 	defer rows.Close()
 
-	var hosts []DockerHost
+	hosts := make([]DockerHost, 0)
 	for rows.Next() {
 		var h DockerHost
 		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.PublicIP, &h.DNSServers, &h.Uptime, &h.UpdateStatus, &h.Temperature, &h.Disks, &h.DockerVer, &h.ServiceStatus, &h.SocketStatus, &h.APILatency, &h.StorageUsed, &h.StorageTotal, &h.InodesUsage, &h.LogsSize, &h.Volumes, &h.Networks, &h.GPUInfo, &h.ServerName, &h.IPAddress, &h.Status, &h.HostEvents, &h.ActiveConnections, &h.OfflineSince, &h.Architecture); err != nil {
@@ -2318,7 +2318,7 @@ func (d *DB) GetAllContainers() ([]Container, error) {
 	}
 	defer rows.Close()
 
-	var containers []Container
+	containers := make([]Container, 0)
 	for rows.Next() {
 		var c Container
 		if err := rows.Scan(&c.ID, &c.Name, &c.Image, &c.Ports, &c.State, &c.Status, &c.CPUUsage, &c.MemUsage, &c.MemLimit, &c.NetRX, &c.NetTX, &c.BlockIn, &c.BlockOut, &c.PIDs, &c.IPAddress, &c.OOMKilled, &c.Vulnerabilities, &c.HostID, &c.UpdatedAt); err != nil {
@@ -2384,7 +2384,7 @@ func (d *DB) GetKubernetesNodes() ([]KubernetesNode, error) {
 	}
 	defer rows.Close()
 
-	var nodes []KubernetesNode
+	nodes := make([]KubernetesNode, 0)
 	for rows.Next() {
 		var n KubernetesNode
 		if err := rows.Scan(&n.ID, &n.ServerID, &n.Hostname, &n.Status, &n.Roles, &n.Version, &n.CPUModel, &n.CPUCores, &n.TotalMemory, &n.FreeMemory, &n.CPUUsage, &n.OSName, &n.KernelVer, &n.ContainerRuntime, &n.PodsCount, &n.DiskTotal, &n.DiskUsed, &n.NetRX, &n.NetTX, &n.NetRXRate, &n.NetTXRate, &n.ServerName, &n.IPAddress, &n.Architecture, &n.ActiveConnections, &n.OfflineSince); err != nil {
@@ -2414,7 +2414,7 @@ func (d *DB) GetAllKubernetesPods() ([]KubernetesPod, error) {
 	}
 	defer rows.Close()
 
-	var pods []KubernetesPod
+	pods := make([]KubernetesPod, 0)
 	for rows.Next() {
 		var p KubernetesPod
 		if err := rows.Scan(&p.ID, &p.NodeID, &p.Name, &p.Namespace, &p.State, &p.Status, &p.CPUUsage, &p.MemUsage, &p.IPAddress, &p.Restarts, &p.Age, &p.UpdatedAt, &p.Image, &p.Ports, &p.NetRX, &p.NetTX); err != nil {
@@ -2485,7 +2485,7 @@ func (d *DB) GetPodmanHosts() ([]PodmanHost, error) {
 	}
 	defer rows.Close()
 
-	var hosts []PodmanHost
+	hosts := make([]PodmanHost, 0)
 	for rows.Next() {
 		var h PodmanHost
 		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.Uptime, &h.PodmanVer, &h.ServiceStatus, &h.APILatency, &h.StorageUsed, &h.StorageTotal, &h.InodesUsage, &h.Volumes, &h.PodmanNetworks, &h.GPUInfo, &h.Status, &h.HostEvents, &h.ActiveConnections, &h.OfflineSince, &h.Architecture); err != nil {
@@ -2515,7 +2515,7 @@ func (d *DB) GetAllPodmanContainers() ([]Container, error) {
 	}
 	defer rows.Close()
 
-	var containers []Container
+	containers := make([]Container, 0)
 	for rows.Next() {
 		var c Container
 		if err := rows.Scan(&c.ID, &c.HostID, &c.Name, &c.Image, &c.Ports, &c.State, &c.Status, &c.CPUUsage, &c.MemUsage, &c.MemLimit, &c.NetRX, &c.NetTX, &c.BlockIn, &c.BlockOut, &c.PIDs, &c.IPAddress, &c.OOMKilled, &c.Vulnerabilities, &c.UpdatedAt); err != nil {
@@ -2586,7 +2586,7 @@ func (d *DB) GetProxmoxHosts() ([]ProxmoxHost, error) {
 	}
 	defer rows.Close()
 
-	var hosts []ProxmoxHost
+	hosts := make([]ProxmoxHost, 0)
 	for rows.Next() {
 		var h ProxmoxHost
 		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.Status, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.KernelVer, &h.PVEVersion, &h.Uptime, &h.VMsCount, &h.Containers, &h.ActiveConnections, &h.OfflineSince, &h.Architecture); err != nil {
@@ -2616,7 +2616,7 @@ func (d *DB) GetAllProxmoxVMs() ([]ProxmoxVM, error) {
 	}
 	defer rows.Close()
 
-	var vms []ProxmoxVM
+	vms := make([]ProxmoxVM, 0)
 	for rows.Next() {
 		var vm ProxmoxVM
 		if err := rows.Scan(&vm.ID, &vm.HostID, &vm.VMID, &vm.Name, &vm.Type, &vm.State, &vm.CPUUsage, &vm.MemoryUsage, &vm.MaxMemory, &vm.NetRX, &vm.NetTX, &vm.UpdatedAt); err != nil {
@@ -2705,7 +2705,7 @@ func (d *DB) GetNasHosts() ([]NasHost, error) {
 	}
 	defer rows.Close()
 
-	var hosts []NasHost
+	hosts := make([]NasHost, 0)
 	for rows.Next() {
 		var h NasHost
 		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.Status, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.KernelVer, &h.Uptime, &h.Model, &h.Serial, &h.ActiveConnections, &h.OfflineSince, &h.Architecture); err != nil {
@@ -2728,7 +2728,7 @@ func (d *DB) GetAllNasVolumes() ([]NasVolume, error) {
 	}
 	defer rows.Close()
 
-	var volumes []NasVolume
+	volumes := make([]NasVolume, 0)
 	for rows.Next() {
 		var v NasVolume
 		if err := rows.Scan(&v.ID, &v.HostID, &v.Name, &v.Path, &v.Status, &v.TotalSize, &v.UsedSize, &v.Type, &v.UpdatedAt); err != nil {
@@ -2746,7 +2746,7 @@ func (d *DB) GetAllNasDisks() ([]NasDisk, error) {
 	}
 	defer rows.Close()
 
-	var disks []NasDisk
+	disks := make([]NasDisk, 0)
 	for rows.Next() {
 		var disk NasDisk
 		if err := rows.Scan(&disk.ID, &disk.HostID, &disk.Name, &disk.Model, &disk.Serial, &disk.Size, &disk.Status, &disk.Temp, &disk.UpdatedAt); err != nil {
@@ -2794,7 +2794,7 @@ func (d *DB) GetCephHosts() ([]CephHost, error) {
 	}
 	defer rows.Close()
 
-	var hosts []CephHost
+	hosts := make([]CephHost, 0)
 	for rows.Next() {
 		var h CephHost
 		if err := rows.Scan(&h.ID, &h.ServerID, &h.Hostname, &h.ServerName, &h.IPAddress, &h.Status, &h.CPUModel, &h.CPUCores, &h.TotalMemory, &h.FreeMemory, &h.CPUUsage, &h.OSName, &h.KernelVer, &h.Uptime, &h.ClusterStatus, &h.ClusterHealth, &h.ActiveConnections, &h.OfflineSince, &h.Architecture); err != nil {
