@@ -830,45 +830,6 @@
                 </section>
             </div>
 
-            <!-- Retention Settings Modal -->
-            <div id="retention-modal" class="modal hidden"
-                style="position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(5px);">
-                <div class="glass-panel" style="width: 400px; padding: 30px; border-radius: 16px; position: relative;">
-                    <button onclick="closeRetentionModal()"
-                        style="position: absolute; right: 20px; top: 20px; background: none; border: none; color: var(--text-secondary); cursor: pointer;"><i
-                            class="fa-solid fa-xmark"></i></button>
-                    <h3 style="margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
-                        <i class="fa-solid fa-clock-rotate-left" style="color: var(--accent-color);"></i> Gestión de
-                        Retención
-                    </h3>
-
-                    <div style="margin-bottom: 20px;">
-                        <label
-                            style="display: block; margin-bottom: 8px; color: var(--text-secondary); font-size: 0.9rem;">Días
-                            de retención para logs de sistema:</label>
-                        <div style="display: flex; gap: 10px;">
-                            <input type="number" id="retention-days-input" min="1" max="365"
-                                style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); padding: 10px; border-radius: 8px; color: white;">
-                            <button class="primary-btn" onclick="saveRetentionPolicy()"
-                                style="white-space: nowrap;">Guardar</button>
-                        </div>
-                        <p style="font-size: 0.8rem; color: #a1a1aa; margin-top: 5px;">Logs más antiguos que esta
-                            cantidad de días se eliminarán automáticamente.</p>
-                    </div>
-
-                    <hr style="border: none; border-top: 1px solid var(--glass-border); margin: 25px 0;">
-
-                    <div>
-                        <h4 style="margin-bottom: 10px; color: #ef4444;"><i
-                                class="fa-solid fa-triangle-exclamation"></i> Zona de Peligro</h4>
-                        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 15px;">Esto eliminará
-                            permanentemente TODOS los logs de sistema almacenados. Esta acción no se puede deshacer.</p>
-                        <button class="primary-btn" onclick="cleanupAllLogs()"
-                            style="width: 100%; background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3); color: #ef4444;"><i
-                                class="fa-solid fa-trash-can"></i> Limpiar Ahora</button>
-                    </div>
-                </div>
-            </div>
 
             <!-- Terminal Modal -->
             <div id="terminal-modal" class="modal hidden"
@@ -904,7 +865,8 @@
 
                     <div
                         style="margin-bottom: 20px; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; border: 1px solid var(--glass-border);">
-                        <h4 style="margin-top: 0; margin-bottom: 10px; font-size: 0.95rem;">Crear Nuevo Snapshot</h4>
+                        <h4 style="margin-top: 0; margin-bottom: 10px; font-size: 0.95rem;">Crear Nuevo Snapshot
+                        </h4>
                         <input type="text" id="snapshot-new-name" class="glass-input"
                             placeholder="Nombre (sin espacios)" style="width: 100%; margin-bottom: 10px;">
                         <input type="text" id="snapshot-new-desc" class="glass-input" placeholder="Descripción breve"

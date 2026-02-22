@@ -3890,9 +3890,12 @@ function renderLogsSidebar() {
                 <input type="text" id="logs-search-input" placeholder="Filtrar logs..." style="background: none; border: none; color: white; outline: none; width: 100%; font-size: 0.9rem;">
             </div>
         </div>
-        <div style="padding: 10px;">
-            <button class="secondary-btn" onclick="openRetentionModal()" style="width: 100%; display: flex; justify-content: center; gap: 8px; padding: 10px;">
-                <i class="fa-solid fa-clock-rotate-left"></i> Políticas de Retención
+        <div style="padding: 10px; display: flex; gap: 8px;">
+            <button class="secondary-btn" onclick="showNotificationSettingsPanel()" style="flex: 1; display: flex; justify-content: center; align-items: center; gap: 6px; padding: 10px; font-size: 0.8rem; white-space: nowrap;" title="Ir a Configuración de Logs">
+                <i class="fa-solid fa-gears"></i> Log Sistemas
+            </button>
+            <button class="secondary-btn" onclick="showNotificationSettingsPanel()" style="flex: 1; display: flex; justify-content: center; align-items: center; gap: 6px; padding: 10px; font-size: 0.8rem; white-space: nowrap;" title="Ir a Configuración de Métricas">
+                <i class="fa-solid fa-chart-line"></i> Métricas Hist.
             </button>
         </div>
         <div style="margin-top: 10px;" id="logs-categories-list">
@@ -3993,46 +3996,6 @@ function escapeHtml(unsafe) {
         .replace(/'/g, "&#039;");
 }
 
-window.openRetentionModal = async function () {
-    const modal = document.getElementById('retention-modal');
-    if (modal) {
-        modal.classList.remove('hidden');
-        try {
-            const res = await fetch('/api/logging/retention');
-            if (res.ok) {
-                const data = await res.json();
-                document.getElementById('retention-days-input').value = data.days || 7;
-            }
-        } catch (e) {
-            console.error(e);
-        }
-    }
-}
-
-window.closeRetentionModal = function () {
-    const modal = document.getElementById('retention-modal');
-    if (modal) modal.classList.add('hidden');
-}
-
-window.saveRetentionPolicy = async function () {
-    const days = document.getElementById('retention-days-input').value;
-    try {
-        const res = await fetch('/api/logging/retention', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ days: parseInt(days) })
-        });
-        if (res.ok) {
-            alert('Política de retención guardada correctamente.');
-            closeRetentionModal();
-        } else {
-            alert('Error al guardar la política.');
-        }
-    } catch (e) {
-        console.error(e);
-        alert('Error de conexión.');
-    }
-}
 
 window.cleanupAllLogs = async function () {
     if (!confirm("¿Estás seguro de que quieres eliminar TODOS los logs de host persistidos y los logs de la app? Esta acción no se puede deshacer.")) {
@@ -4045,15 +4008,14 @@ window.cleanupAllLogs = async function () {
         });
         if (res.ok) {
             alert('Limpieza completada correctamente.');
-            closeRetentionModal();
             if (currentLogCategory === 'all') fetchAppLogs();
             else fetchHostLogsDB(currentLogCategory);
         } else {
-            alert('Error durante la limpieza.');
+            alert('Error al procesar limpieza.');
         }
     } catch (e) {
         console.error(e);
-        alert('Error de conexión al limpiar.');
+        alert('Error de conexión.');
     }
 }
 
@@ -4710,9 +4672,13 @@ async function showNotificationSettingsPanel() {
             const resp = await fetch('/api/config/notification_settings');
             let config = await resp.json();
 
-            const retentionResp = await fetch('/api/config/metrics/retention');
-            const retentionData = await retentionResp.json();
-            const metricsRetentionDays = retentionData.days || 30;
+            const metricsResp = await fetch('/api/config/metrics/retention');
+            const metricsData = await metricsResp.json();
+            const metricsRetentionDays = metricsData.days || 30;
+
+            const logsResp = await fetch('/api/logging/retention');
+            const logsData = await logsResp.json();
+            const logsRetentionDays = logsData.days || 7;
 
             // Ensure defaults
             if (!config.telegram) config.telegram = { enabled: false, token: '', chatId: '' };
@@ -4817,29 +4783,40 @@ async function showNotificationSettingsPanel() {
                         </div>
                     </div>
 
-                    <!-- Thresholds Section -->
+                    <!-- Retention and Danger Zone -->
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                        <div class="glass-panel" style="padding: 20px; border-radius: 12px;">
-                            <h4 style="margin-top: 0;">Umbrales de Alerta</h4>
-                            <div class="settings-form-grid" style="margin-top: 15px;">
-                                <div class="settings-input-group">
-                                    <label>Uso Crítico de CPU (%)</label>
-                                    <input type="number" id="notif-threshold-cpu" value="${config.thresholds.cpu_critical}" min="1" max="100">
+                        <div class="glass-panel" style="padding: 20px; border-radius: 12px; display: flex; flex-direction: column; gap: 20px;">
+                            <div>
+                                <h4 style="margin-top: 0;">Retención de Datos (TimescaleDB)</h4>
+                                <div class="settings-form-grid" style="margin-top: 15px;">
+                                    <div class="settings-input-group">
+                                        <label>Días de Historial de Métricas</label>
+                                        <input type="number" id="metrics-retention-days" value="${metricsRetentionDays}" min="1" max="365">
+                                        <p style="margin: 5px 0 0; font-size: 0.75rem; color: var(--text-secondary);">Muestras fuera de este rango se eliminarán automáticamente.</p>
+                                    </div>
                                 </div>
-                                <div class="settings-input-group">
-                                    <label>Uso Crítico de RAM (%)</label>
-                                    <input type="number" id="notif-threshold-ram" value="${config.thresholds.ram_critical}" min="1" max="100">
+                            </div>
+                            <div style="border-top: 1px solid var(--glass-border); padding-top: 20px;">
+                                <h4 style="margin-top: 0;">Retención de Logs de Sistema</h4>
+                                <div class="settings-form-grid" style="margin-top: 15px;">
+                                    <div class="settings-input-group">
+                                        <label>Días de Retención de Logs</label>
+                                        <input type="number" id="logs-retention-days" value="${logsRetentionDays}" min="1" max="365">
+                                        <p style="margin: 5px 0 0; font-size: 0.75rem; color: var(--text-secondary);">Logs más antiguos se eliminarán automáticamente.</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                        <div class="glass-panel" style="padding: 20px; border-radius: 12px;">
-                            <h4 style="margin-top: 0;">Retención de Datos (TimescaleDB)</h4>
-                            <div class="settings-form-grid" style="margin-top: 15px;">
-                                <div class="settings-input-group">
-                                    <label>Días de Historial de Métricas</label>
-                                    <input type="number" id="metrics-retention-days" value="${metricsRetentionDays}" min="1" max="365">
-                                    <p style="margin: 5px 0 0; font-size: 0.75rem; color: var(--text-secondary);">Muestras fuera de este rango se eliminarán automáticamente.</p>
-                                </div>
+                        <div class="glass-panel" style="padding: 20px; border-radius: 12px; border: 1px solid rgba(239, 68, 68, 0.2);">
+                            <h4 style="margin-top: 0; color: #ef4444; display: flex; align-items: center; gap: 10px;">
+                                <i class="fa-solid fa-triangle-exclamation"></i> Zona de Peligro
+                            </h4>
+                            <p style="margin: 10px 0; font-size: 0.85rem; color: var(--text-secondary);">Acciones irreversibles sobre la base de datos de logs.</p>
+                            <div style="margin-top: 20px; padding: 15px; background: rgba(239, 68, 68, 0.05); border: 1px dashed rgba(239, 68, 68, 0.2); border-radius: 8px;">
+                                <p style="font-size: 0.8rem; margin-bottom: 15px;">Esto eliminará permanentemente TODOS los logs almacenados (App y Hosts).</p>
+                                <button class="secondary-btn" onclick="cleanupAllLogs()" style="width: 100%; border-color: rgba(239, 68, 68, 0.4); color: #ef4444;">
+                                    <i class="fa-solid fa-trash-can"></i> Limpiar Todos los Logs
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -4898,6 +4875,7 @@ async function saveNotificationSettings() {
     };
 
     const metricsDays = parseInt(document.getElementById('metrics-retention-days').value);
+    const logsDays = parseInt(document.getElementById('logs-retention-days').value);
 
     try {
         const resp = await fetch('/api/config/notification_settings', {
@@ -4912,7 +4890,13 @@ async function saveNotificationSettings() {
             body: JSON.stringify({ days: metricsDays })
         });
 
-        if (resp.ok && respMetrics.ok) {
+        const respLogs = await fetch('/api/logging/retention', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ days: logsDays })
+        });
+
+        if (resp.ok && respMetrics.ok && respLogs.ok) {
             alert('Configuración guardada correctamente.');
         } else {
             throw new Error('Error al guardar algunos ajustes en el servidor');
