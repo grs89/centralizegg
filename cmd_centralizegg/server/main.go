@@ -361,6 +361,121 @@ func main() {
 	// Auth Endpoints (Public)
 	r.HandleFunc("/api/auth/login", LoginHandler(db)).Methods("POST")
 
+	// User Management API (Protected, Requires Admin role)
+	r.Handle("/api/users", RequiresPermission("admin", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case "GET":
+			users, err := db.GetAllUsers()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			json.NewEncoder(w).Encode(users)
+		case "POST":
+			var req struct {
+				Username string `json:"username"`
+				Password string `json:"password"`
+				RoleID   int64  `json:"role_id"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, "Invalid input", http.StatusBadRequest)
+				return
+			}
+			hash, err := auth_centralizegg.HashPassword(req.Password) // fixed auth package reference
+			if err != nil {
+				http.Error(w, "Failed to hash password", http.StatusInternalServerError)
+				return
+			}
+			id, err := db.CreateUser(req.Username, hash, req.RoleID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			AuditAction(r, db, "user.create", "User", req.Username, map[string]interface{}{"user_id": id, "role_id": req.RoleID})
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]interface{}{"id": id, "message": "User created"})
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))).Methods("GET", "POST")
+
+	r.Handle("/api/users/{id}", RequiresPermission("admin", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		userID, err := strconv.ParseInt(vars["id"], 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid user ID", http.StatusBadRequest)
+			return
+		}
+
+		switch r.Method {
+		case "PUT":
+			var req struct {
+				IsActive bool  `json:"is_active"`
+				RoleID   int64 `json:"role_id"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, "Invalid input", http.StatusBadRequest)
+				return
+			}
+			err = db.UpdateUserStatusAndRole(userID, req.IsActive, req.RoleID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			AuditAction(r, db, "user.update", "User", strconv.FormatInt(userID, 10), map[string]interface{}{"is_active": req.IsActive, "role_id": req.RoleID})
+			json.NewEncoder(w).Encode(map[string]string{"message": "User updated successfully"})
+
+		case "DELETE":
+			err = db.DeleteUser(userID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			AuditAction(r, db, "user.delete", "User", strconv.FormatInt(userID, 10), nil)
+			json.NewEncoder(w).Encode(map[string]string{"message": "User deleted successfully"})
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))).Methods("PUT", "DELETE")
+
+	r.Handle("/api/users/{id}/password", RequiresPermission("admin", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		userID, err := strconv.ParseInt(vars["id"], 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid user ID", http.StatusBadRequest)
+			return
+		}
+
+		var req struct {
+			Password string `json:"password"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid input", http.StatusBadRequest)
+			return
+		}
+		hash, err := auth_centralizegg.HashPassword(req.Password) // fixed auth package reference
+		if err != nil {
+			http.Error(w, "Failed to hash password", http.StatusInternalServerError)
+			return
+		}
+		err = db.UpdateUserPassword(userID, hash)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		AuditAction(r, db, "user.password_reset", "User", strconv.FormatInt(userID, 10), nil)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Password updated successfully"})
+	}))).Methods("PUT")
+
+	r.Handle("/api/roles", RequiresPermission("admin", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		roles, err := db.GetRoles()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(roles)
+	}))).Methods("GET")
+
 	// API Handlers (Headers and Logging are now handled by Middlewares)
 	r.HandleFunc("/api/health/summary", func(w http.ResponseWriter, r *http.Request) {
 		data, err := db.GetInfrastructureHealth()

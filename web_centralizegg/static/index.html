@@ -977,6 +977,83 @@
         <a href="javascript:void(0)" onclick="logout()"><i class="fa-solid fa-right-from-bracket"></i> Cerrar Sesión</a>
     </div>
 
+    <!-- User Management Modals -->
+    <!-- Create User Modal -->
+    <div id="user-create-modal" class="modal">
+        <div class="modal-content glass-panel">
+            <h3><i class="fa-solid fa-user-plus" style="color: var(--accent-color);"></i> Crear Nuevo Usuario</h3>
+            <div class="form-group" style="margin-top: 20px;">
+                <label>Nombre de Usuario</label>
+                <input type="text" id="new-user-username" class="settings-input" placeholder="ej. usuario1">
+            </div>
+            <div class="form-group" style="margin-top: 15px;">
+                <label>Contraseña</label>
+                <input type="password" id="new-user-password" class="settings-input" placeholder="Min. 8 caracteres">
+            </div>
+            <div class="form-group" style="margin-top: 15px;">
+                <label>Rol</label>
+                <select id="new-user-role" class="settings-input">
+                    <!-- Loaded dynamically via JS -->
+                </select>
+            </div>
+            <div class="modal-actions" style="margin-top: 25px; display: flex; justify-content: flex-end; gap: 10px;">
+                <button class="btn ghost" onclick="closeUserCreateModal()">Cancelar</button>
+                <button class="btn primary" onclick="submitCreateUser()"><i class="fa-solid fa-save"></i> Crear
+                    Usuario</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit User Modal (Role & Status) -->
+    <div id="user-edit-modal" class="modal">
+        <div class="modal-content glass-panel">
+            <h3><i class="fa-solid fa-user-pen" style="color: var(--accent-color);"></i> Editar Usuario</h3>
+            <input type="hidden" id="edit-user-id">
+            <div class="form-group" style="margin-top: 20px;">
+                <label>Nombre de Usuario</label>
+                <input type="text" id="edit-user-username" class="settings-input" disabled style="opacity: 0.7;">
+            </div>
+            <div class="form-group" style="margin-top: 15px;">
+                <label>Rol</label>
+                <select id="edit-user-role" class="settings-input">
+                    <!-- Loaded dynamically via JS -->
+                </select>
+            </div>
+            <div class="form-group"
+                style="margin-top: 15px; display: flex; align-items: center; justify-content: space-between;">
+                <label>Usuario Activo</label>
+                <label class="switch">
+                    <input type="checkbox" id="edit-user-active">
+                    <span class="slider round"></span>
+                </label>
+            </div>
+            <div class="modal-actions" style="margin-top: 25px; display: flex; justify-content: flex-end; gap: 10px;">
+                <button class="btn ghost" onclick="closeUserEditModal()">Cancelar</button>
+                <button class="btn primary" onclick="submitEditUser()"><i class="fa-solid fa-save"></i> Guardar
+                    Cambios</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Change Password Modal -->
+    <div id="user-password-modal" class="modal">
+        <div class="modal-content glass-panel">
+            <h3><i class="fa-solid fa-key" style="color: var(--accent-color);"></i> Cambiar Contraseña</h3>
+            <input type="hidden" id="pwd-user-id">
+            <p style="color: var(--text-secondary); margin-bottom: 20px;">Establecer nueva contraseña para <strong
+                    id="pwd-username" style="color: var(--text-primary);"></strong>.</p>
+            <div class="form-group" style="margin-top: 15px;">
+                <label>Nueva Contraseña</label>
+                <input type="password" id="pwd-new-password" class="settings-input" placeholder="Nueva contraseña">
+            </div>
+            <div class="modal-actions" style="margin-top: 25px; display: flex; justify-content: flex-end; gap: 10px;">
+                <button class="btn ghost" onclick="closeUserPasswordModal()">Cancelar</button>
+                <button class="btn primary" onclick="submitNewPassword()"><i class="fa-solid fa-save"></i> Cambiar
+                    Contraseña</button>
+            </div>
+        </div>
+    </div>
+
     <script src="history-map.js"></script>
     <script src="js/terminal.js"></script>
     <script src="js/snapshots.js"></script>

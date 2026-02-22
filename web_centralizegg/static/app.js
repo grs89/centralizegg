@@ -2864,22 +2864,16 @@ async function renderKubernetesNodeDetails(nodeId) {
         }
         const renderPodGrid = (pods) => {
             return pods.map(p => `
-            < div class="glass-panel pod-card" style = "padding: 15px; border-left: 4px solid ${p.state === 'Running' ? '#4ade80' : '#ef4444'};" >
-                    <div style="display: flex; justify-content: space-between; align-items: start;">
-                        <div style="max-width: 200px;">
-                            <div style="font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase;">${p.namespace}</div>
-                            <div style="font-weight: 700; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${p.name}">${p.name}</div>
-                        </div>
-                        <div style="font-size: 0.75rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: rgba(255,255,255,0.05);">
-                            ${p.state}
-                        </div>
-                    </div>
-                    <div style="margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.8rem; color: var(--text-secondary);">
-                        <div><i class="fa-solid fa-redo" style="font-size: 0.7rem;"></i> ${p.restarts} restarts</div>
-                        <div><i class="fa-solid fa-clock" style="font-size: 0.7rem;"></i> ${p.age}</div>
-                    </div>
-                </div >
-            `).join('');
+            <div class="glass-panel pod-card" style="padding: 15px; border-left: 4px solid ${p.state === 'Running' ? '#4ade80' : '#ef4444'};">
+                <div style="font-weight: 600; font-size: 0.95rem; margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary);" title="${p.name}">
+                    ${p.name}
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-secondary);">
+                    <span>${p.namespace}</span>
+                    <span style="font-weight: 600; color: ${p.state === 'Running' ? 'var(--success)' : 'var(--danger)'};">${p.state}</span>
+                </div>
+            </div>
+        `).join('');
         };
 
         const isAlreadyRenderingNode = scannerSection.getAttribute('data-k8s-node-id') === String(nodeId);
@@ -4215,7 +4209,7 @@ function renderSettingsSidebar() {
             </div>
             <div class="settings-menu-item ${settingsCurrentCategory === 'system' ? 'active' : ''}" data-category="system">
                 <i class="fa-solid fa-server"></i>
-                <span>Notific. y Status</span>
+                <span>Sistema</span>
             </div>
         </div>
     `;
@@ -4574,8 +4568,16 @@ async function showSystemPanel() {
     if (managedServers) managedServers.style.display = 'none';
 
     if (formContainer) {
-        formContainer.innerHTML = '<div id="sys-status-container"></div><div id="sys-notif-container" style="margin-top: 40px; padding-top: 30px; border-top: 1px solid var(--glass-border);"></div>';
+        formContainer.innerHTML = '<div id="sys-status-container"></div><div id="sys-users-container" style="margin-top: 40px; padding-top: 30px; border-top: 1px solid var(--glass-border);"></div><div id="sys-notif-container" style="margin-top: 40px; padding-top: 30px; border-top: 1px solid var(--glass-border);"></div>';
         renderStatusInside(document.getElementById('sys-status-container'));
+
+        // Only render user management if admin
+        if (state && state.auth && state.auth.role && state.auth.role.toLowerCase() === 'admin') {
+            renderUserManagementInside(document.getElementById('sys-users-container'));
+        } else {
+            document.getElementById('sys-users-container').style.display = 'none';
+        }
+
         renderNotificationsInside(document.getElementById('sys-notif-container'));
     }
 }
@@ -4722,6 +4724,244 @@ async function renderStatusInside(container) {
         `;
     }
 }
+
+// --- USER MANAGEMENT HELPER ---
+async function fetchAuthenticated(url, options = {}) {
+    const token = localStorage.getItem('token');
+    const headers = {
+        'Authorization': `Bearer ${token}`,
+        ...options.headers
+    };
+    if (options.body && typeof options.body === 'string') {
+        headers['Content-Type'] = 'application/json';
+    }
+    return fetch(url, { ...options, headers });
+}
+
+async function renderUserManagementInside(container) {
+    container.innerHTML = `
+        <div style="text-align: center; padding: 40px;">
+            <i class="fa-solid fa-spinner fa-spin" style="font-size: 2rem; color: var(--accent-color);"></i>
+            <p style="margin-top: 15px; color: var(--text-secondary);">Cargando usuarios...</p>
+        </div>
+        `;
+
+    try {
+        const [usersResp, rolesResp] = await Promise.all([
+            fetchAuthenticated('/api/users'),
+            fetchAuthenticated('/api/roles')
+        ]);
+
+        if (!usersResp.ok || !rolesResp.ok) throw new Error('Error fetching user data');
+
+        const users = await usersResp.json();
+        const roles = await rolesResp.json();
+
+        // We'll store roles globally for the modals
+        window.systemRolesCache = roles;
+        window.systemUsersCache = users;
+
+        let rowsHTML = '';
+        if (users && users.length > 0) {
+            rowsHTML = users.map(u => `
+                <tr style="border-bottom: 1px solid var(--glass-border);">
+                    <td style="padding: 15px 20px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--accent-color); display: flex; align-items: center; justify-content: center; font-weight: bold; color: white;">
+                                ${u.username.charAt(0).toUpperCase()}
+                            </div>
+                            <span style="font-weight: 500;">${u.username}</span>
+                        </div>
+                    </td>
+                    <td style="padding: 15px 20px; color: var(--text-secondary); text-transform: capitalize;">${u.role_name}</td>
+                    <td style="padding: 15px 20px;">
+                        <span style="padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; background: ${u.is_active ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; border: 1px solid ${u.is_active ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}; color: ${u.is_active ? 'var(--success)' : 'var(--danger)'};">
+                            ${u.is_active ? 'Activo' : 'Inactivo'}
+                        </span>
+                    </td>
+                    <td style="padding: 15px 20px; color: var(--text-secondary); font-size: 0.85rem;">
+                         ${new Date(u.created_at).toLocaleDateString()}
+                    </td>
+                    <td style="padding: 15px 20px; text-align: right;">
+                        <button class="icon-btn tooltip-target" title="Editar Rol/Estado" onclick="openUserEditModal(${u.id})" style="background: none; border: none; color: var(--text-secondary); cursor: pointer; margin-right: 10px;">
+                            <i class="fa-solid fa-pen"></i>
+                        </button>
+                        <button class="icon-btn tooltip-target" title="Cambiar Contraseña" onclick="openUserPasswordModal(${u.id}, '${u.username}')" style="background: none; border: none; color: var(--text-secondary); cursor: pointer; margin-right: 10px;">
+                            <i class="fa-solid fa-key"></i>
+                        </button>
+                        ${u.username !== 'admin' ? `
+                        <button class="icon-btn tooltip-target" title="Eliminar" onclick="deleteUser(${u.id}, '${u.username}')" style="background: none; border: none; color: var(--danger); cursor: pointer;">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                        ` : ''}
+                    </td>
+                </tr>
+            `).join('');
+        } else {
+            rowsHTML = `<tr><td colspan="5" style="text-align: center; padding: 30px; color: var(--text-secondary);">No hay usuarios registrados</td></tr>`;
+        }
+
+        container.innerHTML = `
+            <div style="max-width: 800px; margin: 0 auto;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div>
+                        <h3 style="margin: 0; font-size: 1.2rem; display: flex; align-items: center; gap: 10px;">
+                            <i class="fa-solid fa-users" style="color: var(--accent-color);"></i> Gestión de Usuarios
+                        </h3>
+                        <p style="margin: 5px 0 0; color: var(--text-secondary); font-size: 0.9rem;">Administra el acceso y los roles de la plataforma.</p>
+                    </div>
+                    <button class="btn primary" onclick="openUserCreateModal()">
+                        <i class="fa-solid fa-plus"></i> Nuevo Usuario
+                    </button>
+                </div>
+                
+                <div class="glass-panel" style="overflow: hidden; border-radius: 12px;">
+                    <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                        <thead style="background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--glass-border);">
+                            <tr>
+                                <th style="padding: 15px 20px; font-weight: 600; color: var(--text-primary);">Usuario</th>
+                                <th style="padding: 15px 20px; font-weight: 600; color: var(--text-primary);">Rol</th>
+                                <th style="padding: 15px 20px; font-weight: 600; color: var(--text-primary);">Estado</th>
+                                <th style="padding: 15px 20px; font-weight: 600; color: var(--text-primary);">Creación</th>
+                                <th style="padding: 15px 20px; text-align: right;">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rowsHTML}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    } catch (e) {
+        console.error('[Users] Error:', e);
+        container.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: var(--danger);">
+                <i class="fa-solid fa-exclamation-triangle" style="font-size: 2rem; margin-bottom: 15px;"></i>
+                <p>Error al obtener la lista de usuarios: ${e.message}</p>
+            </div>
+        `;
+    }
+}
+
+// User Management Modal Functions
+window.openUserCreateModal = function () {
+    const roleSelect = document.getElementById('new-user-role');
+    roleSelect.innerHTML = (window.systemRolesCache || []).map(r => `<option value="${r.id}">${r.name}</option>`).join('');
+    document.getElementById('new-user-username').value = '';
+    document.getElementById('new-user-password').value = '';
+    document.getElementById('user-create-modal').style.display = 'flex';
+};
+
+window.closeUserCreateModal = function () {
+    document.getElementById('user-create-modal').style.display = 'none';
+};
+
+window.submitCreateUser = async function () {
+    const username = document.getElementById('new-user-username').value.trim();
+    const password = document.getElementById('new-user-password').value;
+    const roleId = document.getElementById('new-user-role').value;
+
+    if (!username || password.length < 8) {
+        alert('Ingrese un usuario válido y una contraseña de al menos 8 caracteres.');
+        return;
+    }
+
+    try {
+        const resp = await fetchAuthenticated('/api/users', {
+            method: 'POST',
+            body: JSON.stringify({ username, password, role_id: parseInt(roleId) })
+        });
+        if (!resp.ok) throw new Error(await resp.text());
+        closeUserCreateModal();
+        showNotification('Usuario creado exitosamente', 'success');
+        showSystemPanel(); // refresh
+    } catch (err) {
+        alert('Error creando usuario: ' + err.message);
+    }
+};
+
+window.openUserEditModal = function (id) {
+    const user = (window.systemUsersCache || []).find(u => u.id === id);
+    if (!user) return;
+    document.getElementById('edit-user-id').value = id;
+    document.getElementById('edit-user-username').value = user.username;
+
+    const roleSelect = document.getElementById('edit-user-role');
+    roleSelect.innerHTML = (window.systemRolesCache || []).map(r => `<option value="${r.id}" ${r.id === user.role_id ? 'selected' : ''}>${r.name}</option>`).join('');
+
+    document.getElementById('edit-user-active').checked = user.is_active;
+    document.getElementById('user-edit-modal').style.display = 'flex';
+};
+
+window.closeUserEditModal = function () {
+    document.getElementById('user-edit-modal').style.display = 'none';
+};
+
+window.submitEditUser = async function () {
+    const id = document.getElementById('edit-user-id').value;
+    const roleId = document.getElementById('edit-user-role').value;
+    const isActive = document.getElementById('edit-user-active').checked;
+
+    try {
+        const resp = await fetchAuthenticated(`/api/users/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ is_active: isActive, role_id: parseInt(roleId) })
+        });
+        if (!resp.ok) throw new Error(await resp.text());
+        closeUserEditModal();
+        showNotification('Usuario actualizado exitosamente', 'success');
+        showSystemPanel(); // refresh
+    } catch (err) {
+        alert('Error actualizando usuario: ' + err.message);
+    }
+};
+
+window.openUserPasswordModal = function (id, username) {
+    document.getElementById('pwd-user-id').value = id;
+    document.getElementById('pwd-username').textContent = username;
+    document.getElementById('pwd-new-password').value = '';
+    document.getElementById('user-password-modal').style.display = 'flex';
+};
+
+window.closeUserPasswordModal = function () {
+    document.getElementById('user-password-modal').style.display = 'none';
+};
+
+window.submitNewPassword = async function () {
+    const id = document.getElementById('pwd-user-id').value;
+    const password = document.getElementById('pwd-new-password').value;
+
+    if (password.length < 8) {
+        alert('La contraseña debe tener al menos 8 caracteres.');
+        return;
+    }
+
+    try {
+        const resp = await fetchAuthenticated(`/api/users/${id}/password`, {
+            method: 'PUT',
+            body: JSON.stringify({ password })
+        });
+        if (!resp.ok) throw new Error(await resp.text());
+        closeUserPasswordModal();
+        showNotification('Contraseña actualizada exitosamente', 'success');
+    } catch (err) {
+        alert('Error actualizando contraseña: ' + err.message);
+    }
+};
+
+window.deleteUser = async function (id, username) {
+    if (!confirm(`¿Estás seguro de que deseas eliminar permanentemente al usuario '${username}'?`)) return;
+
+    try {
+        const resp = await fetchAuthenticated(`/api/users/${id}`, { method: 'DELETE' });
+        if (!resp.ok) throw new Error(await resp.text());
+        showNotification('Usuario eliminado', 'success');
+        showSystemPanel(); // refresh
+    } catch (err) {
+        alert('Error eliminando usuario: ' + err.message);
+    }
+};
 
 async function renderNotificationsInside(container) {
     container.innerHTML = `

@@ -1334,6 +1334,60 @@ func (d *DB) UpdateUserPassword(userID int64, passwordHash string) error {
 	return err
 }
 
+func (d *DB) GetAllUsers() ([]*User, error) {
+	var users []*User
+	query := `
+		SELECT u.id, u.username, u.role_id, r.name as role_name, u.is_active, u.created_at
+		FROM auth.users u
+		JOIN auth.roles r ON u.role_id = r.id
+		ORDER BY u.id ASC`
+	rows, err := d.Conn.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.Username, &u.RoleID, &u.RoleName, &u.IsActive, &u.CreatedAt); err != nil {
+			return nil, err
+		}
+		users = append(users, &u)
+	}
+	return users, rows.Err()
+}
+
+func (d *DB) UpdateUserStatusAndRole(userID int64, isActive bool, roleID int64) error {
+	query := `UPDATE auth.users SET is_active = $1, role_id = $2 WHERE id = $3`
+	_, err := d.Conn.Exec(query, isActive, roleID, userID)
+	return err
+}
+
+func (d *DB) DeleteUser(userID int64) error {
+	query := `DELETE FROM auth.users WHERE id = $1`
+	_, err := d.Conn.Exec(query, userID)
+	return err
+}
+
+func (d *DB) GetRoles() ([]*Role, error) {
+	var roles []*Role
+	query := `SELECT id, name, permissions FROM auth.roles ORDER BY id ASC`
+	rows, err := d.Conn.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var r Role
+		if err := rows.Scan(&r.ID, &r.Name, &r.Permissions); err != nil {
+			return nil, err
+		}
+		roles = append(roles, &r)
+	}
+	return roles, rows.Err()
+}
+
 func (d *DB) LogAuditAction(entry AuditLog) error {
 	query := `
 		INSERT INTO logging.audit_logs (user_id, action, resource_type, resource_id, details, ip_address)
