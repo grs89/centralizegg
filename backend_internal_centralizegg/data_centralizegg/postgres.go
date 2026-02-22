@@ -12,7 +12,8 @@ import (
 )
 
 type DB struct {
-	Conn *sql.DB
+	Conn  *sql.DB
+	Cache *TTLCache
 }
 
 type AppLog struct {
@@ -532,7 +533,10 @@ func NewPostgresDB(connStr string) (*DB, error) {
 	// Migration: Add interfaces_data to server_metrics_history
 	_, _ = db.Exec("ALTER TABLE server_metrics_history ADD COLUMN IF NOT EXISTS interfaces_data TEXT DEFAULT '{}'")
 
-	return &DB{Conn: db}, nil
+	return &DB{
+		Conn:  db,
+		Cache: NewTTLCache(),
+	}, nil
 }
 
 func (d *DB) UpdateKubernetesCertExpiration(serverID int64, expiration time.Time) error {
@@ -1265,6 +1269,13 @@ func (d *DB) UpsertVM(vm VM) error {
 }
 
 func (d *DB) GetAllVMs() ([]VM, error) {
+	cacheKey := "vms_all"
+	if d.Cache != nil {
+		if cached, found := d.Cache.Get(cacheKey); found {
+			return cached.([]VM), nil
+		}
+	}
+
 	rows, err := d.Conn.Query("SELECT id, name, state, vcpu, cpu_time, cpu_usage, memory_usage, max_memory, disk_allocation, disk_capacity, disk_read, disk_write, net_rx, net_tx, guest_ips, guest_fs_usage, disks, os_name, network_data, host_id, updated_at FROM virtualization.vms")
 	if err != nil {
 		return nil, err
@@ -1279,6 +1290,11 @@ func (d *DB) GetAllVMs() ([]VM, error) {
 		}
 		vms = append(vms, vm)
 	}
+
+	if d.Cache != nil {
+		d.Cache.Set(cacheKey, vms, 5*time.Second)
+	}
+
 	return vms, nil
 }
 
@@ -1386,6 +1402,13 @@ func (d *DB) DeleteServer(id int64) error {
 }
 
 func (d *DB) GetHosts() ([]Host, error) {
+	cacheKey := "hosts_list_all"
+	if d.Cache != nil {
+		if cached, found := d.Cache.Get(cacheKey); found {
+			return cached.([]Host), nil
+		}
+	}
+
 	rows, err := d.Conn.Query(`
 		SELECT h.id, h.server_id, h.hostname, s.name, s.ip_address, h.public_ip, h.dns_servers, h.uptime, h.update_status, h.temperature, h.disks, h.bridge_interfaces, h.oom_events, h.host_events, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, COALESCE(h.active_connections, '[]'), s.offline_since, h.architecture, s.status
 		FROM virtualization.hosts h
@@ -1405,6 +1428,11 @@ func (d *DB) GetHosts() ([]Host, error) {
 		h.OSName = osName.String
 		hosts = append(hosts, h)
 	}
+
+	if d.Cache != nil {
+		d.Cache.Set(cacheKey, hosts, 5*time.Second)
+	}
+
 	return hosts, nil
 }
 
@@ -2244,6 +2272,13 @@ func (d *DB) UpsertContainer(c Container) error {
 }
 
 func (d *DB) GetDockerHosts() ([]DockerHost, error) {
+	cacheKey := "docker_hosts_list"
+	if d.Cache != nil {
+		if cached, found := d.Cache.Get(cacheKey); found {
+			return cached.([]DockerHost), nil
+		}
+	}
+
 	rows, err := d.Conn.Query(`
 		SELECT h.id, h.server_id, h.hostname, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, h.public_ip, h.dns_servers, h.uptime, h.update_status, h.temperature, h.disks, h.docker_version, h.docker_service_status, h.docker_socket_status, h.docker_api_latency, h.docker_storage_used, h.docker_storage_total, h.docker_inodes_usage, h.docker_logs_size, h.docker_volumes, h.docker_networks, h.gpu_info, ds.name, ds.ip_address, ds.status, COALESCE(h.host_events, '[]'), COALESCE(h.active_connections, '[]'), ds.offline_since, h.architecture
 		FROM containers.hosts h
@@ -2261,10 +2296,22 @@ func (d *DB) GetDockerHosts() ([]DockerHost, error) {
 		}
 		hosts = append(hosts, h)
 	}
+
+	if d.Cache != nil {
+		d.Cache.Set(cacheKey, hosts, 5*time.Second)
+	}
+
 	return hosts, nil
 }
 
 func (d *DB) GetAllContainers() ([]Container, error) {
+	cacheKey := "docker_containers_all"
+	if d.Cache != nil {
+		if cached, found := d.Cache.Get(cacheKey); found {
+			return cached.([]Container), nil
+		}
+	}
+
 	rows, err := d.Conn.Query("SELECT id, name, image, ports, state, status, cpu_usage, memory_usage, memory_limit, net_rx, net_tx, block_in, block_out, pids, ip_address, oom_killed, vulnerabilities, host_id, updated_at FROM containers.containers")
 	if err != nil {
 		return nil, err
@@ -2279,6 +2326,11 @@ func (d *DB) GetAllContainers() ([]Container, error) {
 		}
 		containers = append(containers, c)
 	}
+
+	if d.Cache != nil {
+		d.Cache.Set(cacheKey, containers, 5*time.Second)
+	}
+
 	return containers, nil
 }
 
@@ -2316,6 +2368,13 @@ func (d *DB) UpsertKubernetesPod(p KubernetesPod) error {
 }
 
 func (d *DB) GetKubernetesNodes() ([]KubernetesNode, error) {
+	cacheKey := "kubernetes_nodes_list"
+	if d.Cache != nil {
+		if cached, found := d.Cache.Get(cacheKey); found {
+			return cached.([]KubernetesNode), nil
+		}
+	}
+
 	rows, err := d.Conn.Query(`
 		SELECT n.id, n.server_id, n.hostname, n.status, n.roles, n.version, n.cpu_model, n.cpu_cores, n.total_memory, n.free_memory, n.cpu_usage, n.os_name, n.kernel_version, n.container_runtime, n.pods_count, n.disk_total, n.disk_used, n.net_rx, n.net_tx, n.net_rx_rate, n.net_tx_rate, ks.name, n.ip_address, n.architecture, COALESCE(n.active_connections, '[]'), ks.offline_since
 		FROM kubernetes.nodes n
@@ -2333,10 +2392,22 @@ func (d *DB) GetKubernetesNodes() ([]KubernetesNode, error) {
 		}
 		nodes = append(nodes, n)
 	}
+
+	if d.Cache != nil {
+		d.Cache.Set(cacheKey, nodes, 5*time.Second)
+	}
+
 	return nodes, nil
 }
 
 func (d *DB) GetAllKubernetesPods() ([]KubernetesPod, error) {
+	cacheKey := "kubernetes_pods_all"
+	if d.Cache != nil {
+		if cached, found := d.Cache.Get(cacheKey); found {
+			return cached.([]KubernetesPod), nil
+		}
+	}
+
 	rows, err := d.Conn.Query(`SELECT id, node_id, name, namespace, state, status, cpu_usage, memory_usage, ip_address, restarts, age, updated_at, image, ports, net_rx, net_tx FROM kubernetes.pods`)
 	if err != nil {
 		return nil, err
@@ -2351,6 +2422,11 @@ func (d *DB) GetAllKubernetesPods() ([]KubernetesPod, error) {
 		}
 		pods = append(pods, p)
 	}
+
+	if d.Cache != nil {
+		d.Cache.Set(cacheKey, pods, 5*time.Second)
+	}
+
 	return pods, nil
 }
 
@@ -2393,6 +2469,13 @@ func (d *DB) UpsertPodmanContainer(c Container) error {
 }
 
 func (d *DB) GetPodmanHosts() ([]PodmanHost, error) {
+	cacheKey := "podman_hosts_list"
+	if d.Cache != nil {
+		if cached, found := d.Cache.Get(cacheKey); found {
+			return cached.([]PodmanHost), nil
+		}
+	}
+
 	rows, err := d.Conn.Query(`
 		SELECT h.id, h.server_id, h.hostname, ps.name, ps.ip_address, h.cpu_model, h.cpu_cores, h.total_memory, h.free_memory, h.cpu_usage, h.os_name, h.uptime, h.podman_version, h.podman_service_status, h.podman_api_latency, h.podman_storage_used, h.podman_storage_total, h.podman_inodes_usage, h.podman_volumes, h.podman_networks, h.gpu_info, ps.status, COALESCE(h.host_events, '[]'), COALESCE(h.active_connections, '[]'), ps.offline_since, h.architecture
 		FROM containers.podman_hosts h
@@ -2410,10 +2493,22 @@ func (d *DB) GetPodmanHosts() ([]PodmanHost, error) {
 		}
 		hosts = append(hosts, h)
 	}
+
+	if d.Cache != nil {
+		d.Cache.Set(cacheKey, hosts, 5*time.Second)
+	}
+
 	return hosts, nil
 }
 
 func (d *DB) GetAllPodmanContainers() ([]Container, error) {
+	cacheKey := "podman_containers_all"
+	if d.Cache != nil {
+		if cached, found := d.Cache.Get(cacheKey); found {
+			return cached.([]Container), nil
+		}
+	}
+
 	rows, err := d.Conn.Query("SELECT id, host_id, name, image, ports, state, status, cpu_usage, memory_usage, memory_limit, net_rx, net_tx, block_in, block_out, pids, ip_address, oom_killed, vulnerabilities, updated_at FROM containers.podman_containers")
 	if err != nil {
 		return nil, err
@@ -2428,6 +2523,11 @@ func (d *DB) GetAllPodmanContainers() ([]Container, error) {
 		}
 		containers = append(containers, c)
 	}
+
+	if d.Cache != nil {
+		d.Cache.Set(cacheKey, containers, 5*time.Second)
+	}
+
 	return containers, nil
 }
 
@@ -2470,6 +2570,13 @@ func (d *DB) UpsertProxmoxVM(vm ProxmoxVM) error {
 }
 
 func (d *DB) GetProxmoxHosts() ([]ProxmoxHost, error) {
+	cacheKey := "proxmox_hosts_list"
+	if d.Cache != nil {
+		if cached, found := d.Cache.Get(cacheKey); found {
+			return cached.([]ProxmoxHost), nil
+		}
+	}
+
 	rows, err := d.Conn.Query(`
 		SELECT ph.id, ph.server_id, ph.hostname, ps.name, ps.ip_address, ps.status, ph.cpu_model, ph.cpu_cores, ph.total_memory, ph.free_memory, ph.cpu_usage, ph.os_name, ph.kernel_version, ph.pve_version, ph.uptime, ph.vms_count, ph.containers_count, COALESCE(ph.active_connections, '[]'), ps.offline_since, ph.architecture
 		FROM virtualization.proxmox_hosts ph
@@ -2487,10 +2594,22 @@ func (d *DB) GetProxmoxHosts() ([]ProxmoxHost, error) {
 		}
 		hosts = append(hosts, h)
 	}
+
+	if d.Cache != nil {
+		d.Cache.Set(cacheKey, hosts, 5*time.Second)
+	}
+
 	return hosts, nil
 }
 
 func (d *DB) GetAllProxmoxVMs() ([]ProxmoxVM, error) {
+	cacheKey := "proxmox_vms_all"
+	if d.Cache != nil {
+		if cached, found := d.Cache.Get(cacheKey); found {
+			return cached.([]ProxmoxVM), nil
+		}
+	}
+
 	rows, err := d.Conn.Query("SELECT id, host_id, vmid, name, type, state, cpu_usage, memory_usage, max_memory, net_rx, net_tx, updated_at FROM virtualization.proxmox_vms")
 	if err != nil {
 		return nil, err
@@ -2505,6 +2624,11 @@ func (d *DB) GetAllProxmoxVMs() ([]ProxmoxVM, error) {
 		}
 		vms = append(vms, vm)
 	}
+
+	if d.Cache != nil {
+		d.Cache.Set(cacheKey, vms, 5*time.Second)
+	}
+
 	return vms, nil
 }
 
@@ -2565,6 +2689,13 @@ func (d *DB) UpsertNasDisk(disk NasDisk) error {
 }
 
 func (d *DB) GetNasHosts() ([]NasHost, error) {
+	cacheKey := "nas_hosts_list"
+	if d.Cache != nil {
+		if cached, found := d.Cache.Get(cacheKey); found {
+			return cached.([]NasHost), nil
+		}
+	}
+
 	rows, err := d.Conn.Query(`
 		SELECT nh.id, nh.server_id, nh.hostname, ns.name, ns.ip_address, ns.status, nh.cpu_model, nh.cpu_cores, nh.total_memory, nh.free_memory, nh.cpu_usage, nh.os_name, nh.kernel_version, nh.uptime, nh.model, nh.serial, COALESCE(nh.active_connections, '[]'), ns.offline_since, nh.architecture
 		FROM storage.nas_hosts nh
@@ -2582,6 +2713,11 @@ func (d *DB) GetNasHosts() ([]NasHost, error) {
 		}
 		hosts = append(hosts, h)
 	}
+
+	if d.Cache != nil {
+		d.Cache.Set(cacheKey, hosts, 5*time.Second)
+	}
+
 	return hosts, nil
 }
 
@@ -2642,6 +2778,13 @@ func (d *DB) UpsertCephHost(h CephHost) (int64, error) {
 }
 
 func (d *DB) GetCephHosts() ([]CephHost, error) {
+	cacheKey := "ceph_hosts_list"
+	if d.Cache != nil {
+		if cached, found := d.Cache.Get(cacheKey); found {
+			return cached.([]CephHost), nil
+		}
+	}
+
 	rows, err := d.Conn.Query(`
 		SELECT ch.id, ch.server_id, ch.hostname, cs.name, cs.ip_address, ch.status, ch.cpu_model, ch.cpu_cores, ch.total_memory, ch.free_memory, ch.cpu_usage, ch.os_name, ch.kernel_version, ch.uptime, ch.cluster_status, ch.cluster_health, COALESCE(ch.active_connections, '[]'), cs.offline_since, ch.architecture
 		FROM storage.ceph_hosts ch
@@ -2659,6 +2802,11 @@ func (d *DB) GetCephHosts() ([]CephHost, error) {
 		}
 		hosts = append(hosts, h)
 	}
+
+	if d.Cache != nil {
+		d.Cache.Set(cacheKey, hosts, 5*time.Second)
+	}
+
 	return hosts, nil
 }
 
@@ -2679,6 +2827,13 @@ func (d *DB) DeleteStaleKubernetesPods(serverID int64, activePodKeys []string) e
 }
 
 func (d *DB) GetInfrastructureHealth() (*GlobalHealthData, error) {
+	cacheKey := "infrastructure_health"
+	if d.Cache != nil {
+		if cached, found := d.Cache.Get(cacheKey); found {
+			return cached.(*GlobalHealthData), nil
+		}
+	}
+
 	data := &GlobalHealthData{
 		OverallHealth: []HealthSummary{},
 		RecentAlerts:  []InfrastructureAlert{},
@@ -2759,6 +2914,10 @@ func (d *DB) GetInfrastructureHealth() (*GlobalHealthData, error) {
 				Metadata: "{}",
 			})
 		}
+	}
+
+	if d.Cache != nil {
+		d.Cache.Set(cacheKey, data, 5*time.Second)
 	}
 
 	return data, nil
