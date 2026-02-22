@@ -2370,3 +2370,193 @@ body.light-theme .sortable-ghost {
         box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
     }
 }
+
+/* Login Overlay */
+.login-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(15, 23, 42, 0.8);
+    backdrop-filter: blur(10px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+    transition: opacity 0.3s ease;
+}
+
+.login-card {
+    width: 100%;
+    max-width: 400px;
+    padding: 2.5rem;
+    border-radius: 24px;
+    text-align: center;
+    animation: fadeInScale 0.4s ease-out;
+}
+
+@keyframes fadeInScale {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.login-header img {
+    height: 80px;
+    margin-bottom: 1rem;
+    border-radius: 18px;
+}
+
+.login-header h2 {
+    font-size: 1.8rem;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent-color) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.login-header p {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-bottom: 2rem;
+}
+
+.login-form .input-group {
+    position: relative;
+    margin-bottom: 1.2rem;
+}
+
+.login-form .input-group i {
+    position: absolute;
+    left: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-secondary);
+    font-size: 1rem;
+}
+
+.login-form input {
+    width: 100%;
+    padding: 12px 15px 12px 45px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    color: var(--text-primary);
+    font-size: 1rem;
+    transition: all 0.3s ease;
+}
+
+.login-form input:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.1);
+}
+
+.login-btn {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, #38bdf8 0%, #2563eb 100%);
+    border: none;
+    border-radius: 12px;
+    color: white;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    transition: all 0.3s ease;
+    margin-top: 1rem;
+}
+
+.login-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px -5px rgba(37, 99, 235, 0.4);
+}
+
+.login-error {
+    margin-top: 1rem;
+    color: #ef4444;
+    font-size: 0.85rem;
+    background: rgba(239, 68, 68, 0.1);
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.login-footer {
+    margin-top: 2rem;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+/* User Profile Dropdown */
+.user-profile-dropdown {
+    position: fixed;
+    top: 85px;
+    right: 32px;
+    width: 220px;
+    padding: 15px;
+    border-radius: 16px;
+    z-index: 9999;
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.dropdown-user-info {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 10px;
+}
+
+.dropdown-user-info #dropdown-username {
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.dropdown-user-info #dropdown-role {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.user-profile-dropdown a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text-primary);
+    text-decoration: none;
+    font-size: 0.9rem;
+    padding: 8px 10px;
+    border-radius: 8px;
+    transition: background 0.2s;
+}
+
+.user-profile-dropdown a:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.user-profile-dropdown a i {
+    color: var(--danger);
+}

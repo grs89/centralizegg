@@ -56,5 +56,13 @@ export const state = {
     currentServers: [], // General servers cache
     lastNotificationCount: 0,
     lastReminderSoundTime: 0,
-    HISTORY_POINTS: 20
+    HISTORY_POINTS: 20,
+
+    // Auth State
+    auth: {
+        token: localStorage.getItem('jwt_token'),
+        user: localStorage.getItem('user_name'),
+        role: localStorage.getItem('user_role'),
+        isLoggedIn: !!localStorage.getItem('jwt_token')
+    }
 };

@@ -18,6 +18,34 @@ type DB struct {
 	Cache *TTLCache
 }
 
+type User struct {
+	ID           int64     `json:"id"`
+	Username     string    `json:"username"`
+	PasswordHash string    `json:"-"`
+	RoleID       int64     `json:"role_id"`
+	RoleName     string    `json:"role_name"`
+	IsActive     bool      `json:"is_active"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+type Role struct {
+	ID          int64           `json:"id"`
+	Name        string          `json:"name"`
+	Permissions json.RawMessage `json:"permissions"`
+}
+
+type AuditLog struct {
+	ID           int64           `json:"id"`
+	Timestamp    time.Time       `json:"timestamp"`
+	UserID       int64           `json:"user_id"`
+	Username     string          `json:"username"`
+	Action       string          `json:"action"`
+	ResourceType string          `json:"resource_type"`
+	ResourceID   string          `json:"resource_id"`
+	Details      json.RawMessage `json:"details"`
+	IPAddress    string          `json:"ip_address"`
+}
+
 type AppLog struct {
 	ID        int64     `json:"id"`
 	Timestamp time.Time `json:"timestamp"`
@@ -551,7 +579,7 @@ func ensureSchema(db *sql.DB) {
 	// Enable pg_trgm for fast text searching in logs
 	_, _ = db.Exec("CREATE EXTENSION IF NOT EXISTS pg_trgm")
 
-	schemas := []string{"virtualization", "firewall", "storage", "containers", "kubernetes", "logging"}
+	schemas := []string{"virtualization", "firewall", "storage", "containers", "kubernetes", "logging", "auth"}
 	for _, s := range schemas {
 		_, _ = db.Exec(fmt.Sprintf("CREATE SCHEMA IF NOT EXISTS %s", s))
 	}
@@ -1236,6 +1264,35 @@ func ensureSchema(db *sql.DB) {
 		"ALTER TABLE storage.ceph_hosts ADD COLUMN IF NOT EXISTS architecture VARCHAR(50) DEFAULT ''",
 		"ALTER TABLE firewall.hosts ADD COLUMN IF NOT EXISTS architecture VARCHAR(50) DEFAULT ''",
 		"ALTER TABLE server_metrics_history ADD COLUMN IF NOT EXISTS is_online BOOLEAN DEFAULT TRUE",
+		// Auth and Audit Tables
+		`CREATE TABLE IF NOT EXISTS auth.roles (
+			id SERIAL PRIMARY KEY,
+			name VARCHAR(50) UNIQUE NOT NULL,
+			permissions JSONB DEFAULT '{}'
+		)`,
+		`CREATE TABLE IF NOT EXISTS auth.users (
+			id SERIAL PRIMARY KEY,
+			username VARCHAR(50) UNIQUE NOT NULL,
+			password_hash TEXT NOT NULL,
+			role_id INT REFERENCES auth.roles(id),
+			is_active BOOLEAN DEFAULT TRUE,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS logging.audit_logs (
+			id SERIAL PRIMARY KEY,
+			timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			user_id INT REFERENCES auth.users(id) ON DELETE SET NULL,
+			action VARCHAR(100) NOT NULL,
+			resource_type VARCHAR(100),
+			resource_id VARCHAR(100),
+			details JSONB DEFAULT '{}',
+			ip_address VARCHAR(45)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON logging.audit_logs (timestamp DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON logging.audit_logs (user_id)`,
+		// Default Roles
+		`INSERT INTO auth.roles (name, permissions) VALUES ('admin', '{"all": true}') ON CONFLICT (name) DO NOTHING`,
+		`INSERT INTO auth.roles (name, permissions) VALUES ('viewer', '{"read": true}') ON CONFLICT (name) DO NOTHING`,
 	}
 
 	for _, q := range queries {
@@ -1243,6 +1300,85 @@ func ensureSchema(db *sql.DB) {
 			log.Printf("Migration warning (query: %s): %v", q, err)
 		}
 	}
+}
+
+func (d *DB) GetUserByUsername(username string) (*User, error) {
+	var user User
+	query := `
+		SELECT u.id, u.username, u.password_hash, u.role_id, r.name as role_name, u.is_active, u.created_at
+		FROM auth.users u
+		JOIN auth.roles r ON u.role_id = r.id
+		WHERE u.username = $1`
+	err := d.Conn.QueryRow(query, username).Scan(
+		&user.ID, &user.Username, &user.PasswordHash, &user.RoleID, &user.RoleName, &user.IsActive, &user.CreatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (d *DB) CreateUser(username, passwordHash string, roleID int64) (int64, error) {
+	var id int64
+	query := `INSERT INTO auth.users (username, password_hash, role_id) VALUES ($1, $2, $3) RETURNING id`
+	err := d.Conn.QueryRow(query, username, passwordHash, roleID).Scan(&id)
+	return id, err
+}
+
+func (d *DB) UpdateUserPassword(userID int64, passwordHash string) error {
+	query := `UPDATE auth.users SET password_hash = $1 WHERE id = $2`
+	_, err := d.Conn.Exec(query, passwordHash, userID)
+	return err
+}
+
+func (d *DB) LogAuditAction(entry AuditLog) error {
+	query := `
+		INSERT INTO logging.audit_logs (user_id, action, resource_type, resource_id, details, ip_address)
+		VALUES ($1, $2, $3, $4, $5, $6)`
+	_, err := d.Conn.Exec(query, entry.UserID, entry.Action, entry.ResourceType, entry.ResourceID, entry.Details, entry.IPAddress)
+	return err
+}
+
+func (d *DB) GetAuditLogs(limit int, offset int) ([]AuditLog, error) {
+	query := `
+		SELECT a.id, a.timestamp, a.user_id, u.username, a.action, a.resource_type, a.resource_id, a.details, a.ip_address
+		FROM logging.audit_logs a
+		LEFT JOIN auth.users u ON a.user_id = u.id
+		ORDER BY a.timestamp DESC
+		LIMIT $1 OFFSET $2`
+	rows, err := d.Conn.Query(query, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var logs []AuditLog
+	for rows.Next() {
+		var l AuditLog
+		var username sql.NullString
+		var userID sql.NullInt64
+		err := rows.Scan(&l.ID, &l.Timestamp, &userID, &username, &l.Action, &l.ResourceType, &l.ResourceID, &l.Details, &l.IPAddress)
+		if err != nil {
+			return nil, err
+		}
+		if username.Valid {
+			l.Username = username.String
+		}
+		if userID.Valid {
+			l.UserID = userID.Int64
+		}
+		logs = append(logs, l)
+	}
+	return logs, nil
+}
+
+func (d *DB) GetRoleIDByName(name string) (int64, error) {
+	var id int64
+	err := d.Conn.QueryRow("SELECT id FROM auth.roles WHERE name = $1", name).Scan(&id)
+	return id, err
 }
 
 func (d *DB) UpsertHost(h Host) (int64, error) {

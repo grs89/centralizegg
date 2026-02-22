@@ -2,6 +2,7 @@ package main
 
 import (
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/ai"
+	"github.com/grs/centralizegg/backend_internal_centralizegg/auth_centralizegg"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/container"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/data_centralizegg"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/firewall"
@@ -49,6 +51,13 @@ var (
 			IdleConnTimeout:     90 * time.Second,
 		},
 	}
+)
+
+type contextKey string
+
+const (
+	userContextKey contextKey = "user"
+	roleContextKey contextKey = "role"
 )
 
 // Middlewares
@@ -96,6 +105,124 @@ func RequestLoggerMiddleware(next http.Handler) http.Handler {
 		if systemLog != nil {
 			systemLog.Printf("%s %s %v", r.Method, r.URL.Path, time.Since(start))
 		}
+	})
+}
+
+func AuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Allow static files and login endpoint without token
+		// Anything that doesn't start with /api/ (except /api/auth/login) or /ws/ is considered static/public
+		isApi := strings.HasPrefix(r.URL.Path, "/api/")
+		isWs := strings.HasPrefix(r.URL.Path, "/ws/")
+		isLogin := r.URL.Path == "/api/auth/login"
+
+		if (!isApi && !isWs) || isLogin {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+			// Also check for token in query param for WebSockets (Terminal)
+			token := r.URL.Query().Get("token")
+			if token != "" {
+				authHeader = "Bearer " + token
+			} else {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+		}
+
+		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+		claims, err := auth_centralizegg.ValidateToken(tokenString)
+		if err != nil {
+			http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), userContextKey, claims.UserID)
+		ctx = context.WithValue(ctx, roleContextKey, claims.Role)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func RequiresPermission(permission string, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		role, ok := r.Context().Value(roleContextKey).(string)
+		if !ok {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+
+		// RBAC logic
+		if role == "admin" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Basic viewer logic (only allow GET or specific read actions)
+		if role == "viewer" {
+			if r.Method == "GET" || permission == "read" {
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
+
+		http.Error(w, "Access Denied: Insufficient Permissions", http.StatusForbidden)
+	}
+}
+
+func LoginHandler(db *data_centralizegg.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request", http.StatusBadRequest)
+			return
+		}
+
+		user, err := db.GetUserByUsername(req.Username)
+		if err != nil {
+			http.Error(w, "Database error", http.StatusInternalServerError)
+			return
+		}
+
+		if user == nil || !auth_centralizegg.CheckPasswordHash(req.Password, user.PasswordHash) {
+			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+			return
+		}
+
+		token, err := auth_centralizegg.GenerateToken(user.ID, user.Username, user.RoleName)
+		if err != nil {
+			http.Error(w, "Token generation error", http.StatusInternalServerError)
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]string{
+			"token": token,
+			"role":  user.RoleName,
+			"user":  user.Username,
+		})
+	}
+}
+
+func AuditAction(r *http.Request, db *data_centralizegg.DB, action, resType, resID string, details map[string]interface{}) {
+	userID, _ := r.Context().Value(userContextKey).(int64)
+	ip := r.RemoteAddr
+	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+		ip = strings.Split(forwarded, ",")[0]
+	}
+
+	detJSON, _ := json.Marshal(details)
+	db.LogAuditAction(data_centralizegg.AuditLog{
+		UserID:       userID,
+		Action:       action,
+		ResourceType: resType,
+		ResourceID:   resID,
+		Details:      detJSON,
+		IPAddress:    ip,
 	})
 }
 
@@ -202,13 +329,37 @@ func main() {
 	cephCol := storage.NewCephCollector(db)
 	go cephCol.Start(5 * time.Second)
 
+	// Seed Admin User or Sync Password
+	adminUser, _ := db.GetUserByUsername("admin")
+	adminPass := os.Getenv("INITIAL_ADMIN_PASSWORD")
+	if adminPass == "" {
+		adminPass = "Centralizegg" // Default password
+	}
+	hash, _ := auth_centralizegg.HashPassword(adminPass)
+	roleID, _ := db.GetRoleIDByName("admin")
+
+	if adminUser == nil {
+		if roleID > 0 {
+			db.CreateUser("admin", hash, roleID)
+			log.Printf("[Auth] Initial admin user created with username 'admin'")
+		}
+	} else {
+		// Sync password for existing admin for dev convenience
+		db.UpdateUserPassword(adminUser.ID, hash)
+		log.Printf("[Auth] Admin user password synchronized")
+	}
+
 	// Router
 	r := mux.NewRouter()
 
 	// Apply Middlewares to Router
 	r.Use(RequestLoggerMiddleware)
+	r.Use(AuthMiddleware) // AUTH BEFORE JSON/GZIP BUT AFTER LOGGER
 	r.Use(JSONHeaderMiddleware)
 	r.Use(GzipMiddleware)
+
+	// Auth Endpoints (Public)
+	r.HandleFunc("/api/auth/login", LoginHandler(db)).Methods("POST")
 
 	// API Handlers (Headers and Logging are now handled by Middlewares)
 	r.HandleFunc("/api/health/summary", func(w http.ResponseWriter, r *http.Request) {
@@ -349,7 +500,7 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]int{"days": days})
 	}).Methods("GET")
 
-	r.HandleFunc("/api/config/metrics/retention", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/api/config/metrics/retention", RequiresPermission("write", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Days int `json:"days"`
 		}
@@ -361,8 +512,9 @@ func main() {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		AuditAction(r, db, "UPDATE_METRICS_RETENTION", "config", "metrics", map[string]interface{}{"days": req.Days})
 		w.WriteHeader(http.StatusOK)
-	}).Methods("POST")
+	})).Methods("POST")
 
 	r.HandleFunc("/api/logging/retention", func(w http.ResponseWriter, r *http.Request) {
 		days, err := db.GetRetentionDays()
@@ -373,7 +525,7 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]int{"days": days})
 	}).Methods("GET")
 
-	r.HandleFunc("/api/logging/retention", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/api/logging/retention", RequiresPermission("write", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Days int `json:"days"`
 		}
@@ -385,16 +537,18 @@ func main() {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		AuditAction(r, db, "UPDATE_LOGS_RETENTION", "config", "logs", map[string]interface{}{"days": req.Days})
 		w.WriteHeader(http.StatusOK)
-	}).Methods("POST")
+	})).Methods("POST")
 
-	r.HandleFunc("/api/logging/cleanup", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/api/logging/cleanup", RequiresPermission("admin", func(w http.ResponseWriter, r *http.Request) {
 		if err := db.CleanupAllLogs(); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		AuditAction(r, db, "CLEANUP_ALL_LOGS", "logs", "all", nil)
 		w.WriteHeader(http.StatusNoContent)
-	}).Methods("POST")
+	})).Methods("POST")
 
 	r.HandleFunc("/api/logging/host-logs", func(w http.ResponseWriter, r *http.Request) {
 		category := r.URL.Query().Get("category")
@@ -422,6 +576,31 @@ func main() {
 		logs, err := db.GetHostLogsFromDB(category, serverID, limit)
 		if err != nil {
 			http.Error(w, "failed to get host logs", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"logs": logs,
+		})
+	}).Methods("GET")
+
+	// Audit Logs API
+	r.HandleFunc("/api/logging/audit-logs", func(w http.ResponseWriter, r *http.Request) {
+		limitStr := r.URL.Query().Get("limit")
+		offsetStr := r.URL.Query().Get("offset")
+		limit := 50
+		offset := 0
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+		if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
+			offset = o
+		}
+
+		logs, err := db.GetAuditLogs(limit, offset)
+		if err != nil {
+			http.Error(w, "failed to get audit logs", http.StatusInternalServerError)
 			return
 		}
 
@@ -540,37 +719,31 @@ func main() {
 	}).Methods("GET")
 
 	// Docker container control
-	r.HandleFunc("/api/containers/{serverID}/{containerID}/start", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/api/containers/{serverID}/{containerID}/start", RequiresPermission("write", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
-		serverID, err := strconv.ParseInt(vars["serverID"], 10, 64)
-		if err != nil {
-			http.Error(w, "Invalid Server ID", http.StatusBadRequest)
-			return
-		}
+		serverID, _ := strconv.ParseInt(vars["serverID"], 10, 64)
 		containerID := vars["containerID"]
 
 		if err := dockerCol.StartContainer(serverID, containerID); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		AuditAction(r, db, "START_CONTAINER", "docker", containerID, map[string]interface{}{"serverId": serverID})
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-	}).Methods("POST")
+	})).Methods("POST")
 
-	r.HandleFunc("/api/containers/{serverID}/{containerID}/stop", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/api/containers/{serverID}/{containerID}/stop", RequiresPermission("write", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
-		serverID, err := strconv.ParseInt(vars["serverID"], 10, 64)
-		if err != nil {
-			http.Error(w, "Invalid Server ID", http.StatusBadRequest)
-			return
-		}
+		serverID, _ := strconv.ParseInt(vars["serverID"], 10, 64)
 		containerID := vars["containerID"]
 
 		if err := dockerCol.StopContainer(serverID, containerID); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		AuditAction(r, db, "STOP_CONTAINER", "docker", containerID, map[string]interface{}{"serverId": serverID})
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-	}).Methods("POST")
+	})).Methods("POST")
 
 	// Podman logs API
 	r.HandleFunc("/api/podman/containers/{serverID}/{containerID}/logs", func(w http.ResponseWriter, r *http.Request) {
@@ -624,45 +797,35 @@ func main() {
 	}).Methods("POST")
 
 	// KVM VM control
-	r.HandleFunc("/api/kvm/vms/{serverID}/{vmName}/start", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/api/kvm/vms/{serverID}/{vmName}/start", RequiresPermission("write", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
-		serverID, err := strconv.ParseInt(vars["serverID"], 10, 64)
-		if err != nil {
-			http.Error(w, "Invalid Server ID", http.StatusBadRequest)
-			return
-		}
+		serverID, _ := strconv.ParseInt(vars["serverID"], 10, 64)
 		vmName := vars["vmName"]
 
 		if err := col.StartVM(serverID, vmName); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		AuditAction(r, db, "START_VM", "kvm", vmName, map[string]interface{}{"serverId": serverID})
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-	}).Methods("POST")
+	})).Methods("POST")
 
-	r.HandleFunc("/api/kvm/vms/{serverID}/{vmName}/stop", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/api/kvm/vms/{serverID}/{vmName}/stop", RequiresPermission("write", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
-		serverID, err := strconv.ParseInt(vars["serverID"], 10, 64)
-		if err != nil {
-			http.Error(w, "Invalid Server ID", http.StatusBadRequest)
-			return
-		}
+		serverID, _ := strconv.ParseInt(vars["serverID"], 10, 64)
 		vmName := vars["vmName"]
 
 		if err := col.StopVM(serverID, vmName); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		AuditAction(r, db, "STOP_VM", "kvm", vmName, map[string]interface{}{"serverId": serverID})
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-	}).Methods("POST")
+	})).Methods("POST")
 
 	r.HandleFunc("/api/kvm/vms/{serverID}/{vmName}/snapshots", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
-		serverID, err := strconv.ParseInt(vars["serverID"], 10, 64)
-		if err != nil {
-			http.Error(w, "Invalid Server ID", http.StatusBadRequest)
-			return
-		}
+		serverID, _ := strconv.ParseInt(vars["serverID"], 10, 64)
 		vmName := vars["vmName"]
 
 		if r.Method == "GET" {
@@ -674,23 +837,26 @@ func main() {
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(snapsRaw))
 		} else if r.Method == "POST" {
-			var payload struct {
-				Name        string `json:"name"`
-				Description string `json:"description"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			if err := col.CreateSnapshot(serverID, vmName, payload.Name, payload.Description); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+			RequiresPermission("write", func(w http.ResponseWriter, r *http.Request) {
+				var payload struct {
+					Name        string `json:"name"`
+					Description string `json:"description"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+				if err := col.CreateSnapshot(serverID, vmName, payload.Name, payload.Description); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				AuditAction(r, db, "CREATE_SNAPSHOT", "kvm", vmName, map[string]interface{}{"serverId": serverID, "snapshot": payload.Name})
+				json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+			})(w, r)
 		}
 	}).Methods("GET", "POST")
 
-	r.HandleFunc("/api/kvm/vms/{serverID}/{vmName}/snapshots/{snapName}/revert", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/api/kvm/vms/{serverID}/{vmName}/snapshots/{snapName}/revert", RequiresPermission("write", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		serverID, _ := strconv.ParseInt(vars["serverID"], 10, 64)
 		vmName := vars["vmName"]
@@ -700,10 +866,11 @@ func main() {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		AuditAction(r, db, "REVERT_SNAPSHOT", "kvm", vmName, map[string]interface{}{"serverId": serverID, "snapshot": snapName})
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-	}).Methods("POST")
+	})).Methods("POST")
 
-	r.HandleFunc("/api/kvm/vms/{serverID}/{vmName}/snapshots/{snapName}", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/api/kvm/vms/{serverID}/{vmName}/snapshots/{snapName}", RequiresPermission("write", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		serverID, _ := strconv.ParseInt(vars["serverID"], 10, 64)
 		vmName := vars["vmName"]
@@ -713,8 +880,9 @@ func main() {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		AuditAction(r, db, "DELETE_SNAPSHOT", "kvm", vmName, map[string]interface{}{"serverId": serverID, "snapshot": snapName})
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-	}).Methods("DELETE")
+	})).Methods("DELETE")
 
 	// Kubernetes nodes API
 	r.HandleFunc("/api/kubernetes/nodes", func(w http.ResponseWriter, r *http.Request) {
@@ -999,7 +1167,7 @@ func main() {
 		json.NewEncoder(w).Encode(servers)
 	}).Methods("GET")
 
-	r.HandleFunc("/api/config/{tool:proxmox|nas|ceph|docker|podman|kubernetes}", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/api/config/{tool:proxmox|nas|ceph|docker|podman|kubernetes}", RequiresPermission("admin", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		tool := vars["tool"]
 		if tool == "servers" {
@@ -1016,10 +1184,11 @@ func main() {
 			return
 		}
 		s.ID = id
+		AuditAction(r, db, "ADD_SERVER", tool, s.Name, map[string]interface{}{"ip": s.IPAddress})
 		json.NewEncoder(w).Encode(s)
-	}).Methods("POST")
+	})).Methods("POST")
 
-	r.HandleFunc("/api/config/{tool:proxmox|nas|ceph|docker|podman|kubernetes}/{id:[0-9]+}", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/api/config/{tool:proxmox|nas|ceph|docker|podman|kubernetes}/{id:[0-9]+}", RequiresPermission("admin", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		tool := vars["tool"]
 		if tool == "servers" {
@@ -1040,10 +1209,11 @@ func main() {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		AuditAction(r, db, "UPDATE_SERVER", tool, s.Name, map[string]interface{}{"id": id, "ip": s.IPAddress})
 		w.WriteHeader(http.StatusOK)
-	}).Methods("PUT")
+	})).Methods("PUT")
 
-	r.HandleFunc("/api/config/{tool:proxmox|nas|ceph|docker|podman|kubernetes}/{id:[0-9]+}", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/api/config/{tool:proxmox|nas|ceph|docker|podman|kubernetes}/{id:[0-9]+}", RequiresPermission("admin", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		tool := vars["tool"]
 		if tool == "servers" {
@@ -1058,8 +1228,9 @@ func main() {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		AuditAction(r, db, "DELETE_SERVER", tool, fmt.Sprintf("%d", id), nil)
 		w.WriteHeader(http.StatusOK)
-	}).Methods("DELETE")
+	})).Methods("DELETE")
 
 	// GeoIP Proxy API (Optimized with pooling)
 	r.HandleFunc("/api/geoip/{ip}", func(w http.ResponseWriter, r *http.Request) {

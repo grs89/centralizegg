@@ -21,6 +21,95 @@ import {
     startVM, stopVM
 } from './js/tool-kvm.js?v=4';
 
+// --- Authentication & API Wrapper ---
+const originalFetch = window.fetch;
+window.fetch = async (...args) => {
+    const [resource, config = {}] = args;
+    const token = state.auth.token;
+
+    if (token) {
+        config.headers = {
+            ...config.headers,
+            'Authorization': `Bearer ${token}`
+        };
+    }
+
+    const response = await originalFetch(resource, config);
+
+    if (response.status === 401 && !resource.includes('/api/auth/login')) {
+        logout();
+    }
+
+    return response;
+};
+
+async function login(username, password) {
+    const errorEl = document.getElementById('login-error');
+    errorEl.classList.add('hidden');
+
+    try {
+        const res = await originalFetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+
+        if (!res.ok) throw new Error('Invalid credentials');
+
+        const data = await res.json();
+        state.auth.token = data.token;
+        state.auth.user = data.user;
+        state.auth.role = data.role;
+        state.auth.isLoggedIn = true;
+
+        localStorage.setItem('jwt_token', data.token);
+        localStorage.setItem('user_name', data.user);
+        localStorage.setItem('user_role', data.role);
+
+        updateAuthUI();
+        document.getElementById('login-overlay').classList.add('hidden');
+
+        // Refresh dashboard data
+        if (typeof window.initSummaryDashboard === 'function') window.initSummaryDashboard();
+    } catch (err) {
+        errorEl.classList.remove('hidden');
+    }
+}
+
+function logout() {
+    state.auth.token = null;
+    state.auth.user = null;
+    state.auth.role = null;
+    state.auth.isLoggedIn = false;
+
+    localStorage.removeItem('jwt_token');
+    localStorage.removeItem('user_name');
+    localStorage.removeItem('user_role');
+
+    updateAuthUI();
+    document.getElementById('login-overlay').classList.remove('hidden');
+}
+
+function updateAuthUI() {
+    const profileToggle = document.getElementById('user-profile-toggle');
+    const loginOverlay = document.getElementById('login-overlay');
+
+    if (state.auth.isLoggedIn) {
+        profileToggle.classList.remove('hidden');
+        loginOverlay.classList.add('hidden');
+        document.getElementById('current-username').textContent = state.auth.user;
+        document.getElementById('current-role').textContent = state.auth.role;
+        document.getElementById('dropdown-username').textContent = state.auth.user;
+        document.getElementById('dropdown-role').textContent = state.auth.role;
+    } else {
+        profileToggle.classList.add('hidden');
+        loginOverlay.classList.remove('hidden');
+    }
+}
+
+window.logout = logout;
+// --- End Auth ---
+
 // Expose functions to global scope for event handlers
 window.selectHost = selectHost;
 window.startVM = startVM;
@@ -355,6 +444,8 @@ function switchTool(toolKey) {
         refreshAll();
     } else if (toolKey === 'pfsense') {
         fetchFirewallHosts();
+    } else if (toolKey === 'audit') {
+        renderAuditLogSidebar();
     } else if (toolKey !== 'settings') {
         checkAndFetchHostsForTool(toolKey);
     }
@@ -3911,7 +4002,12 @@ function renderLogsSidebar() {
             <div class="settings-menu-item" data-category="proxmox" onclick="selectLogCategory('proxmox')"><i class="fa-solid fa-cube"></i><span>Proxmox Logs</span></div>
             <div class="settings-menu-item" data-category="nas" onclick="selectLogCategory('nas')"><i class="fa-solid fa-hdd"></i><span>NAS Logs</span></div>
             <div class="settings-menu-item" data-category="ceph" onclick="selectLogCategory('ceph')"><i class="fa-solid fa-cubes"></i><span>Ceph Logs</span></div>
+            <div class="settings-menu-item" data-category="audit" onclick="switchTool('audit')">
+                <i class="fa-solid fa-clipboard-check"></i>
+                <span>Audit Logs (Acciones)</span>
+            </div>
         </div>
+        <div id="logs-sidebar-content" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;"></div>
     `;
 
     const searchInput = document.getElementById('logs-search-input');
@@ -8374,6 +8470,75 @@ function displayFilteredLogs(logs) {
     logsContent.innerHTML = html;
 }
 
+// Registro de Auditoría
+async function renderAuditLogSidebar() {
+    const sidebarContent = document.getElementById('logs-sidebar-content');
+    if (!sidebarContent) return;
+
+    // Reset other categories active state
+    document.querySelectorAll('.settings-menu-item').forEach(el => el.classList.remove('active'));
+    document.querySelector('[data-category="audit"]')?.classList.add('active');
+
+    sidebarContent.innerHTML = `
+        <div style="padding: 20px; text-align: center;">
+            <i class="fa-solid fa-circle-notch fa-spin"></i> Cargando registros...
+        </div>
+    `;
+
+    try {
+        const res = await fetch('/api/logging/audit-logs?limit=100');
+        if (!res.ok) throw new Error('Failed to fetch');
+        const data = await res.json();
+        const logs = data.logs || [];
+
+        let html = `
+            <div style="padding: 15px; border-bottom: 1px solid var(--glass-border);">
+                <h3 style="margin: 0; font-size: 1rem; display: flex; align-items: center; gap: 8px;">
+                    <i class="fa-solid fa-clipboard-check" style="color: var(--accent-color);"></i>
+                    Registro de Auditoría
+                </h3>
+                <p style="margin: 5px 0 0; font-size: 0.75rem; color: var(--text-secondary);">Acciones críticas del sistema</p>
+            </div>
+            <div style="overflow-y: auto; flex: 1; padding: 10px;">
+        `;
+
+        if (logs.length === 0) {
+            html += `<div style="padding: 20px; text-align: center; color: var(--text-secondary); font-size: 0.85rem;">No hay registros de auditoría.</div>`;
+        } else {
+            logs.forEach(log => {
+                const date = new Date(log.timestamp).toLocaleString();
+                const details = JSON.stringify(log.details) !== '{}' ? `<i class="fa-solid fa-info-circle" title='${JSON.stringify(log.details).replace(/'/g, "&apos;")}' style="cursor:help; margin-left:5px; font-size:0.7rem;"></i>` : '';
+
+                html += `
+                    <div class="glass-panel" style="padding: 12px; margin-bottom: 8px; border-radius: 8px; background: rgba(255,255,255,0.02); border: 1px solid var(--glass-border);">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.8rem;">
+                            <span style="color: var(--accent-color); font-weight: 600;">${log.username || 'Sistema'}</span>
+                            <span style="color: var(--text-secondary); font-size: 0.7rem;">${date}</span>
+                        </div>
+                        <div style="margin-bottom: 5px; font-size: 0.85rem;">
+                            <span style="background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px; font-family: monospace; color: var(--text-primary);">${log.action}</span>
+                            ${details}
+                        </div>
+                        <div style="color: var(--text-secondary); font-size: 0.75rem; display: flex; justify-content: space-between;">
+                            <span>${log.resource_type || '-'}: ${log.resource_id || '-'}</span>
+                            <span>${log.ip_address || '-'}</span>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        html += `</div>`;
+        sidebarContent.innerHTML = html;
+    } catch (err) {
+        sidebarContent.innerHTML = `
+            <div style="padding: 20px; text-align: center; color: var(--danger);">
+                <i class="fa-solid fa-triangle-exclamation"></i> Error al cargar logs.
+            </div>
+        `;
+    }
+}
+
 // Escape regex special characters
 function escapeRegex(string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -10151,6 +10316,33 @@ window.submitNalaPrompt = async function (event) {
 // Call init when script loads
 document.addEventListener('DOMContentLoaded', () => {
     initNalaIA();
+    updateAuthUI();
+
+    // Login Form
+    const loginForm = document.getElementById('login-form');
+    if (loginForm) {
+        loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const user = document.getElementById('login-username').value;
+            const pass = document.getElementById('login-password').value;
+            login(user, pass);
+        });
+    }
+
+    // User Profile Toggle
+    const profileToggle = document.getElementById('user-profile-toggle');
+    const userDropdown = document.getElementById('user-dropdown');
+    if (profileToggle && userDropdown) {
+        profileToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            userDropdown.classList.toggle('hidden');
+        });
+    }
+
+    document.addEventListener('click', () => {
+        const userDropdown = document.getElementById('user-dropdown');
+        if (userDropdown) userDropdown.classList.add('hidden');
+    });
 });
 
 // Expose NetworkMap globally for history-map.js

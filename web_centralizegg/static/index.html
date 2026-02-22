@@ -75,6 +75,17 @@
                     </div>
                 </div>
 
+                <!-- User Profile Section -->
+                <div id="user-profile-toggle" class="user-profile-section glass-panel hidden"
+                    style="margin-left: 10px; padding: 5px 15px; border-radius: 30px; cursor: pointer; display: flex; align-items: center; gap: 10px;">
+                    <i class="fa-solid fa-user-shield" style="color: var(--accent-primary);"></i>
+                    <div style="display: flex; flex-direction: column;">
+                        <span id="current-username" style="font-size: 0.85rem; font-weight: 500;">Admin</span>
+                        <span id="current-role"
+                            style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px;">Administrator</span>
+                    </div>
+                </div>
+
 
             </div>
 
@@ -923,6 +934,47 @@
             </div>
         </main>
 
+    </div>
+
+    <!-- Login Overlay -->
+    <div id="login-overlay" class="login-overlay hidden">
+        <div class="login-card glass-panel">
+            <div class="login-header">
+                <img src="logo.png" alt="Logo">
+                <h2>Centralizegg</h2>
+                <p>Inicia sesión para gestionar tu infraestructura</p>
+            </div>
+            <form id="login-form" class="login-form">
+                <div class="input-group">
+                    <i class="fa-solid fa-user"></i>
+                    <input type="text" id="login-username" placeholder="Usuario" required>
+                </div>
+                <div class="input-group">
+                    <i class="fa-solid fa-lock"></i>
+                    <input type="password" id="login-password" placeholder="Contraseña" required>
+                </div>
+                <button type="submit" class="login-btn">
+                    <span>Entrar</span>
+                    <i class="fa-solid fa-right-to-bracket"></i>
+                </button>
+                <div id="login-error" class="login-error hidden">
+                    Credenciales inválidas. Por favor, intenta de nuevo.
+                </div>
+            </form>
+            <div class="login-footer">
+                &copy; Centralizegg | v1.0.1
+            </div>
+        </div>
+    </div>
+
+    <!-- User Profile Dropdown -->
+    <div id="user-dropdown" class="user-profile-dropdown glass-panel hidden">
+        <div class="dropdown-user-info">
+            <span id="dropdown-username">Admin</span>
+            <span id="dropdown-role">Administrator</span>
+        </div>
+        <hr style="border: 0; border-top: 1px solid var(--glass-border); margin: 10px 0;">
+        <a href="javascript:void(0)" onclick="logout()"><i class="fa-solid fa-right-from-bracket"></i> Cerrar Sesión</a>
     </div>
 
     <script src="history-map.js"></script>
