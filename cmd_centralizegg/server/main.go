@@ -340,6 +340,30 @@ func main() {
 
 	// Removed Config API {} catch-all to prevent shadowing
 	// Retention APIs
+	r.HandleFunc("/api/config/metrics/retention", func(w http.ResponseWriter, r *http.Request) {
+		days, err := db.GetMetricsRetentionDays()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]int{"days": days})
+	}).Methods("GET")
+
+	r.HandleFunc("/api/config/metrics/retention", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Days int `json:"days"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := db.UpdateMetricsRetentionPolicy(req.Days); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}).Methods("POST")
+
 	r.HandleFunc("/api/logging/retention", func(w http.ResponseWriter, r *http.Request) {
 		days, err := db.GetRetentionDays()
 		if err != nil {

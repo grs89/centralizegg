@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/grs/centralizegg/backend_internal_centralizegg/ai"
@@ -1201,17 +1202,26 @@ func ensureSchema(db *sql.DB) {
 			message TEXT NOT NULL,
 			metadata JSONB DEFAULT '{}'
 		)`,
+		`CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE`,
 		`CREATE TABLE IF NOT EXISTS server_metrics_history (
-			id SERIAL PRIMARY KEY,
 			server_id INT NOT NULL,
 			category VARCHAR(50) NOT NULL,
-			timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			timestamp TIMESTAMPTZ NOT NULL,
 			cpu_usage DOUBLE PRECISION DEFAULT 0,
 			memory_usage BIGINT DEFAULT 0,
 			net_rx BIGINT DEFAULT 0,
 			net_tx BIGINT DEFAULT 0,
-			disk_write BIGINT DEFAULT 0
+			disk_read BIGINT DEFAULT 0,
+			disk_write BIGINT DEFAULT 0,
+			interfaces_data JSONB DEFAULT '{}',
+			disk_usage BIGINT DEFAULT 0,
+			disk_total BIGINT DEFAULT 0,
+			disks_data JSONB DEFAULT '{}',
+			nodes_data JSONB DEFAULT '{}',
+			is_online BOOLEAN DEFAULT TRUE
 		)`,
+		`SELECT create_hypertable('server_metrics_history', 'timestamp', if_not_exists => TRUE)`,
+		`SELECT add_retention_policy('server_metrics_history', INTERVAL '30 days', if_not_exists => TRUE)`,
 		"ALTER TABLE containers.hosts ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
 		"ALTER TABLE containers.podman_hosts ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
 		"ALTER TABLE kubernetes.nodes ADD COLUMN IF NOT EXISTS offline_since TIMESTAMP",
@@ -3072,10 +3082,37 @@ func (d *DB) SetConfigValue(key string, value string) error {
 			VALUES ($1, $2, NOW())`,
 			key, value)
 	} else if err == nil {
-		_, err = d.Conn.Exec(`
-			UPDATE config.app_settings SET value=$1, updated_at=NOW()
-			WHERE key=$2`,
-			value, id)
+		_, err = d.Conn.Exec("UPDATE config.app_settings SET value = $1, updated_at = NOW() WHERE key = $2", value, key)
 	}
+	return err
+}
+
+func (d *DB) GetMetricsRetentionDays() (int, error) {
+	val, err := d.GetConfigValue("metrics_retention_days")
+	if err != nil {
+		return 30, err // Default to 30
+	}
+	if val == "" {
+		_ = d.SetConfigValue("metrics_retention_days", "30")
+		return 30, nil
+	}
+	days, _ := strconv.Atoi(val)
+	if days == 0 {
+		return 30, nil
+	}
+	return days, nil
+}
+
+func (d *DB) UpdateMetricsRetentionPolicy(days int) error {
+	_ = d.SetConfigValue("metrics_retention_days", strconv.Itoa(days))
+
+	// TimescaleDB management
+	_, err := d.Conn.Exec("SELECT remove_retention_policy('server_metrics_history', if_exists => TRUE)")
+	if err != nil {
+		return err
+	}
+
+	interval := fmt.Sprintf("%d days", days)
+	_, err = d.Conn.Exec(fmt.Sprintf("SELECT add_retention_policy('server_metrics_history', INTERVAL '%s')", interval))
 	return err
 }

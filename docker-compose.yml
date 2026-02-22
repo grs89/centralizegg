@@ -1,6 +1,6 @@
 services:
   centralizegg__trn_db:
-    image: pgvector/pgvector:pg15
+    image: timescale/timescaledb-ha:pg15-all
     restart: always
     environment:
       POSTGRES_USER: centralizegg

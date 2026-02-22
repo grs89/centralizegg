@@ -4710,6 +4710,10 @@ async function showNotificationSettingsPanel() {
             const resp = await fetch('/api/config/notification_settings');
             let config = await resp.json();
 
+            const retentionResp = await fetch('/api/config/metrics/retention');
+            const retentionData = await retentionResp.json();
+            const metricsRetentionDays = retentionData.days || 30;
+
             // Ensure defaults
             if (!config.telegram) config.telegram = { enabled: false, token: '', chatId: '' };
             if (!config.slack) config.slack = { enabled: false, webhookUrl: '' };
@@ -4814,16 +4818,28 @@ async function showNotificationSettingsPanel() {
                     </div>
 
                     <!-- Thresholds Section -->
-                    <div class="glass-panel" style="padding: 20px; border-radius: 12px;">
-                        <h4 style="margin-top: 0;">Umbrales de Alerta</h4>
-                        <div class="settings-form-grid" style="margin-top: 15px;">
-                            <div class="settings-input-group">
-                                <label>Uso Crítico de CPU (%)</label>
-                                <input type="number" id="notif-threshold-cpu" value="${config.thresholds.cpu_critical}" min="1" max="100">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div class="glass-panel" style="padding: 20px; border-radius: 12px;">
+                            <h4 style="margin-top: 0;">Umbrales de Alerta</h4>
+                            <div class="settings-form-grid" style="margin-top: 15px;">
+                                <div class="settings-input-group">
+                                    <label>Uso Crítico de CPU (%)</label>
+                                    <input type="number" id="notif-threshold-cpu" value="${config.thresholds.cpu_critical}" min="1" max="100">
+                                </div>
+                                <div class="settings-input-group">
+                                    <label>Uso Crítico de RAM (%)</label>
+                                    <input type="number" id="notif-threshold-ram" value="${config.thresholds.ram_critical}" min="1" max="100">
+                                </div>
                             </div>
-                            <div class="settings-input-group">
-                                <label>Uso Crítico de RAM (%)</label>
-                                <input type="number" id="notif-threshold-ram" value="${config.thresholds.ram_critical}" min="1" max="100">
+                        </div>
+                        <div class="glass-panel" style="padding: 20px; border-radius: 12px;">
+                            <h4 style="margin-top: 0;">Retención de Datos (TimescaleDB)</h4>
+                            <div class="settings-form-grid" style="margin-top: 15px;">
+                                <div class="settings-input-group">
+                                    <label>Días de Historial de Métricas</label>
+                                    <input type="number" id="metrics-retention-days" value="${metricsRetentionDays}" min="1" max="365">
+                                    <p style="margin: 5px 0 0; font-size: 0.75rem; color: var(--text-secondary);">Muestras fuera de este rango se eliminarán automáticamente.</p>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -4881,16 +4897,25 @@ async function saveNotificationSettings() {
         }
     };
 
+    const metricsDays = parseInt(document.getElementById('metrics-retention-days').value);
+
     try {
         const resp = await fetch('/api/config/notification_settings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(settings)
         });
-        if (resp.ok) {
+
+        const respMetrics = await fetch('/api/config/metrics/retention', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ days: metricsDays })
+        });
+
+        if (resp.ok && respMetrics.ok) {
             alert('Configuración guardada correctamente.');
         } else {
-            throw new Error('Error al guardar en el servidor');
+            throw new Error('Error al guardar algunos ajustes en el servidor');
         }
     } catch (err) {
         alert('Error: ' + err.message);
