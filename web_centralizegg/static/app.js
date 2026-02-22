@@ -4547,6 +4547,22 @@ window.testNalaIA = async function () {
     }
 }
 
+window.switchSystemTab = function (tabId) {
+    // Hide all containers
+    document.getElementById('sys-status-container').style.display = 'none';
+    const usersContainer = document.getElementById('sys-users-container');
+    if (usersContainer) usersContainer.style.display = 'none';
+    document.getElementById('sys-notif-container').style.display = 'none';
+
+    // Remove active class from all tabs
+    document.querySelectorAll('.sys-tab-btn').forEach(btn => btn.classList.remove('active'));
+
+    // Show selected container and highlight tab
+    document.getElementById(tabId + '-container').style.display = 'block';
+    const selectedBtn = Array.from(document.querySelectorAll('.sys-tab-btn')).find(btn => btn.getAttribute('onclick').includes(tabId));
+    if (selectedBtn) selectedBtn.classList.add('active');
+};
+
 async function showSystemPanel() {
     settingsCurrentCategory = 'system';
     const contentWrapper = document.querySelector('.settings-content-wrapper');
@@ -4554,13 +4570,13 @@ async function showSystemPanel() {
 
     const titleEl = document.getElementById('settings-category-title');
     if (titleEl) {
-        titleEl.innerHTML = '<i class="fa-solid fa-server"></i> Notificaciones y Status';
+        titleEl.innerHTML = '<i class="fa-solid fa-server"></i> Sistema';
     }
 
     const descEl = titleEl?.parentElement?.querySelector('p');
     if (descEl) {
         descEl.style.display = 'block';
-        descEl.textContent = 'Estado del motor de Centralizegg y configuración de alertas externas.';
+        descEl.textContent = 'Estado del motor central, gestión de usuarios y alertas externas.';
     }
 
     const formContainer = document.querySelector('.settings-form-container');
@@ -4568,16 +4584,45 @@ async function showSystemPanel() {
     if (managedServers) managedServers.style.display = 'none';
 
     if (formContainer) {
-        formContainer.innerHTML = '<div id="sys-status-container"></div><div id="sys-users-container" style="margin-top: 40px; padding-top: 30px; border-top: 1px solid var(--glass-border);"></div><div id="sys-notif-container" style="margin-top: 40px; padding-top: 30px; border-top: 1px solid var(--glass-border);"></div>';
-        renderStatusInside(document.getElementById('sys-status-container'));
+        const isAdmin = (state && state.auth && state.auth.role && state.auth.role.toLowerCase() === 'admin');
 
-        // Only render user management if admin
-        if (state && state.auth && state.auth.role && state.auth.role.toLowerCase() === 'admin') {
-            renderUserManagementInside(document.getElementById('sys-users-container'));
-        } else {
-            document.getElementById('sys-users-container').style.display = 'none';
+        let tabsHtml = `
+            <div style="display: flex; gap: 10px; margin-bottom: 25px; border-bottom: 1px solid var(--glass-border); padding-bottom: 10px; overflow-x: auto;">
+                <button class="sys-tab-btn active" onclick="switchSystemTab('sys-status')" style="background: none; border: none; padding: 10px 15px; cursor: pointer; color: var(--text-secondary); border-radius: 8px; font-weight: 500; display: flex; align-items: center; gap: 8px; transition: all 0.2s;">
+                    <i class="fa-solid fa-chart-line"></i> Estado
+                </button>
+                ${isAdmin ? `
+                <button class="sys-tab-btn" onclick="switchSystemTab('sys-users')" style="background: none; border: none; padding: 10px 15px; cursor: pointer; color: var(--text-secondary); border-radius: 8px; font-weight: 500; display: flex; align-items: center; gap: 8px; transition: all 0.2s;">
+                    <i class="fa-solid fa-users"></i> Usuarios
+                </button>
+                ` : ''}
+                <button class="sys-tab-btn" onclick="switchSystemTab('sys-notif')" style="background: none; border: none; padding: 10px 15px; cursor: pointer; color: var(--text-secondary); border-radius: 8px; font-weight: 500; display: flex; align-items: center; gap: 8px; transition: all 0.2s;">
+                    <i class="fa-solid fa-bell"></i> Notificaciones
+                </button>
+            </div>
+            
+            <div id="sys-status-container" style="display: block;"></div>
+            ${isAdmin ? '<div id="sys-users-container" style="display: none;"></div>' : ''}
+            <div id="sys-notif-container" style="display: none;"></div>
+        `;
+
+        formContainer.innerHTML = tabsHtml;
+
+        // Add dynamic CSS to handle active state of these simple tabs
+        if (!document.getElementById('sys-tabs-style')) {
+            const style = document.createElement('style');
+            style.id = 'sys-tabs-style';
+            style.innerHTML = `
+                .sys-tab-btn:hover { background: rgba(255, 255, 255, 0.05); color: var(--text-primary) !important; }
+                .sys-tab-btn.active { background: rgba(56, 189, 248, 0.1) !important; color: var(--accent-color) !important; box-shadow: 0 0 10px rgba(56, 189, 248, 0.2); }
+            `;
+            document.head.appendChild(style);
         }
 
+        renderStatusInside(document.getElementById('sys-status-container'));
+        if (isAdmin) {
+            renderUserManagementInside(document.getElementById('sys-users-container'));
+        }
         renderNotificationsInside(document.getElementById('sys-notif-container'));
     }
 }
@@ -4630,7 +4675,7 @@ async function renderStatusInside(container) {
         }).join('');
 
         container.innerHTML = `
-            <div style="display: flex; flex-direction: column; gap: 24px; max-width: 800px; margin: 0 auto;">
+            <div style="display: flex; flex-direction: column; gap: 24px; max-width: 1100px; margin: 0 auto;">
                 
                 <!-- Main Status Banner -->
                 <div style="background: linear-gradient(135deg, rgba(56, 189, 248, 0.1), rgba(139, 92, 246, 0.1)); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 20px; padding: 30px; display: flex; align-items: center; justify-content: space-between;">
@@ -4655,50 +4700,52 @@ async function renderStatusInside(container) {
                     </div>
                 </div>
 
-                <!-- Metrics Grid -->
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                    <!-- CPU Usage -->
-                    <div style="background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 20px; padding: 25px; display: flex; align-items: center; gap: 25px;">
-                        <div style="position: relative; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center;">
-                            <svg viewBox="0 0 36 36" style="width: 100%; height: 100%; transform: rotate(-90deg);">
-                                <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="3" />
-                                <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="var(--accent-color)" stroke-width="3" stroke-dasharray="${status.app_cpu || 0}, 100" />
-                            </svg>
-                            <span style="position: absolute; font-size: 1.2rem; font-weight: 700; color: var(--text-primary);">${(status.app_cpu || 0).toFixed(1)}%</span>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+                    <!-- Left Column: CPU and Memory -->
+                    <div style="display: flex; flex-direction: column; gap: 24px;">
+                        <!-- CPU Usage -->
+                        <div style="background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 20px; padding: 25px; display: flex; align-items: center; gap: 25px;">
+                            <div style="position: relative; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center;">
+                                <svg viewBox="0 0 36 36" style="width: 100%; height: 100%; transform: rotate(-90deg);">
+                                    <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="3" />
+                                    <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="var(--accent-color)" stroke-width="3" stroke-dasharray="${status.app_cpu || 0}, 100" />
+                                </svg>
+                                <span style="position: absolute; font-size: 1.2rem; font-weight: 700; color: var(--text-primary);">${(status.app_cpu || 0).toFixed(1)}%</span>
+                            </div>
+                            <div>
+                                <h4 style="margin: 0; color: var(--text-secondary); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px;">Carga CPU</h4>
+                                <p style="margin: 5px 0 0 0; font-size: 0.85rem; color: var(--text-secondary);">Recursos consumidos por el motor</p>
+                            </div>
                         </div>
-                        <div>
-                            <h4 style="margin: 0; color: var(--text-secondary); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px;">Carga CPU</h4>
-                            <p style="margin: 5px 0 0 0; font-size: 0.85rem; color: var(--text-secondary);">Recursos consumidos por el motor</p>
-                        </div>
-                    </div>
 
-                    <!-- Memory Usage -->
-                    <div style="background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 20px; padding: 25px; display: flex; align-items: center; gap: 25px;">
-                        <div style="width: 80px; height: 80px; background: rgba(139, 92, 246, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid rgba(139, 92, 246, 0.3);">
-                            <i class="fa-solid fa-memory" style="font-size: 1.8rem; color: #a78bfa;"></i>
-                        </div>
-                        <div>
-                            <h4 style="margin: 0; color: var(--text-secondary); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px;">Memoria RAM</h4>
-                            <p style="margin: 5px 0 0 0; font-size: 1.2rem; font-weight: 700; color: var(--text-primary);">${formatBytes(status.app_memory)}</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Comparative DB Sizes -->
-                <div style="background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 20px; padding: 30px;">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px;">
-                        <div>
-                            <h3 style="margin: 0; font-size: 1.2rem; color: var(--text-primary);"><i class="fa-solid fa-chart-bar" style="margin-right: 12px; color: var(--accent-color);"></i>Distribución de Datos</h3>
-                            <p style="margin: 5px 0 0 0; color: var(--text-secondary); font-size: 0.9rem;">Comparativa de tamaño por módulo de infraestructura</p>
-                        </div>
-                        <div style="text-align: right;">
-                            <span style="display: block; font-size: 1.4rem; font-weight: 700; color: var(--accent-color);">${formatBytes(status.db_total_size)}</span>
-                            <span style="font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase;">Tamaño Total</span>
+                        <!-- Memory Usage -->
+                        <div style="background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 20px; padding: 25px; display: flex; align-items: center; gap: 25px;">
+                            <div style="width: 80px; height: 80px; background: rgba(139, 92, 246, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid rgba(139, 92, 246, 0.3);">
+                                <i class="fa-solid fa-memory" style="font-size: 1.8rem; color: #a78bfa;"></i>
+                            </div>
+                            <div>
+                                <h4 style="margin: 0; color: var(--text-secondary); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px;">Memoria RAM</h4>
+                                <p style="margin: 5px 0 0 0; font-size: 1.2rem; font-weight: 700; color: var(--text-primary);">${formatBytes(status.app_memory)}</p>
+                            </div>
                         </div>
                     </div>
                     
-                    <div style="padding: 10px 0;">
-                        ${schemaRows || '<p style="color: var(--text-secondary); text-align: center;">Sin datos disponibles</p>'}
+                    <!-- Right Column: Comparative DB Sizes -->
+                    <div style="background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 20px; padding: 30px; display: flex; flex-direction: column;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px;">
+                            <div>
+                                <h3 style="margin: 0; font-size: 1.2rem; color: var(--text-primary);"><i class="fa-solid fa-chart-bar" style="margin-right: 12px; color: var(--accent-color);"></i>Distribución de Datos</h3>
+                                <p style="margin: 5px 0 0 0; color: var(--text-secondary); font-size: 0.9rem;">Comparativa de tamaño</p>
+                            </div>
+                            <div style="text-align: right;">
+                                <span style="display: block; font-size: 1.4rem; font-weight: 700; color: var(--accent-color);">${formatBytes(status.db_total_size)}</span>
+                                <span style="font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase;">Tamaño Total</span>
+                            </div>
+                        </div>
+                        
+                        <div style="padding: 10px 0; flex: 1; overflow-y: auto;">
+                            ${schemaRows || '<p style="color: var(--text-secondary); text-align: center;">Sin datos disponibles</p>'}
+                        </div>
                     </div>
                 </div>
 
@@ -4729,7 +4776,7 @@ async function renderStatusInside(container) {
 async function fetchAuthenticated(url, options = {}) {
     const token = localStorage.getItem('token');
     const headers = {
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${token} `,
         ...options.headers
     };
     if (options.body && typeof options.body === 'string') {
@@ -4744,7 +4791,7 @@ async function renderUserManagementInside(container) {
             <i class="fa-solid fa-spinner fa-spin" style="font-size: 2rem; color: var(--accent-color);"></i>
             <p style="margin-top: 15px; color: var(--text-secondary);">Cargando usuarios...</p>
         </div>
-        `;
+    `;
 
     try {
         const [usersResp, rolesResp] = await Promise.all([
@@ -4810,7 +4857,7 @@ async function renderUserManagementInside(container) {
                         </h3>
                         <p style="margin: 5px 0 0; color: var(--text-secondary); font-size: 0.9rem;">Administra el acceso y los roles de la plataforma.</p>
                     </div>
-                    <button class="btn primary" onclick="openUserCreateModal()">
+                    <button class="primary-btn" onclick="openUserCreateModal()">
                         <i class="fa-solid fa-plus"></i> Nuevo Usuario
                     </button>
                 </div>
@@ -4888,7 +4935,7 @@ window.openUserEditModal = function (id) {
     document.getElementById('edit-user-username').value = user.username;
 
     const roleSelect = document.getElementById('edit-user-role');
-    roleSelect.innerHTML = (window.systemRolesCache || []).map(r => `<option value="${r.id}" ${r.id === user.role_id ? 'selected' : ''}>${r.name}</option>`).join('');
+    roleSelect.innerHTML = (window.systemRolesCache || []).map(r => `< option value = "${r.id}" ${r.id === user.role_id ? 'selected' : ''}> ${r.name}</option > `).join('');
 
     document.getElementById('edit-user-active').checked = user.is_active;
     document.getElementById('user-edit-modal').style.display = 'flex';
@@ -4904,7 +4951,7 @@ window.submitEditUser = async function () {
     const isActive = document.getElementById('edit-user-active').checked;
 
     try {
-        const resp = await fetchAuthenticated(`/api/users/${id}`, {
+        const resp = await fetchAuthenticated(`/ api / users / ${id} `, {
             method: 'PUT',
             body: JSON.stringify({ is_active: isActive, role_id: parseInt(roleId) })
         });
@@ -4938,7 +4985,7 @@ window.submitNewPassword = async function () {
     }
 
     try {
-        const resp = await fetchAuthenticated(`/api/users/${id}/password`, {
+        const resp = await fetchAuthenticated(`/ api / users / ${id}/password`, {
             method: 'PUT',
             body: JSON.stringify({ password })
         });
