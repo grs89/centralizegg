@@ -9850,7 +9850,7 @@ window.submitNalaPrompt = async function (event) {
                 provider: provider,
                 baseUrl: baseUrl,
                 systemPrompt: systemPrompt,
-                userMessage: userMessage
+                userMessage: userText
             })
         });
         if (askRes.ok) {
