@@ -3981,14 +3981,6 @@ function renderLogsSidebar() {
                 <input type="text" id="logs-search-input" placeholder="Filtrar logs..." style="background: none; border: none; color: white; outline: none; width: 100%; font-size: 0.9rem;">
             </div>
         </div>
-        <div style="padding: 10px; display: flex; gap: 8px;">
-            <button class="secondary-btn" onclick="showNotificationSettingsPanel()" style="flex: 1; display: flex; justify-content: center; align-items: center; gap: 6px; padding: 10px; font-size: 0.8rem; white-space: nowrap;" title="Ir a Configuración de Logs">
-                <i class="fa-solid fa-gears"></i> Log Sistemas
-            </button>
-            <button class="secondary-btn" onclick="showNotificationSettingsPanel()" style="flex: 1; display: flex; justify-content: center; align-items: center; gap: 6px; padding: 10px; font-size: 0.8rem; white-space: nowrap;" title="Ir a Configuración de Métricas">
-                <i class="fa-solid fa-chart-line"></i> Métricas Hist.
-            </button>
-        </div>
         <div style="margin-top: 10px;" id="logs-categories-list">
             <div class="settings-menu-item active" data-category="all" onclick="selectLogCategory('all')">
                 <i class="fa-solid fa-list-ul"></i>
@@ -4221,13 +4213,9 @@ function renderSettingsSidebar() {
                 <i class="fa-solid fa-wand-magic-sparkles"></i>
                 <span>Nala IA</span>
             </div>
-            <div class="settings-menu-item ${settingsCurrentCategory === 'notifications' ? 'active' : ''}" data-category="notifications">
-                <i class="fa-solid fa-bell"></i>
-                <span>Notificaciones</span>
-            </div>
-            <div class="settings-menu-item ${settingsCurrentCategory === 'status' ? 'active' : ''}" data-category="status">
-                <i class="fa-solid fa-circle-info"></i>
-                <span>Status</span>
+            <div class="settings-menu-item ${settingsCurrentCategory === 'system' ? 'active' : ''}" data-category="system">
+                <i class="fa-solid fa-server"></i>
+                <span>Notific. y Status</span>
             </div>
         </div>
     `;
@@ -4239,12 +4227,10 @@ function renderSettingsSidebar() {
             menuItems.forEach(i => i.classList.remove('active'));
             item.classList.add('active');
             const category = item.dataset.category;
-            if (category === 'status') {
-                showStatusPanel();
+            if (category === 'system') {
+                showSystemPanel();
             } else if (category === 'nala-ia') {
                 showNalaIAPanel();
-            } else if (category === 'notifications') {
-                showNotificationSettingsPanel();
             } else {
                 loadSettingsCategory(category);
             }
@@ -4567,36 +4553,40 @@ window.testNalaIA = async function () {
     }
 }
 
-// Show Status Panel
-async function showStatusPanel() {
-    settingsCurrentCategory = 'status';
+async function showSystemPanel() {
+    settingsCurrentCategory = 'system';
     const contentWrapper = document.querySelector('.settings-content-wrapper');
     if (!contentWrapper) return;
 
-    // Update title
     const titleEl = document.getElementById('settings-category-title');
     if (titleEl) {
-        titleEl.innerHTML = '<i class="fa-solid fa-circle-info"></i> Estado del Sistema';
+        titleEl.innerHTML = '<i class="fa-solid fa-server"></i> Notificaciones y Status';
     }
 
-    // Hide description paragraph
     const descEl = titleEl?.parentElement?.querySelector('p');
-    if (descEl) descEl.style.display = 'none';
+    if (descEl) {
+        descEl.style.display = 'block';
+        descEl.textContent = 'Estado del motor de Centralizegg y configuración de alertas externas.';
+    }
 
-    // Hide the form and managed servers section
     const formContainer = document.querySelector('.settings-form-container');
     const managedServers = document.querySelector('.settings-managed-servers');
+    if (managedServers) managedServers.style.display = 'none';
 
     if (formContainer) {
-        formContainer.innerHTML = `
-            <div style="text-align: center; padding: 60px;">
-                <i class="fa-solid fa-spinner fa-spin" style="font-size: 2rem; color: var(--accent-color);"></i>
-                <p style="margin-top: 15px; color: var(--text-secondary);">Cargando información del sistema...</p>
-            </div>
-        `;
+        formContainer.innerHTML = '<div id="sys-status-container"></div><div id="sys-notif-container" style="margin-top: 40px; padding-top: 30px; border-top: 1px solid var(--glass-border);"></div>';
+        renderStatusInside(document.getElementById('sys-status-container'));
+        renderNotificationsInside(document.getElementById('sys-notif-container'));
     }
+}
 
-    if (managedServers) managedServers.style.display = 'none';
+async function renderStatusInside(container) {
+    container.innerHTML = `
+        <div style="text-align: center; padding: 20px;">
+            <i class="fa-solid fa-spinner fa-spin" style="font-size: 2rem; color: var(--accent-color);"></i>
+            <p style="margin-top: 10px; color: var(--text-secondary);">Cargando estado...</p>
+        </div>
+    `;
 
     try {
         const response = await fetch('/api/status');
@@ -4637,7 +4627,7 @@ async function showStatusPanel() {
             `;
         }).join('');
 
-        formContainer.innerHTML = `
+        container.innerHTML = `
             <div style="display: flex; flex-direction: column; gap: 24px; max-width: 800px; margin: 0 auto;">
                 
                 <!-- Main Status Banner -->
@@ -4724,7 +4714,7 @@ async function showStatusPanel() {
         `;
     } catch (e) {
         console.error('[Status] Error:', e);
-        formContainer.innerHTML = `
+        container.innerHTML = `
             <div style="text-align: center; padding: 60px; color: var(--danger);">
                 <i class="fa-solid fa-exclamation-triangle" style="font-size: 2rem; margin-bottom: 15px;"></i>
                 <p>Error al obtener el estado del sistema</p>
@@ -4733,58 +4723,35 @@ async function showStatusPanel() {
     }
 }
 
-async function showNotificationSettingsPanel() {
-    settingsCurrentCategory = 'notifications';
-    const contentWrapper = document.querySelector('.settings-content-wrapper');
-    if (!contentWrapper) return;
+async function renderNotificationsInside(container) {
+    container.innerHTML = `
+        <div style="text-align: center; padding: 40px;">
+            <i class="fa-solid fa-spinner fa-spin" style="font-size: 2rem; color: var(--accent-color);"></i>
+            <p style="margin-top: 15px; color: var(--text-secondary);">Cargando notificaciones...</p>
+        </div>
+    `;
 
-    // Update title
-    const titleEl = document.getElementById('settings-category-title');
-    if (titleEl) {
-        titleEl.innerHTML = '<i class="fa-solid fa-bell"></i> Notificaciones Externas';
-    }
+    try {
+        const resp = await fetch('/api/config/notification_settings');
+        let config = await resp.json();
 
-    // Hide description paragraph
-    const descEl = titleEl?.parentElement?.querySelector('p');
-    if (descEl) {
-        descEl.style.display = 'block';
-        descEl.textContent = 'Configura alertas automáticas para Telegram, Slack o Discord cuando ocurran eventos críticos.';
-    }
+        const metricsResp = await fetch('/api/config/metrics/retention');
+        const metricsData = await metricsResp.json();
+        const metricsRetentionDays = metricsData.days || 30;
 
-    const formContainer = document.querySelector('.settings-form-container');
-    const managedServers = document.querySelector('.settings-managed-servers');
+        const logsResp = await fetch('/api/logging/retention');
+        const logsData = await logsResp.json();
+        const logsRetentionDays = logsData.days || 7;
 
-    if (managedServers) managedServers.style.display = 'none';
+        // Ensure defaults
+        if (!config.telegram) config.telegram = { enabled: false, token: '', chatId: '' };
+        if (!config.slack) config.slack = { enabled: false, webhookUrl: '' };
+        if (!config.discord) config.discord = { enabled: false, webhookUrl: '' };
+        if (!config.google_chat) config.google_chat = { enabled: false, webhookUrl: '' };
+        if (!config.teams) config.teams = { enabled: false, webhookUrl: '' };
+        if (!config.thresholds) config.thresholds = { cpu_critical: 90, ram_critical: 95 };
 
-    if (formContainer) {
-        formContainer.innerHTML = `
-            <div style="text-align: center; padding: 40px;">
-                <i class="fa-solid fa-spinner fa-spin" style="font-size: 2rem; color: var(--accent-color);"></i>
-                <p style="margin-top: 15px; color: var(--text-secondary);">Cargando configuración...</p>
-            </div>
-        `;
-
-        try {
-            const resp = await fetch('/api/config/notification_settings');
-            let config = await resp.json();
-
-            const metricsResp = await fetch('/api/config/metrics/retention');
-            const metricsData = await metricsResp.json();
-            const metricsRetentionDays = metricsData.days || 30;
-
-            const logsResp = await fetch('/api/logging/retention');
-            const logsData = await logsResp.json();
-            const logsRetentionDays = logsData.days || 7;
-
-            // Ensure defaults
-            if (!config.telegram) config.telegram = { enabled: false, token: '', chatId: '' };
-            if (!config.slack) config.slack = { enabled: false, webhookUrl: '' };
-            if (!config.discord) config.discord = { enabled: false, webhookUrl: '' };
-            if (!config.google_chat) config.google_chat = { enabled: false, webhookUrl: '' };
-            if (!config.teams) config.teams = { enabled: false, webhookUrl: '' };
-            if (!config.thresholds) config.thresholds = { cpu_critical: 90, ram_critical: 95 };
-
-            formContainer.innerHTML = `
+        container.innerHTML = `
                 <div class="settings-form-grid" style="display: flex; flex-direction: column; gap: 25px;">
                     <!-- Global Enable -->
                     <div style="background: rgba(255,255,255,0.03); padding: 20px; border-radius: 12px; border: 1px solid var(--glass-border); display: flex; align-items: center; justify-content: space-between;">
@@ -4929,14 +4896,13 @@ async function showNotificationSettingsPanel() {
                 </div>
             `;
 
-            // Attach listeners
-            document.getElementById('notif-save-btn').onclick = () => saveNotificationSettings();
-            document.getElementById('notif-test-btn').onclick = () => testNotification();
+        // Attach listeners
+        document.getElementById('notif-save-btn').onclick = () => saveNotificationSettings();
+        document.getElementById('notif-test-btn').onclick = () => testNotification();
 
-        } catch (err) {
-            console.error('Error loading notification settings:', err);
-            formContainer.innerHTML = `<p style="color: var(--danger-color); text-align: center;">Error al cargar la configuración: ${err.message}</p>`;
-        }
+    } catch (err) {
+        console.error('Error loading notification settings:', err);
+        container.innerHTML = `<p style="color: var(--danger-color); text-align: center;">Error al cargar la configuración: ${err.message}</p>`;
     }
 }
 
