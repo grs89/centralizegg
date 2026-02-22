@@ -2786,3 +2786,43 @@ func (d *DB) GetServerHistory(serverID int64, category string, duration string) 
 	}
 	return metrics, nil
 }
+
+// Config specific methods
+func (d *DB) InitConfigSchema() error {
+	_, err := d.Conn.Exec(`
+		CREATE SCHEMA IF NOT EXISTS config;
+		CREATE TABLE IF NOT EXISTS config.app_settings (
+			key VARCHAR(255) PRIMARY KEY,
+			value TEXT NOT NULL,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		);
+	`)
+	return err
+}
+
+func (d *DB) GetConfigValue(key string) (string, error) {
+	var value string
+	err := d.Conn.QueryRow("SELECT value FROM config.app_settings WHERE key = $1", key).Scan(&value)
+	if err == sql.ErrNoRows {
+		return "", nil // Return empty string if not found, not an error
+	}
+	return value, err
+}
+
+func (d *DB) SetConfigValue(key string, value string) error {
+	var id string
+	err := d.Conn.QueryRow("SELECT key FROM config.app_settings WHERE key = $1", key).Scan(&id)
+
+	if err == sql.ErrNoRows {
+		_, err = d.Conn.Exec(`
+			INSERT INTO config.app_settings (key, value, updated_at)
+			VALUES ($1, $2, NOW())`,
+			key, value)
+	} else if err == nil {
+		_, err = d.Conn.Exec(`
+			UPDATE config.app_settings SET value=$1, updated_at=NOW()
+			WHERE key=$2`,
+			value, id)
+	}
+	return err
+}

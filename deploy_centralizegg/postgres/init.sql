@@ -176,3 +176,12 @@ CREATE TABLE IF NOT EXISTS containers.podman_servers (
     ssh_key_path VARCHAR(255) DEFAULT '/root/.ssh/id_rsa',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Application Config Schema
+CREATE SCHEMA IF NOT EXISTS config;
+
+CREATE TABLE IF NOT EXISTS config.app_settings (
+    key VARCHAR(255) PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

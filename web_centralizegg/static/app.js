@@ -4390,8 +4390,14 @@ async function showNalaIAPanel() {
     if (managedServers) managedServers.style.display = 'none';
 
     if (formContainer) {
-        // Load config from localStorage
-        const nalaConfig = JSON.parse(localStorage.getItem('centralizegg_nala_config') || '{}');
+        // Load config from API instead of localStorage
+        let nalaConfig = {};
+        try {
+            const res = await fetch('/api/config/nala-ia');
+            if (res.ok) nalaConfig = await res.json();
+        } catch (e) {
+            console.error('Error fetching Nala IA config', e);
+        }
         const provider = nalaConfig.provider || 'gemini';
         const apiKey = nalaConfig.apiKey || '';
         const baseUrl = nalaConfig.baseUrl || '';
@@ -4433,15 +4439,27 @@ async function showNalaIAPanel() {
     }
 }
 
-window.saveNalaIAConfig = function (event) {
+window.saveNalaIAConfig = async function (event) {
     if (event) event.preventDefault();
     const provider = document.getElementById('nala-provider').value;
     const apiKey = document.getElementById('nala-api-key').value;
     const baseUrl = document.getElementById('nala-base-url').value;
     const systemPrompt = document.getElementById('nala-system-prompt').value;
 
-    localStorage.setItem('centralizegg_nala_config', JSON.stringify({ provider, apiKey, baseUrl, systemPrompt }));
-    alert('Configuración de Nala IA guardada correctamente.');
+    try {
+        const res = await fetch('/api/config/nala-ia', {
+            method: 'POST',
+            body: JSON.stringify({ provider, apiKey, baseUrl, systemPrompt }),
+            headers: { 'Content-Type': 'application/json' }
+        });
+        if (res.ok) {
+            alert('Configuración de Nala IA guardada correctamente en la Base de Datos.');
+        } else {
+            alert('Error al guardar: ' + await res.text());
+        }
+    } catch (e) {
+        alert('Error de conexión al cargar la configuración: ' + e.message);
+    }
 }
 
 window.testNalaIA = async function () {
@@ -4450,7 +4468,13 @@ window.testNalaIA = async function () {
     const apiKey = document.getElementById('nala-api-key').value;
     const baseUrl = document.getElementById('nala-base-url').value;
     const systemPrompt = document.getElementById('nala-system-prompt').value;
-    localStorage.setItem('centralizegg_nala_config', JSON.stringify({ provider, apiKey, baseUrl, systemPrompt }));
+    try {
+        await fetch('/api/config/nala-ia', {
+            method: 'POST',
+            body: JSON.stringify({ provider, apiKey, baseUrl, systemPrompt }),
+            headers: { 'Content-Type': 'application/json' }
+        });
+    } catch (e) { }
 
     // 2. Visual feedback
     const statusEl = document.getElementById('nala-test-status');
@@ -9734,8 +9758,14 @@ window.submitNalaPrompt = async function (event) {
     `;
     history.parentElement.scrollTop = history.parentElement.scrollHeight;
 
-    // Load config to show which LLM is being used
-    const nalaConfig = JSON.parse(localStorage.getItem('centralizegg_nala_config') || '{}');
+    // Load config from backend API to show which LLM is being used
+    let nalaConfig = {};
+    try {
+        const res = await fetch('/api/config/nala-ia');
+        if (res.ok) nalaConfig = await res.json();
+    } catch (e) {
+        console.error('Error loading config', e);
+    }
     const provider = nalaConfig.provider || 'gemini';
     const apiKey = nalaConfig.apiKey || '';
     const baseUrl = nalaConfig.baseUrl || '';

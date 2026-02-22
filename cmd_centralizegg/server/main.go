@@ -156,6 +156,12 @@ func main() {
 		log.Printf("Waiting for DB... (%v)", err)
 		time.Sleep(2 * time.Second)
 	}
+
+	// Initialize Config Schema (Auto-migrate for existing deployments)
+	if err := db.InitConfigSchema(); err != nil {
+		log.Printf("[Warning] Failed to initialize config schema: %v", err)
+	}
+
 	// Global Log Interceptor (Now only to DB to keep clean container logs for most things)
 	dbLogWriter := logger.SetupGlobalLogger(db)
 	log.SetOutput(dbLogWriter)
@@ -291,6 +297,37 @@ func main() {
 
 	// Terminal WebSockets API
 	r.HandleFunc("/api/terminal/{category}/{serverId}/{targetName}", TerminalHandler(db))
+
+	// Config APIs
+	r.HandleFunc("/api/config/{key}", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		key := vars["key"]
+
+		if r.Method == "GET" {
+			val, err := db.GetConfigValue(key)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if val == "" {
+				val = "{}" // return empty JSON object instead of breaking
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(val))
+		} else if r.Method == "POST" {
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			err = db.SetConfigValue(key, string(body))
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+		}
+	}).Methods("GET", "POST")
 
 	// Retention APIs
 	r.HandleFunc("/api/logging/retention", func(w http.ResponseWriter, r *http.Request) {
