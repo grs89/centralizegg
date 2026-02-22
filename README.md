@@ -68,6 +68,30 @@
 *   **QEMU Guest Agent**: Integración avanzada para obtener telemetría detallada del sistema invitado:
     - Nombre y versión del Sistema Operativo
     - Direcciones IP internas
+
+## 🧠 Nala IA Context Injection
+
+The Nala IA tool now receives live infrastructure context automatically. A new helper `fetchInfrastructureContext()` in the frontend gathers data from `/api/hosts` and `/api/health/summary`, formats it as markdown, and injects it into the prompt sent to the LLM. This enables context‑aware responses without direct DB access.
+
+### Updated Diagram
+
+```mermaid
+graph TD
+    subgraph Frontend["Frontend (Vanilla JS)"]
+        UI[Dashboard Web]
+        Nala[Nala IA UI]
+        Context[fetchInfrastructureContext()]
+    end
+
+    subgraph Backend["Backend (Go)"]
+        API[API REST<br/>Gorilla Mux]
+    end
+
+    UI --> API
+    Nala --> Context
+    Context --> API
+```
+
 *   **Proxmox VE**: Integración nativa con clusters Proxmox.
     - Monitoreo de nodos, VMs y Contenedores LXC.
     - Métricas de almacenamiento ZFS y Ceph (vía API).

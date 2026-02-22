@@ -798,5 +798,27 @@ Alternativa en `.gitlab-ci.yml` con etapa `build`:
 ---
 
 
+## 🧠 Nala IA Context Injection
+
+The Nala IA tool now receives live infrastructure context automatically. A new helper `fetchInfrastructureContext()` in the frontend gathers data from `/api/hosts` and `/api/health/summary`, formats it as markdown, and injects it into the prompt sent to the LLM. This enables context‑aware responses without direct DB access.
+
+### Updated Architecture Diagram
+
+```mermaid
+graph TD
+    subgraph Frontend["Frontend (Vanilla JS)"]
+        UI[Dashboard Web]
+        Nala[Nala IA UI]
+        Context[fetchInfrastructureContext()]
+    end
+
+    subgraph Backend["Backend (Go)"]
+        API[API REST<br/>Gorilla Mux]
+    end
+
+    UI --> API
+    Nala --> Context
+    Context --> API
+```
 
 © 2026 Centralizegg Contributors - MIT License
