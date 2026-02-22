@@ -39,6 +39,7 @@ graph TD
         Search[Búsqueda Global]
         Config[Configuración UI]
         AlertEngine[Alertas Audibles]
+        Context[Inyección de Contexto]
         SummaryDash[Summary Dashboard]
     end
 
@@ -83,6 +84,7 @@ graph TD
     Config -- "HTTP Requests" --> API
     SummaryDash -- "HTTP Requests" --> API
     AlertEngine -- "Triggers" --> UI
+    Context -- "Context Data" --> API
     API -- "Query/Insert/Update" --> PG
 
     Collector -- "Query" --> PG
@@ -225,6 +227,7 @@ Centralizegg/
 
 Centralizegg expone una API REST para acceder a los datos y gestionar la configuración. Todas las respuestas API son comprimidas con GZIP automáticamente.
 
+**Nala IA Context Injection**: Los endpoints `/api/hosts` y `/api/health/summary` proporcionan datos en tiempo real que son inyectados en los prompts de Nala IA mediante la función `fetchInfrastructureContext()` del frontend.
 ### Endpoints de Virtualización (KVM)
 
 #### `GET /api/hosts`
@@ -580,6 +583,9 @@ Configuración de servidores Podman (misma estructura que `kvm_servers`).
    - Panel resumen con visión general del estado de toda la infraestructura
    - Métricas agregadas de hosts, VMs, contenedores y pods
    - Implementado en `js/summary-dashboard.js`
+
+3. **Inyección de Contexto Nala IA**
+   - El frontend recoge datos de `/api/hosts` y `/api/health/summary` y los incluye en los prompts de Nala IA para respuestas contextuales.
 
 2. **Búsqueda Global**
    - Búsqueda en tiempo real de hosts y VMs
