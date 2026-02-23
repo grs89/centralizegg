@@ -471,3 +471,85 @@ function renderNetworkSparklines() {
         </div>
     `;
 }
+
+async function renderPredictiveOps() {
+    const grid = document.getElementById('summary-predictive-grid');
+    if (!grid) return;
+
+    try {
+        const resp = await fetch('/api/predictive/summary');
+        if (!resp.ok) throw new Error('Predictive API failed');
+        const alerts = await resp.json();
+
+        if (!alerts || alerts.length === 0) {
+            grid.innerHTML = `
+                <div style="grid-column: 1 / -1; text-align: center; padding: 40px; opacity: 0.5;">
+                    <div style="font-size: 2.5rem; color: var(--success); margin-bottom: 15px;">
+                        <i class="fa-solid fa-square-check"></i>
+                    </div>
+                    <p style="font-weight: 600;">No se detectan anomalías ni riesgos de agotamiento</p>
+                    <p style="font-size: 0.85rem;">Todas las tendencias de recursos se mantienen estables para los próximos 7 días.</p>
+                </div>
+            `;
+            return;
+        }
+
+        grid.innerHTML = '';
+        alerts.forEach(alert => {
+            const card = document.createElement('div');
+            card.className = 'glass-panel predictive-card';
+            card.style.padding = '15px';
+            card.style.borderRadius = '12px';
+            card.style.borderLeft = `4px solid ${alert.status === 'critical' ? '#ef4444' : '#f59e0b'}`;
+            card.style.background = 'rgba(255,255,255,0.02)';
+
+            const resourceIcon = alert.resource === 'cpu' ? 'fa-microchip' : (alert.resource === 'memory' ? 'fa-memory' : 'fa-hard-drive');
+            const catIcon = CATEGORY_ICONS[alert.category] || 'fa-server';
+
+            card.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-solid ${catIcon}" style="opacity: 0.5; font-size: 0.8rem;"></i>
+                        <span style="font-size: 0.7rem; font-weight: 700; text-transform: uppercase; opacity: 0.6;">${alert.category}</span>
+                    </div>
+                    <span class="badge" style="background: ${alert.status === 'critical' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)'}; color: ${alert.status === 'critical' ? '#ef4444' : '#f59e0b'}; font-size: 0.65rem;">
+                        ${alert.status === 'critical' ? 'CRÍTICO' : 'ADVERTENCIA'}
+                    </span>
+                </div>
+                
+                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 15px;">
+                    <div style="width: 40px; height: 40px; background: var(--panel-item-bg); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; color: var(--text-primary);">
+                        <i class="fa-solid ${resourceIcon}"></i>
+                    </div>
+                    <div>
+                        <div style="font-size: 1rem; font-weight: 700;">${alert.resource.toUpperCase()} Trend</div>
+                        <div style="font-size: 0.75rem; opacity: 0.5;">Crecimiento: +${(alert.growth_rate_pct).toFixed(2)} % / Hora</div>
+                    </div>
+                </div>
+
+                <div style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; margin-top: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                        <span style="font-size: 0.75rem; opacity: 0.4;">Agotamiento en:</span>
+                        <span style="font-size: 0.85rem; font-weight: 700; color: ${alert.status === 'critical' ? '#ef4444' : 'var(--text-primary)'}">
+                            ${alert.ete_days > 0 ? `~ ${alert.ete_days} días` : '---'}
+                        </span>
+                    </div>
+                    <div style="height: 4px; background: rgba(255,255,255,0.05); border-radius: 4px; overflow: hidden;">
+                        <div style="width: ${Math.max(5, 100 - (alert.ete_days * 3))}%; height: 100%; background: ${alert.status === 'critical' ? '#ef4444' : '#f59e0b'}; border-radius: 4px;"></div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 12px; font-size: 0.7rem; opacity: 0.5; font-style: italic; display: flex; align-items: center; gap: 5px;">
+                    <i class="fa-solid fa-circle-info"></i> Confianza del modelo: ${(alert.confidence * 100).toFixed(0)}%
+                </div>
+            `;
+            grid.appendChild(card);
+        });
+
+    } catch (err) {
+        console.error('Failed to load predictive summary:', err);
+    }
+}
+
+// Global initialization override (if needed) or export
+window.renderPredictiveOps = renderPredictiveOps;

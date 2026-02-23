@@ -25,6 +25,7 @@ import (
 	"github.com/grs/centralizegg/backend_internal_centralizegg/logger"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/notifications"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/operations"
+	"github.com/grs/centralizegg/backend_internal_centralizegg/predictive"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/storage"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/virtualization"
 )
@@ -619,6 +620,37 @@ func main() {
 			return
 		}
 		json.NewEncoder(w).Encode(data)
+	}).Methods("GET")
+
+	r.HandleFunc("/api/predictive/forecast/{category}/{id}", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		category := vars["category"]
+		id, err := strconv.ParseInt(vars["id"], 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid ID", http.StatusBadRequest)
+			return
+		}
+
+		forecasts, err := predictive.GetForecastForServer(db, id, category)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(forecasts)
+	}).Methods("GET")
+
+	r.HandleFunc("/api/predictive/summary", func(w http.ResponseWriter, r *http.Request) {
+		summary, err := predictive.GetGlobalForecastSummary(db)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(summary)
+	}).Methods("GET")
+
+	r.HandleFunc("/api/predictive/anomalies", func(w http.ResponseWriter, r *http.Request) {
+		// Mock implementation for now, will be expanded
+		json.NewEncoder(w).Encode([]interface{}{})
 	}).Methods("GET")
 
 	r.HandleFunc("/api/history", func(w http.ResponseWriter, r *http.Request) {
