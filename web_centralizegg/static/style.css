@@ -725,6 +725,8 @@ body.light-theme .sortable-ghost {
     background: rgba(0, 0, 0, 0.6);
     backdrop-filter: blur(4px);
     z-index: 1000;
+    align-items: flex-start;
+    justify-content: center;
 }
 
 .modal-content {
@@ -755,6 +757,20 @@ body.light-theme .sortable-ghost {
 
 .modal-content .modal-actions {
     margin-top: 20px !important;
+}
+
+#self-password-modal .modal-content {
+    height: fit-content;
+    margin-top: 15vh;
+}
+
+#self-password-modal .form-group {
+    margin-top: 8px !important;
+    margin-bottom: 8px !important;
+}
+
+#self-password-modal .modal-actions {
+    margin-top: 15px !important;
 }
 
 .modal-header {

@@ -513,6 +513,49 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]string{"message": "Password updated successfully"})
 	}))).Methods("PUT")
 
+	r.Handle("/api/auth/password", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		userID, ok := r.Context().Value(userContextKey).(int64)
+		if !ok {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		var req struct {
+			CurrentPassword string `json:"current_password"`
+			NewPassword     string `json:"new_password"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid input", http.StatusBadRequest)
+			return
+		}
+
+		user, err := db.GetUserByID(userID)
+		if err != nil || user == nil {
+			http.Error(w, "User not found", http.StatusNotFound)
+			return
+		}
+
+		if !auth_centralizegg.CheckPasswordHash(req.CurrentPassword, user.PasswordHash) {
+			http.Error(w, "Contraseña actual incorrecta", http.StatusForbidden)
+			return
+		}
+
+		hash, err := auth_centralizegg.HashPassword(req.NewPassword)
+		if err != nil {
+			http.Error(w, "Failed to hash password", http.StatusInternalServerError)
+			return
+		}
+
+		err = db.UpdateUserPassword(userID, hash)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		AuditAction(r, db, "user.self_password_update", "User", strconv.FormatInt(userID, 10), nil)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Password updated successfully"})
+	})).Methods("PUT")
+
 	// LDAP Settings API (Protected, Requires Admin role)
 	r.Handle("/api/settings/ldap", RequiresPermission("admin", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {

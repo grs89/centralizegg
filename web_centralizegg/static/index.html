@@ -53,9 +53,6 @@
 
 
             <div class="controls" style="display:flex; gap:15px; align-items:center;">
-                <button id="nala-ia-btn" class="nala-btn" title="analiza tus problemas con IA">
-                    <i class="fa-solid fa-wand-magic-sparkles"></i> Nala IA
-                </button>
 
                 <div class="notification-container">
                     <button id="notification-btn" class="nav-config-btn" title="Notificaciones">
@@ -70,12 +67,11 @@
                     </div>
                 </div>
 
-                <!-- Theme Toggle -->
-                <button id="theme-toggle-btn" class="nav-config-btn" title="Alternar Modo Oscuro/Claro">
-                    <i class="fa-solid fa-moon" id="theme-icon"></i>
+                <button id="nala-ia-btn" class="nala-btn" title="analiza tus problemas con IA">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Nala IA
                 </button>
 
-                <!-- User Profile Section -->
+                <!-- Theme Toggle moved to User Profile Section --> <!-- User Profile Section -->
                 <div id="user-profile-toggle" class="user-profile-section glass-panel hidden"
                     style="margin-left: 10px; padding: 5px 15px; border-radius: 30px; cursor: pointer; display: flex; align-items: center; gap: 10px;">
                     <i class="fa-solid fa-user-shield" style="color: var(--accent-primary);"></i>
@@ -974,6 +970,10 @@
             <span id="dropdown-role">Administrator</span>
         </div>
         <hr style="border: 0; border-top: 1px solid var(--glass-border); margin: 10px 0;">
+        <a href="javascript:void(0)" id="theme-toggle-btn"><i class="fa-solid fa-moon" id="theme-icon"></i> Cambiar
+            Tema</a>
+        <a href="javascript:void(0)" onclick="openSelfPasswordModal()"><i class="fa-solid fa-key"></i> Cambiar
+            Contraseña</a>
         <a href="javascript:void(0)" onclick="logout()"><i class="fa-solid fa-right-from-bracket"></i> Cerrar Sesión</a>
     </div>
 
@@ -1049,6 +1049,34 @@
                 <button class="secondary-btn" onclick="closeUserPasswordModal()">Cancelar</button>
                 <button class="primary-btn" onclick="submitNewPassword()"><i class="fa-solid fa-save"></i> Cambiar
                     Contraseña</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Change Self Password Modal -->
+    <div id="self-password-modal" class="modal">
+        <div class="modal-content glass-panel" style="max-width: 400px; padding: 25px;">
+            <h3 style="margin-bottom: 20px;"><i class="fa-solid fa-key" style="color: var(--accent-color);"></i> Cambiar
+                Mi Contraseña</h3>
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label style="margin-bottom: 4px;">Contraseña Actual</label>
+                <input type="password" id="self-current-password" class="settings-input"
+                    placeholder="Ingresa tu contraseña actual" required>
+            </div>
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label style="margin-bottom: 4px;">Nueva Contraseña</label>
+                <input type="password" id="self-new-password" class="settings-input" placeholder="Mínimo 8 caracteres"
+                    required>
+            </div>
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label style="margin-bottom: 4px;">Confirmar Nueva Contraseña</label>
+                <input type="password" id="self-confirm-password" class="settings-input"
+                    placeholder="Repite la nueva contraseña" required>
+            </div>
+            <div class="modal-actions" style="margin-top: 15px; display: flex; justify-content: flex-end; gap: 10px;">
+                <button class="secondary-btn" onclick="closeSelfPasswordModal()">Cancelar</button>
+                <button class="primary-btn" onclick="submitSelfPasswordChange()"><i class="fa-solid fa-save"></i>
+                    Guardar</button>
             </div>
         </div>
     </div>

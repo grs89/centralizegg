@@ -4365,6 +4365,12 @@ async function loadSettingsCategory(category) {
     const managedServers = document.querySelector('.settings-managed-servers');
     if (managedServers) managedServers.style.display = '';
 
+    // Restore settings-server-form and hide custom panel
+    const serverForm = document.getElementById('settings-server-form');
+    if (serverForm) serverForm.style.display = 'block';
+    const customPanel = document.getElementById('custom-settings-panel');
+    if (customPanel) customPanel.style.display = 'none';
+
     resetSettingsForm();
     renderSettingsServerList();
 }
@@ -4409,6 +4415,7 @@ async function renderSettingsServerList() {
             `;
         }).join('');
     } catch (e) {
+        console.error("Error in renderSettingsServerList for API: " + api, e);
         listContainer.innerHTML = '<div style="grid-column: 1/-1; color: var(--danger); text-align: center;">Error al cargar servidores.</div>';
     }
 }
@@ -4433,7 +4440,18 @@ async function showNalaIAPanel() {
     const managedServers = document.querySelector('.settings-managed-servers');
     if (managedServers) managedServers.style.display = 'none';
 
+    const serverForm = document.getElementById('settings-server-form');
+    if (serverForm) serverForm.style.display = 'none';
+
     if (formContainer) {
+        let customPanel = document.getElementById('custom-settings-panel');
+        if (!customPanel) {
+            customPanel = document.createElement('div');
+            customPanel.id = 'custom-settings-panel';
+            formContainer.appendChild(customPanel);
+        }
+        customPanel.style.display = 'block';
+
         // Load config from API instead of localStorage
         let nalaConfig = {};
         try {
@@ -4447,7 +4465,7 @@ async function showNalaIAPanel() {
         const baseUrl = nalaConfig.baseUrl || '';
         const systemPrompt = nalaConfig.systemPrompt || 'Eres un experto DevOps encargado de analizar y explicar logs de infraestructura. Por favor, sé conciso y sugiere soluciones prácticas.';
 
-        formContainer.innerHTML = `
+        customPanel.innerHTML = `
             <form id="nala-ia-settings-form" onsubmit="saveNalaIAConfig(event)">
                 <div class="settings-form-grid">
                     <div class="settings-input-group">
@@ -4549,16 +4567,18 @@ window.testNalaIA = async function () {
 
 window.switchSystemTab = function (tabId) {
     // Hide all containers
-    document.getElementById('sys-status-container').style.display = 'none';
-    const usersContainer = document.getElementById('sys-users-container');
-    if (usersContainer) usersContainer.style.display = 'none';
-    document.getElementById('sys-notif-container').style.display = 'none';
+    ['sys-status-container', 'sys-users-container', 'sys-notif-container'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
 
     // Remove active class from all tabs
     document.querySelectorAll('.sys-tab-btn').forEach(btn => btn.classList.remove('active'));
 
     // Show selected container and highlight tab
-    document.getElementById(tabId + '-container').style.display = 'block';
+    const targetContainer = document.getElementById(tabId + '-container');
+    if (targetContainer) targetContainer.style.display = 'block';
+
     const selectedBtn = Array.from(document.querySelectorAll('.sys-tab-btn')).find(btn => btn.getAttribute('onclick').includes(tabId));
     if (selectedBtn) selectedBtn.classList.add('active');
 };
@@ -4583,7 +4603,18 @@ async function showSystemPanel() {
     const managedServers = document.querySelector('.settings-managed-servers');
     if (managedServers) managedServers.style.display = 'none';
 
+    const serverForm = document.getElementById('settings-server-form');
+    if (serverForm) serverForm.style.display = 'none';
+
     if (formContainer) {
+        let customPanel = document.getElementById('custom-settings-panel');
+        if (!customPanel) {
+            customPanel = document.createElement('div');
+            customPanel.id = 'custom-settings-panel';
+            formContainer.appendChild(customPanel);
+        }
+        customPanel.style.display = 'block';
+
         const isAdmin = (state && state.auth && state.auth.role && state.auth.role.toLowerCase() === 'admin');
 
         let tabsHtml = `
@@ -4606,7 +4637,7 @@ async function showSystemPanel() {
             <div id="sys-notif-container" style="display: none;"></div>
         `;
 
-        formContainer.innerHTML = tabsHtml;
+        customPanel.innerHTML = tabsHtml;
 
         // Add dynamic CSS to handle active state of these simple tabs
         if (!document.getElementById('sys-tabs-style')) {
@@ -4951,6 +4982,55 @@ async function renderUserManagementInside(container) {
         `;
     }
 }
+
+// Self Password Change Modal Functions
+window.openSelfPasswordModal = function () {
+    document.getElementById('self-current-password').value = '';
+    document.getElementById('self-new-password').value = '';
+    document.getElementById('self-confirm-password').value = '';
+    document.getElementById('self-password-modal').style.display = 'flex';
+    document.getElementById('user-dropdown').classList.add('hidden'); // Close dropdown menu
+};
+
+window.closeSelfPasswordModal = function () {
+    document.getElementById('self-password-modal').style.display = 'none';
+};
+
+window.submitSelfPasswordChange = async function () {
+    const currentPassword = document.getElementById('self-current-password').value;
+    const newPassword = document.getElementById('self-new-password').value;
+    const confirmPassword = document.getElementById('self-confirm-password').value;
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+        alert('Por favor, completa todos los campos.');
+        return;
+    }
+    if (newPassword !== confirmPassword) {
+        alert('Las contraseñas nuevas no coinciden.');
+        return;
+    }
+    if (newPassword.length < 8) {
+        alert('La nueva contraseña debe tener al menos 8 caracteres.');
+        return;
+    }
+
+    try {
+        const resp = await fetchAuthenticated('/api/auth/password', {
+            method: 'PUT',
+            body: JSON.stringify({ current_password: currentPassword, new_password: newPassword })
+        });
+
+        if (!resp.ok) {
+            const errorText = await resp.text();
+            throw new Error(errorText || 'Error al cambiar la contraseña.');
+        }
+
+        closeSelfPasswordModal();
+        showNotification('Contraseña actualizada exitosamente', 'success');
+    } catch (err) {
+        alert('Error: ' + err.message);
+    }
+};
 
 // User Management Modal Functions
 window.openUserCreateModal = function () {

@@ -1385,6 +1385,25 @@ func (d *DB) GetUserByUsername(username string) (*User, error) {
 	return &user, nil
 }
 
+func (d *DB) GetUserByID(id int64) (*User, error) {
+	var user User
+	query := `
+		SELECT u.id, u.username, u.password_hash, u.role_id, r.name as role_name, u.is_active, u.created_at
+		FROM auth.users u
+		JOIN auth.roles r ON u.role_id = r.id
+		WHERE u.id = $1`
+	err := d.Conn.QueryRow(query, id).Scan(
+		&user.ID, &user.Username, &user.PasswordHash, &user.RoleID, &user.RoleName, &user.IsActive, &user.CreatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
 func (d *DB) CreateUser(username, passwordHash string, roleID int64) (int64, error) {
 	var id int64
 	query := `INSERT INTO auth.users (username, password_hash, role_id) VALUES ($1, $2, $3) RETURNING id`
