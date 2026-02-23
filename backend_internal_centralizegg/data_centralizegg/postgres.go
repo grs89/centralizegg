@@ -3302,7 +3302,7 @@ func (d *DB) GetServerHistory(serverID int64, category string, duration string) 
 	}
 
 	rows, err := d.Conn.Query(`
-		SELECT id, server_id, category, timestamp, cpu_usage, memory_usage, net_rx, net_tx, disk_read, disk_write, COALESCE(interfaces_data, '{}'), COALESCE(disk_usage, 0), COALESCE(disk_total, 0), COALESCE(disks_data, '{}'), COALESCE(nodes_data, '{}'), is_online
+		SELECT server_id, category, timestamp, cpu_usage, memory_usage, net_rx, net_tx, disk_read, disk_write, COALESCE(interfaces_data, '{}'), COALESCE(disk_usage, 0), COALESCE(disk_total, 0), COALESCE(disks_data, '{}'), COALESCE(nodes_data, '{}'), is_online
 		FROM server_metrics_history
 		WHERE server_id = $1 AND category = $2 AND timestamp > NOW() - CAST($3 AS INTERVAL)
 		ORDER BY timestamp ASC`,
@@ -3315,7 +3315,7 @@ func (d *DB) GetServerHistory(serverID int64, category string, duration string) 
 	var metrics []ServerMetric
 	for rows.Next() {
 		var m ServerMetric
-		if err := rows.Scan(&m.ID, &m.ServerID, &m.Category, &m.Timestamp, &m.CPUUsage, &m.MemoryUsage, &m.NetRX, &m.NetTX, &m.DiskRead, &m.DiskWrite, &m.InterfacesData, &m.DiskUsage, &m.DiskTotal, &m.DisksData, &m.NodesData, &m.IsOnline); err != nil {
+		if err := rows.Scan(&m.ServerID, &m.Category, &m.Timestamp, &m.CPUUsage, &m.MemoryUsage, &m.NetRX, &m.NetTX, &m.DiskRead, &m.DiskWrite, &m.InterfacesData, &m.DiskUsage, &m.DiskTotal, &m.DisksData, &m.NodesData, &m.IsOnline); err != nil {
 			return nil, err
 		}
 		metrics = append(metrics, m)

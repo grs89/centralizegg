@@ -538,6 +538,31 @@
                         </div>
                     </div>
 
+                    <!-- Unified Activity Hub -->
+                    <div class="glass-panel event-hub-panel"
+                        style="padding: 25px; border-radius: 20px; border: 1px solid var(--glass-border); display: flex; flex-direction: column; gap: 20px; margin-bottom: 25px;">
+                        <div class="hub-header"
+                            style="display: flex; justify-content: space-between; align-items: center;">
+                            <h3
+                                style="font-size: 1.2rem; margin: 0; font-weight: 600; display: flex; align-items: center; gap: 10px;">
+                                <i class="fa-solid fa-bolt-lightning" style="color: var(--accent-color);"></i>
+                                Centro de Actividad y Eventos
+                            </h3>
+                            <div id="history-summary-bar" class="summary-bar">
+                                <!-- Populated via app.js -->
+                                <div style="opacity: 0.5; font-size: 0.8rem;">Cargando resumen...</div>
+                            </div>
+                        </div>
+
+                        <div class="horizontal-timeline-wrapper" id="history-timeline-wrapper">
+                            <div id="history-timeline-list" class="horizontal-timeline">
+                                <div style="text-align: center; padding: 40px; opacity: 0.5; width: 100%;">
+                                    <i class="fa-solid fa-circle-notch fa-spin"></i> Cargando eventos...
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div id="history-logs-container" class="glass-panel hidden"
                         style="margin-bottom: 20px; border-radius: 16px; padding: 20px; border: 1px solid var(--glass-border); background: rgba(0,0,0,0.3);">
                         <div
@@ -579,29 +604,6 @@
                         </div>
                     </div>
 
-                    <div class="glass-panel" style="padding: 30px; border-radius: 20px;">
-                        <h3 style="font-size: 1.3rem; margin-bottom: 25px;"><i class="fa-solid fa-chart-line"></i>
-                            Resumen de Actividad</h3>
-                        <div id="history-summary-grid"
-                            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
-                            <div style="text-align: center; padding: 40px; opacity: 0.5; grid-column: 1 / -1;">
-                                <i class="fa-solid fa-circle-notch fa-spin"></i> Cargando resumen...
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Event Timeline List -->
-                    <div class="glass-panel" style="padding: 30px; border-radius: 20px; margin-top: 20px;">
-                        <h3 style="font-size: 1.3rem; margin-bottom: 20px; display:flex; align-items:center; gap:10px;">
-                            <i class="fa-solid fa-timeline" style="color: var(--accent-color);"></i>
-                            Línea de Tiempo de Eventos
-                        </h3>
-                        <div id="history-timeline-list" style="max-height: 420px; overflow-y: auto; padding-right: 4px;">
-                            <div style="text-align: center; padding: 40px; opacity: 0.5;">
-                                <i class="fa-solid fa-circle-notch fa-spin"></i> Cargando eventos...
-                            </div>
-                        </div>
-                    </div>
                 </section>
             </div>
 

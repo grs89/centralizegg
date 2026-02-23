@@ -7927,8 +7927,11 @@ async function renderHistory() {
     initHistoryMetrics();
     populateHistoryServers();
 
-    const summaryGrid = document.getElementById('history-summary-grid');
-    if (!summaryGrid) return;
+    const summaryBar = document.getElementById('history-summary-bar');
+    if (!summaryBar) {
+        console.warn('[History] Unified summary bar not found');
+        return;
+    }
 
     try {
         const response = await fetch('/api/history');
@@ -7936,12 +7939,18 @@ async function renderHistory() {
         const history = await response.json();
 
         if (!history || history.length === 0) {
-            summaryGrid.innerHTML = `
-                <div style="grid-column: 1/-1; text-align: center; padding: 40px; opacity: 0.5;">
-                    <i class="fa-solid fa-check-circle" style="font-size: 3rem; margin-bottom: 1rem; color: #10b981;"></i>
-                    <p>Sin actividad reciente.</p>
-                </div>
+            summaryBar.innerHTML = `
+                <div style="opacity: 0.5; font-size: 0.85rem;">Sin actividad reciente.</div>
             `;
+            const timeline = document.getElementById('history-timeline-list');
+            if (timeline) {
+                timeline.innerHTML = `
+                    <div style="text-align: center; padding: 40px; opacity: 0.5; width: 100%;">
+                        <i class="fa-solid fa-check-circle" style="font-size: 2rem; margin-bottom: 1rem; color: #10b981;"></i>
+                        <p>No hay eventos registrados.</p>
+                    </div>
+                `;
+            }
             return;
         }
 
@@ -7980,80 +7989,29 @@ async function renderHistory() {
         // Last Event Time
         const lastTime = history[0] ? new Date(history[0].timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--';
 
-        // --- Render Cards ---
-        summaryGrid.innerHTML = `
-            <!-- Total Events -->
-            <div class="glass-panel" style="padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 16px; display:flex; align-items:center; gap: 15px;">
-                <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(56, 189, 248, 0.1); display:flex; align-items:center; justify-content:center; color: #38bdf8; font-size: 1.2rem;">
-                    <i class="fa-solid fa-layer-group"></i>
+        // --- Render Unified Summary Bar ---
+        const summaryBar = document.getElementById('history-summary-bar');
+        if (summaryBar) {
+            summaryBar.innerHTML = `
+                <div class="summary-item">
+                    <i class="fa-solid fa-layer-group" style="color: #38bdf8;"></i>
+                    <span class="summary-val">${totalEvents}</span>
+                    <span class="summary-label">Eventos</span>
                 </div>
-                <div>
-                    <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary); line-height: 1;">${totalEvents}</div>
-                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">Eventos Totales</div>
+                <div class="summary-item">
+                    <i class="fa-solid fa-triangle-exclamation" style="color: #ef4444;"></i>
+                    <span class="summary-val">${criticalCount}</span>
+                    <span class="summary-label">Críticos</span>
                 </div>
-            </div>
-
-            <!-- Critical -->
-            <div class="glass-panel" style="padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 16px; display:flex; align-items:center; gap: 15px;">
-                <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(239, 68, 68, 0.1); display:flex; align-items:center; justify-content:center; color: #ef4444; font-size: 1.2rem;">
-                    <i class="fa-solid fa-triangle-exclamation"></i>
+                <div class="summary-item" title="Fuente Principal: ${topSrcName}">
+                    <i class="fa-solid fa-server" style="color: #a855f7;"></i>
+                    <span class="summary-val">${topSrcName}</span>
                 </div>
-                <div>
-                    <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary); line-height: 1;">${criticalCount}</div>
-                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">Críticos/Errores</div>
+                <div class="summary-item">
+                    <i class="fa-regular fa-clock" style="color: #22c55e;"></i>
+                    <span class="summary-val">${lastTime}</span>
                 </div>
-            </div>
-
-            <!-- Top Source -->
-            <div class="glass-panel" style="padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 16px; display:flex; align-items:center; gap: 15px;">
-                <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(168, 85, 247, 0.1); display:flex; align-items:center; justify-content:center; color: #a855f7; font-size: 1.2rem;">
-                    <i class="fa-solid fa-server"></i>
-                </div>
-                <div>
-                    <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); line-height: 1.2;">${topSrcName}</div>
-                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">Fuente Principal</div>
-                </div>
-            </div>
-
-             <!-- Last Active -->
-            <div class="glass-panel" style="padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 16px; display:flex; align-items:center; gap: 15px;">
-                <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(34, 197, 94, 0.1); display:flex; align-items:center; justify-content:center; color: #22c55e; font-size: 1.2rem;">
-                    <i class="fa-regular fa-clock"></i>
-                </div>
-                <div>
-                    <div style="font-size: 1.2rem; font-weight: 700; color: var(--text-primary); line-height: 1;">${lastTime}</div>
-                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">Último Evento</div>
-                </div>
-            </div>
-        `;
-
-        // Update Map
-        try {
-            if (!historyToolMap) {
-                historyToolMap = new NetworkMap('history-map');
-            }
-
-            // Extract IPs from metadata or message for the map
-            const geoEvents = history.filter(e => {
-                try {
-                    const meta = JSON.parse(e.metadata || '{}');
-                    return meta.ip || meta.remote_ip;
-                } catch (ex) { return false; }
-            }).map(e => {
-                const meta = JSON.parse(e.metadata);
-                return {
-                    remote_ip: meta.ip || meta.remote_ip,
-                    message: e.message
-                };
-            });
-
-            if (geoEvents.length > 0) {
-                historyToolMap.render(JSON.stringify(geoEvents));
-            } else {
-                historyToolMap.render('[]');
-            }
-        } catch (mapError) {
-            console.warn('[History] Map render error (non-critical):', mapError);
+            `;
         }
 
         // --- Render Event Timeline ---
@@ -8068,28 +8026,79 @@ async function renderHistory() {
 
             timelineContainer.innerHTML = history.map(e => {
                 const { icon, color } = severityIcon(e.severity);
-                const ts = new Date(e.timestamp).toLocaleString([], { month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+                // Elegant local time
+                const ts = new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const typeLabel = (e.event_type || 'INFO').toUpperCase();
+
                 return `
-                    <div style="display:flex; align-items:flex-start; gap: 14px; padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,0.06);">
-                        <div style="width:36px; height:36px; flex-shrink:0; border-radius:10px; background:${color}22; display:flex; align-items:center; justify-content:center; color:${color};">
+                    <div class="ht-item">
+                        <div class="ht-content-top">
+                            <span class="ht-type">${typeLabel}</span>
+                            <span class="ht-time">${ts}</span>
+                        </div>
+                        <div class="ht-node" style="color: ${color}; border-color: ${color}44; background: ${color}11;">
                             <i class="fa-solid ${icon}"></i>
                         </div>
-                        <div style="flex:1; min-width:0;">
-                            <div style="font-size:0.9rem; font-weight:500; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${e.message}</div>
-                            <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:4px; display:flex; gap:12px; flex-wrap:wrap;">
-                                <span><i class="fa-solid fa-tag" style="margin-right:4px;"></i>${e.category} / ${e.event_type}</span>
-                                <span><i class="fa-regular fa-clock" style="margin-right:4px;"></i>${ts}</span>
-                            </div>
+                        <div class="ht-content-bottom">
+                            <div class="ht-message" title="${e.message}">${e.message}</div>
+                            <div class="ht-severity" style="background: ${color}22; color: ${color};">${e.severity}</div>
                         </div>
-                        <div style="flex-shrink:0; font-size:0.7rem; font-weight:600; letter-spacing:0.5px; text-transform:uppercase; padding:3px 8px; border-radius:6px; background:${color}22; color:${color};">${e.severity}</div>
                     </div>
                 `;
             }).join('');
+
+            // Add smooth drag-to-scroll behavior
+            const wrapper = document.getElementById('history-timeline-wrapper');
+            if (wrapper) {
+                let isDown = false;
+                let startX;
+                let scrollLeft;
+
+                wrapper.addEventListener('mousedown', (e) => {
+                    isDown = true;
+                    wrapper.classList.add('active');
+                    startX = e.pageX - wrapper.offsetLeft;
+                    scrollLeft = wrapper.scrollLeft;
+                });
+                wrapper.addEventListener('mouseleave', () => {
+                    isDown = false;
+                    wrapper.classList.remove('active');
+                });
+                wrapper.addEventListener('mouseup', () => {
+                    isDown = false;
+                    wrapper.classList.remove('active');
+                });
+                wrapper.addEventListener('mousemove', (e) => {
+                    if (!isDown) return;
+                    e.preventDefault();
+                    const x = e.pageX - wrapper.offsetLeft;
+                    const walk = (x - startX) * 2; // scroll-fast factor
+                    wrapper.scrollLeft = scrollLeft - walk;
+                });
+            }
+        }
+
+        // --- Update Geolocation Map ---
+        if (!historyToolMap) {
+            historyToolMap = new NetworkMap('history-map');
+        }
+
+        // Filter events with geo metadata
+        const geoEvents = history.filter(e => e.metadata && typeof e.metadata === 'string' && e.metadata.includes('remote_ip'));
+        const connections = geoEvents.map(e => {
+            try {
+                const meta = JSON.parse(e.metadata);
+                return { remote_ip: meta.remote_ip, inbound: 1, outbound: 1 };
+            } catch (err) { return null; }
+        }).filter(c => c !== null);
+
+        if (connections.length > 0) {
+            historyToolMap.render(JSON.stringify(connections));
         }
 
     } catch (error) {
         console.error('[History] Error rendering history:', error);
-        if (summaryGrid) summaryGrid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:40px; color:#ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Error cargando historial: ${error.message}</div>`;
+        if (summaryBar) summaryBar.innerHTML = `<div style="color:#ef4444; font-size: 0.8rem;"><i class="fa-solid fa-triangle-exclamation"></i> Error</div>`;
     }
 }
 
@@ -8809,8 +8818,8 @@ async function loadHostLogs(category, id) {
 }
 
 function updateHostActivitySummary(logs, category, id) {
-    const summaryGrid = document.getElementById('history-summary-grid');
-    if (!summaryGrid) return;
+    const summaryBar = document.getElementById('history-summary-bar');
+    if (!summaryBar) return;
 
     // 1. Total Events
     const totalEvents = logs.length;
@@ -8870,63 +8879,60 @@ function updateHostActivitySummary(logs, category, id) {
         }
     }
 
-    // Render Cards
-    summaryGrid.innerHTML = `
-        <!-- Total Events -->
-        <div class="glass-panel" style="padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 16px; display:flex; align-items:center; gap: 15px;">
-            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(56, 189, 248, 0.1); display:flex; align-items:center; justify-content:center; color: #38bdf8; font-size: 1.2rem;">
-                <i class="fa-solid fa-layer-group"></i>
-            </div>
-            <div>
-                <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary); line-height: 1;">${totalEvents}</div>
-                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">Eventos del Host</div>
-            </div>
+    // Render Compact Summary Bar
+    summaryBar.innerHTML = `
+        <div class="summary-item">
+            <i class="fa-solid fa-layer-group" style="color: #38bdf8;"></i>
+            <span class="summary-val">${totalEvents}</span>
+            <span class="summary-label">Logs</span>
         </div>
-
-        <!-- Critical -->
-        <div class="glass-panel" style="padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 16px; display:flex; align-items:center; gap: 15px;">
-            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(239, 68, 68, 0.1); display:flex; align-items:center; justify-content:center; color: #ef4444; font-size: 1.2rem;">
-                <i class="fa-solid fa-triangle-exclamation"></i>
-            </div>
-            <div>
-                <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary); line-height: 1;">${criticalCount}</div>
-                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">Críticos/Errores</div>
-            </div>
+        <div class="summary-item">
+            <i class="fa-solid fa-triangle-exclamation" style="color: #ef4444;"></i>
+            <span class="summary-val">${criticalCount}</span>
+            <span class="summary-label">Críticos</span>
         </div>
-
-        <!-- Updates / Patches -->
-        <div class="glass-panel" style="padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 16px; display:flex; align-items:center; gap: 15px;">
-            <div style="width: 48px; height: 48px; border-radius: 12px; background: ${updatesColor}1a; display:flex; align-items:center; justify-content:center; color: ${updatesColor}; font-size: 1.2rem;">
-                <i class="fa-solid ${updatesIcon}"></i>
-            </div>
-            <div>
-                <div style="font-size: 1.0rem; font-weight: 700; color: var(--text-primary); line-height: 1.2;">${updatesText}</div>
-                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">Estado de Parches</div>
-            </div>
+        <div class="summary-item" title="${sourceName}">
+            <i class="fa-solid fa-server" style="color: #a855f7;"></i>
+            <span class="summary-val">${sourceName}</span>
         </div>
-
-        <!-- Source -->
-        <div class="glass-panel" style="padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 16px; display:flex; align-items:center; gap: 15px;">
-            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(168, 85, 247, 0.1); display:flex; align-items:center; justify-content:center; color: #a855f7; font-size: 1.2rem;">
-                <i class="fa-solid fa-server"></i>
-            </div>
-            <div>
-                <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); line-height: 1.2;">${sourceName}</div>
-                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">Fuente (Host)</div>
-            </div>
+        <div class="summary-item" style="color: ${updatesColor};" title="${updatesText}">
+            <i class="fa-solid ${updatesIcon}"></i>
+            <span class="summary-val">${updatesAvailable ? 'Parches' : 'OK'}</span>
         </div>
-
-        <!-- Last Active -->
-        <div class="glass-panel" style="padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 16px; display:flex; align-items:center; gap: 15px;">
-            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(16, 185, 129, 0.1); display:flex; align-items:center; justify-content:center; color: #10b981; font-size: 1.2rem;">
-                <i class="fa-regular fa-clock"></i>
-            </div>
-            <div>
-                <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); line-height: 1.2;">${lastTime}</div>
-                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">Último Evento</div>
-            </div>
+        <div class="summary-item">
+            <i class="fa-regular fa-clock" style="color: #22c55e;"></i>
+            <span class="summary-val">${lastTime}</span>
         </div>
     `;
+
+    // 5. Update Geolocation Map from Logs
+    if (logs.length > 0) {
+        if (!historyToolMap) {
+            historyToolMap = new NetworkMap('history-map');
+        }
+
+        const ipRegex = /\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b/g;
+        const foundIPs = new Set();
+
+        // Scan last 100 logs for efficiency
+        const scanRange = logs.slice(-100);
+        scanRange.forEach(line => {
+            const matches = line.match(ipRegex);
+            if (matches) {
+                matches.forEach(ip => {
+                    // Quick check for public IPs (basic heuristic)
+                    if (!ip.startsWith('10.') && !ip.startsWith('192.168.') && !ip.startsWith('127.')) {
+                        foundIPs.add(ip);
+                    }
+                });
+            }
+        });
+
+        if (foundIPs.size > 0) {
+            const connections = Array.from(foundIPs).map(ip => ({ remote_ip: ip, inbound: 1, outbound: 1 }));
+            historyToolMap.render(JSON.stringify(connections));
+        }
+    }
 }
 
 // Store all logs for filtering
@@ -8989,7 +8995,7 @@ async function renderAuditLogSidebar() {
         <div style="padding: 20px; text-align: center;">
             <i class="fa-solid fa-circle-notch fa-spin"></i> Cargando registros...
         </div>
-    `;
+        `;
 
     try {
         const res = await fetch('/api/logging/audit-logs?limit=100');
@@ -8998,15 +9004,15 @@ async function renderAuditLogSidebar() {
         const logs = data.logs || [];
 
         let html = `
-            <div style="padding: 15px; border-bottom: 1px solid var(--glass-border);">
+        <div style="padding: 15px; border-bottom: 1px solid var(--glass-border);">
                 <h3 style="margin: 0; font-size: 1rem; display: flex; align-items: center; gap: 8px;">
                     <i class="fa-solid fa-clipboard-check" style="color: var(--accent-color);"></i>
                     Registro de Auditoría
                 </h3>
                 <p style="margin: 5px 0 0; font-size: 0.75rem; color: var(--text-secondary);">Acciones críticas del sistema</p>
             </div>
-            <div style="overflow-y: auto; flex: 1; padding: 10px;">
-        `;
+        <div style="overflow-y: auto; flex: 1; padding: 10px;">
+            `;
 
         if (logs.length === 0) {
             html += `<div style="padding: 20px; text-align: center; color: var(--text-secondary); font-size: 0.85rem;">No hay registros de auditoría.</div>`;
@@ -9038,8 +9044,8 @@ async function renderAuditLogSidebar() {
         sidebarContent.innerHTML = html;
     } catch (err) {
         sidebarContent.innerHTML = `
-            <div style="padding: 20px; text-align: center; color: var(--danger);">
-                <i class="fa-solid fa-triangle-exclamation"></i> Error al cargar logs.
+                <div style="padding: 20px; text-align: center; color: var(--danger);">
+                    <i class="fa-solid fa-triangle-exclamation"></i> Error al cargar logs.
             </div>
         `;
     }
@@ -10444,7 +10450,7 @@ async function showPodLogs(serverId, namespace, podName, cpu = 0, mem = 0) {
                 <span style="color: #c084fc;"><i class="fa-solid fa-memory"></i> ${memFormatted}</span>
             </div>
         </div>
-    `;
+        `;
 
     contentEl.textContent = 'Loading logs...';
     contentEl.style.color = '#e2e8f0';
@@ -10452,7 +10458,7 @@ async function showPodLogs(serverId, namespace, podName, cpu = 0, mem = 0) {
     modal.style.display = 'flex';
 
     try {
-        const url = `/api/kubernetes/pods/${serverId}/${namespace}/${podName}/logs`;
+        const url = `/ api / kubernetes / pods / ${serverId} /${namespace}/${podName}/logs`;
         console.log(`[LogViewer] Fetching Pod logs from: ${url}`);
         const response = await fetch(url);
         if (!response.ok) throw new Error('Failed to fetch logs');
