@@ -3039,3 +3039,43 @@ select.settings-input option {
     margin-top: 10px;
     padding: 30px 0 40px 0;
 }
+
+/* ========================================
+   DASHBOARD TV MODE
+   ======================================== */
+body.dashboard-tv-mode {
+    overflow: hidden;
+}
+
+body.dashboard-tv-mode .sidebar {
+    display: none !important;
+}
+
+body.dashboard-tv-mode .top-bar {
+    display: none !important;
+}
+
+body.dashboard-tv-mode .main-content {
+    margin-left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    padding: 2vh 2vw !important;
+    max-width: none !important;
+}
+
+body.dashboard-tv-mode #history-tool .nav-config-btn {
+    opacity: 0.2;
+    transition: opacity 0.3s;
+}
+
+body.dashboard-tv-mode #history-tool .nav-config-btn:hover {
+    opacity: 1;
+}
+
+body.dashboard-tv-mode .section-header {
+    margin-bottom: 1rem !important;
+}
+
+body.dashboard-tv-mode .section-header h1 {
+    font-size: 3rem !important;
+}

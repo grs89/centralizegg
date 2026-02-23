@@ -8551,7 +8551,129 @@ function initHistoryMetrics() {
     initCapacityPlanning();
     initAutoRefresh();
 
+    // SLA Report and Dashboard Mode
+    const btnSLA = document.getElementById('generate-sla-report-btn');
+    if (btnSLA) {
+        btnSLA.addEventListener('click', generateSLAReport);
+    }
+    const btnCloseSLA = document.getElementById('close-sla-report-btn');
+    if (btnCloseSLA) {
+        btnCloseSLA.addEventListener('click', () => {
+            document.getElementById('sla-report-container').classList.add('hidden');
+        });
+    }
+
+    const btnTV = document.getElementById('toggle-dashboard-tv-btn');
+    if (btnTV) {
+        btnTV.addEventListener('click', toggleDashboardMode);
+    }
+
     historyMetricsInitialized = true;
+}
+
+// ========================================
+// SLA REPORT & DASHBOARD MODE
+// ========================================
+
+async function generateSLAReport() {
+    const container = document.getElementById('sla-report-container');
+    const content = document.getElementById('sla-report-content');
+
+    container.classList.remove('hidden');
+    content.innerHTML = `
+        <div style="text-align: center; padding: 30px; opacity: 0.6;">
+            <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 2rem; color: #c084fc; margin-bottom: 10px;"></i>
+            <p>Nala IA está analizando los eventos y métricas de las últimas 24/72 horas para generar el reporte...</p>
+        </div>
+    `;
+
+    try {
+        // Fetch recent history events (e.g., 50 last events) to give context
+        const histResp = await fetch('/api/history?limit=50');
+        let events = await histResp.json();
+        if (!events) events = [];
+
+        let contextText = "Eventos recientes de infraestructura:\n";
+        events.forEach(e => {
+            contextText += `- [${e.severity}] ${e.source}: ${e.message} (${new Date(e.timestamp).toLocaleString()})\n`;
+        });
+
+        // Prompt Nala
+        const systemPrompt = "Eres Nala IA, un Ingeniero de Confiabilidad de Sistemas (SRE) experto. A continuación te presento un resumen crudo de eventos de infraestructura. Tu tarea es redactar un 'Reporte SLA Ejecutivo'. Debe tener: 1. Resumen de incidentes críticos, 2. Estado General (Operativo, Degradado, Crítico), 3. Recomendaciones de mantenimiento. Sé conciso, profesional y usa formato Markdown con iconos (🚀, ⚠️, 🟢).";
+
+        // Try getting configs for AI Call
+        let provider = 'google';
+        let apiKey = '';
+        let baseUrl = '';
+        const savedSettings = localStorage.getItem('centralizegg_general_settings');
+        if (savedSettings) {
+            const config = JSON.parse(savedSettings);
+            const aiSettings = config.ai_settings || {};
+            provider = aiSettings.provider || 'google';
+            apiKey = aiSettings.apiKey || '';
+            baseUrl = aiSettings.baseUrl || '';
+        }
+
+        const resp = await fetch('/api/ai/ask', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                apiKey: apiKey,
+                provider: provider,
+                baseUrl: baseUrl,
+                systemPrompt: systemPrompt,
+                userMessage: contextText
+            })
+        });
+
+        const data = await resp.json();
+        if (data.success && data.message) {
+            content.innerHTML = formatMarkdownLike(data.message.text || data.message);
+        } else if (data.success && data.injectedMemory) {
+            // Mock fallback if using the native go endpoint correctly but wanting the full text (if Go side doesn't do LLM natively yet in this route)
+            // We'll simulate a nice response if Nala didn't return Markdown directly.
+            content.innerHTML = `<div style="padding: 15px; border-left: 4px solid #c084fc; background: rgba(168, 85, 247, 0.1);">
+                Al parecer no hay un LLM configurado para completar el reporte completo. Se requieren Keys de Gemini o OpenAI.
+             </div>`;
+        } else {
+            throw new Error(data.error || "Fallo en la generación IA");
+        }
+
+    } catch (err) {
+        content.innerHTML = `<div style="color: #ef4444; padding: 15px; border: 1px dashed #ef4444; border-radius: 8px;">
+            <i class="fa-solid fa-triangle-exclamation"></i> Error al generar reporte SLA: ${err.message}. Asegúrese de tener configuradas las credenciales de Nala IA en Ajustes Globales.
+        </div>`;
+    }
+}
+
+function toggleDashboardMode() {
+    const isTVMode = document.body.classList.toggle('dashboard-tv-mode');
+
+    if (isTVMode) {
+        // Enlarge things or hide irrelevant UI
+        const panels = document.querySelectorAll('#history-tool .glass-panel');
+        panels.forEach(p => p.style.border = 'none');
+
+        // Toast notification
+        showToast("Dashboard Mode Activado. Presione 'ESC' o desactive el botón para salir.", "success");
+
+        // Add escape listener
+        const escListener = (e) => {
+            if (e.key === 'Escape') {
+                document.body.classList.remove('dashboard-tv-mode');
+                showToast("Dashboard Mode Desactivado.");
+                document.removeEventListener('keydown', escListener);
+                // Reset styles
+                panels.forEach(p => p.style.border = '1px solid var(--glass-border)');
+            }
+        };
+        document.addEventListener('keydown', escListener);
+
+    } else {
+        showToast("Dashboard Mode Desactivado.");
+        const panels = document.querySelectorAll('#history-tool .glass-panel');
+        panels.forEach(p => p.style.border = '1px solid var(--glass-border)');
+    }
 }
 
 // ========================================

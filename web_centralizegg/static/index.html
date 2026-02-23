@@ -368,7 +368,23 @@
                                 <option value="total">Todos los Nodos</option>
                             </select>
                             <button id="load-history-btn" class="nav-config-btn">
-                                <i class="fa-solid fa-rotate"></i> Cargar
+                                <i class="fa-solid fa-filter"></i> Aplicar
+                            </button>
+
+                            <!-- New Executive & TV Mode Buttons -->
+                            <div style="flex-grow: 1;"></div> <!-- Spacer so buttons go to the right -->
+
+                            <button id="generate-sla-report-btn" class="nav-config-btn"
+                                style="background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.4); color: #c084fc;">
+                                <i class="fa-solid fa-file-contract"></i>
+                                <i class="fa-solid fa-wand-magic-sparkles"
+                                    style="font-size: 0.7em; margin-left: 3px; color: #e879f9;"></i>
+                                Reporte SLA Diario
+                            </button>
+
+                            <button id="toggle-dashboard-tv-btn" class="nav-config-btn"
+                                style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.4); color: #34d399;">
+                                <i class="fa-solid fa-tv"></i> Dashboard Mode
                             </button>
                             <button id="configure-thresholds-btn" class="nav-config-btn">
                                 <i class="fa-solid fa-sliders"></i> Umbrales
