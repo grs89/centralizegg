@@ -2,11 +2,13 @@ package data_centralizegg
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"log"
 	"strconv"
+	"sync"
 	"time"
+
+	json "github.com/goccy/go-json"
 
 	"github.com/grs/centralizegg/backend_internal_centralizegg/ai"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/notifications"
@@ -3202,33 +3204,47 @@ func (d *DB) GetInfrastructureHealth() (*GlobalHealthData, error) {
 		{"Red (pfSense)", "firewall.pfsense_servers", "status"},
 	}
 
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
 	for _, q := range queries {
-		var total, online, offline int
-		query := fmt.Sprintf(`
-			SELECT 
-				COUNT(*), 
-				COUNT(*) FILTER (WHERE %s ILIKE 'online' OR %s ILIKE 'running' OR %s ILIKE 'up' OR %s ILIKE 'Ready' OR %s ILIKE 'active'),
-				MAX(offline_since)
-			FROM %s`, q.StatusCol, q.StatusCol, q.StatusCol, q.StatusCol, q.StatusCol, q.Table)
+		wg.Add(1)
+		go func(q struct {
+			Category  string
+			Table     string
+			StatusCol string
+		}) {
+			defer wg.Done()
+			var total, online, offline int
+			query := fmt.Sprintf(`
+				SELECT 
+					COUNT(*), 
+					COUNT(*) FILTER (WHERE %s ILIKE 'online' OR %s ILIKE 'running' OR %s ILIKE 'up' OR %s ILIKE 'Ready' OR %s ILIKE 'active'),
+					MAX(offline_since)
+				FROM %s`, q.StatusCol, q.StatusCol, q.StatusCol, q.StatusCol, q.StatusCol, q.Table)
 
-		var maxOfflineSince *time.Time
-		err := d.Conn.QueryRow(query).Scan(&total, &online, &maxOfflineSince)
-		offline = total - online
-		if err != nil {
-			// If status column is missing, try a simpler count
-			d.Conn.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", q.Table)).Scan(&total)
-			d.Conn.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE %s ILIKE 'online' OR %s ILIKE 'running' OR %s ILIKE 'up' OR %s ILIKE 'Ready' OR %s ILIKE 'active'", q.Table, q.StatusCol, q.StatusCol, q.StatusCol, q.StatusCol, q.StatusCol)).Scan(&online)
+			var maxOfflineSince *time.Time
+			err := d.Conn.QueryRow(query).Scan(&total, &online, &maxOfflineSince)
 			offline = total - online
-		}
+			if err != nil {
+				// If status column is missing, try a simpler count
+				d.Conn.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", q.Table)).Scan(&total)
+				d.Conn.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE %s ILIKE 'online' OR %s ILIKE 'running' OR %s ILIKE 'up' OR %s ILIKE 'Ready' OR %s ILIKE 'active'", q.Table, q.StatusCol, q.StatusCol, q.StatusCol, q.StatusCol, q.StatusCol)).Scan(&online)
+				offline = total - online
+			}
 
-		data.OverallHealth = append(data.OverallHealth, HealthSummary{
-			Category:        q.Category,
-			Total:           total,
-			Online:          online,
-			Offline:         offline,
-			MaxOfflineSince: maxOfflineSince,
-		})
+			mu.Lock()
+			data.OverallHealth = append(data.OverallHealth, HealthSummary{
+				Category:        q.Category,
+				Total:           total,
+				Online:          online,
+				Offline:         offline,
+				MaxOfflineSince: maxOfflineSince,
+			})
+			mu.Unlock()
+		}(q)
 	}
+	wg.Wait()
 
 	// 2. Fetch Recent Events from GLOBAL HISTORY (Centralized Feed)
 	// This now captures Kubernetes, System, and any other logged events.

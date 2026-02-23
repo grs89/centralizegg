@@ -3,7 +3,6 @@ package main
 import (
 	"compress/gzip"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -12,6 +11,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	json "github.com/goccy/go-json"
 
 	"runtime"
 	"strings"
@@ -614,12 +615,22 @@ func main() {
 
 	// API Handlers (Headers and Logging are now handled by Middlewares)
 	r.HandleFunc("/api/health/summary", func(w http.ResponseWriter, r *http.Request) {
+		cacheKey := "health_summary"
+		if cached, found := db.Cache.Get(cacheKey); found {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(cached.([]byte))
+			return
+		}
+
 		data, err := db.GetInfrastructureHealth()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		json.NewEncoder(w).Encode(data)
+		bytes, _ := json.Marshal(data)
+		db.Cache.Set(cacheKey, bytes, 3*time.Second)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(bytes)
 	}).Methods("GET")
 
 	r.HandleFunc("/api/predictive/forecast/{category}/{id}", func(w http.ResponseWriter, r *http.Request) {
@@ -640,12 +651,22 @@ func main() {
 	}).Methods("GET")
 
 	r.HandleFunc("/api/predictive/summary", func(w http.ResponseWriter, r *http.Request) {
+		cacheKey := "predictive_summary"
+		if cached, found := db.Cache.Get(cacheKey); found {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(cached.([]byte))
+			return
+		}
+
 		summary, err := predictive.GetGlobalForecastSummary(db)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		json.NewEncoder(w).Encode(summary)
+		bytes, _ := json.Marshal(summary)
+		db.Cache.Set(cacheKey, bytes, 15*time.Second)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(bytes)
 	}).Methods("GET")
 
 	r.HandleFunc("/api/predictive/anomalies", func(w http.ResponseWriter, r *http.Request) {
@@ -655,12 +676,22 @@ func main() {
 
 	r.HandleFunc("/api/history", func(w http.ResponseWriter, r *http.Request) {
 		limit := 50
+		cacheKey := fmt.Sprintf("global_history_limit_%d", limit)
+		if cached, found := db.Cache.Get(cacheKey); found {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(cached.([]byte))
+			return
+		}
+
 		events, err := db.GetHistory(limit)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		json.NewEncoder(w).Encode(events)
+		bytes, _ := json.Marshal(events)
+		db.Cache.Set(cacheKey, bytes, 2*time.Second)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(bytes)
 	}).Methods("GET")
 
 	// New App Logs API with search support

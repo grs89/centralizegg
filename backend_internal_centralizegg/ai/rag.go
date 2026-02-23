@@ -2,7 +2,7 @@ package ai
 
 import (
 	"database/sql"
-	"encoding/json"
+	json "github.com/goccy/go-json"
 	"fmt"
 
 	"github.com/pgvector/pgvector-go"

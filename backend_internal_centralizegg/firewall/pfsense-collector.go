@@ -1,7 +1,7 @@
 package firewall
 
 import (
-	"encoding/json"
+	json "github.com/goccy/go-json"
 	"fmt"
 	"io/ioutil"
 	"log"

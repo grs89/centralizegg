@@ -2,7 +2,7 @@ package container
 
 import (
 	"crypto/tls"
-	"encoding/json"
+	json "github.com/goccy/go-json"
 	"fmt"
 	"io/ioutil"
 	"log"
