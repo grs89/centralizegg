@@ -209,6 +209,9 @@ function renderAlerts(alerts) {
     const list = document.getElementById('summary-alerts-list');
     if (!list) return;
 
+    // Apply horizontal container class
+    list.className = 'alerts-horizontal-feed';
+
     if (!alerts || alerts.length === 0) {
         list.innerHTML = `
             <div style="text-align: center; padding: 60px; opacity: 0.4;">
@@ -275,14 +278,16 @@ function renderAlerts(alerts) {
     // Render Groups
     Object.values(grouped).forEach((group, idx) => {
         const groupItem = document.createElement('div');
-        groupItem.className = 'glass-panel';
-        groupItem.style.marginBottom = '8px';
+        groupItem.className = 'glass-panel alert-group-card';
+        groupItem.style.margin = '0';
         groupItem.style.overflow = 'hidden';
-        groupItem.style.borderRadius = '12px';
+        groupItem.style.borderRadius = '16px';
         groupItem.style.border = '1px solid var(--glass-border)';
         groupItem.style.background = 'rgba(255,255,255,0.02)';
-        groupItem.style.transition = 'all 0.3s ease';
-        groupItem.style.animation = `fadeInUp 0.3s ease-out forwards ${idx * 0.05}s`;
+        groupItem.style.display = 'flex';
+        groupItem.style.flexDirection = 'column';
+        groupItem.style.maxHeight = '350px';
+        groupItem.style.animation = `fadeInRight 0.4s ease-out forwards ${idx * 0.1}s`;
         groupItem.style.opacity = '0';
 
         // Determine Header Color based on max severity
@@ -311,11 +316,10 @@ function renderAlerts(alerts) {
 
         // Header HTML
         const headerDiv = document.createElement('div');
-        headerDiv.style.padding = '12px 16px';
+        headerDiv.style.padding = '14px 16px';
         headerDiv.style.display = 'flex';
         headerDiv.style.alignItems = 'center';
         headerDiv.style.justifyContent = 'space-between';
-        headerDiv.style.cursor = 'pointer';
         headerDiv.style.background = `linear-gradient(90deg, ${headerColor}0a 0%, transparent 100%)`;
         headerDiv.style.borderLeft = `4px solid ${headerColor}`;
 
@@ -325,24 +329,23 @@ function renderAlerts(alerts) {
                    <i class="fa-solid ${headerIcon}" style="color: ${headerColor};"></i>
                 </div>
                 <div>
-                     <div style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary);">${displayTitle}</div>
-                     <div style="font-size: 0.75rem; color: var(--text-secondary); opacity: 0.7;">
-                        <span style="font-weight:600; color: ${headerColor};">${group.alerts.length}</span> evento(s) en ${friendlySource}
+                     <div style="font-size: 0.9rem; font-weight: 700; color: var(--text-primary);">${displayTitle}</div>
+                     <div style="font-size: 0.7rem; color: var(--text-secondary); opacity: 0.7;">
+                        <span style="font-weight:600; color: ${headerColor};">${group.alerts.length}</span> eventos
                      </div>
                 </div>
             </div>
-            <div style="display:flex; align-items: center; gap: 10px;">
-                 ${group.hostId ? `<i class="fa-solid fa-arrow-up-right-from-square" style="font-size:0.85rem; opacity:0.4; transition: opacity 0.2s;" title="Ir al Host" id="nav-${idx}"></i>` : ''}
-                 <i class="fa-solid fa-chevron-down" style="font-size: 0.8rem; opacity: 0.3; transition: transform 0.3s ease;" id="chevron-${idx}"></i>
-            </div>
+            ${group.hostId ? `<i class="fa-solid fa-arrow-up-right-from-square" style="font-size:0.85rem; opacity:0.4; transition: opacity 0.2s; cursor: pointer;" title="Ir al Host" id="nav-${idx}"></i>` : ''}
         `;
 
-        // Body HTML (Hidden by default)
+        // Body HTML (Visible by default in horizontal layout)
         const bodyDiv = document.createElement('div');
-        bodyDiv.style.display = 'none'; // Collapsed
-        bodyDiv.style.padding = '0';
-        bodyDiv.style.background = 'var(--panel-item-bg)';
+        bodyDiv.style.flex = '1';
+        bodyDiv.style.overflowY = 'auto';
+        bodyDiv.style.padding = '5px 0';
+        bodyDiv.style.background = 'rgba(0,0,0,0.1)';
         bodyDiv.style.borderTop = '1px solid var(--panel-item-border)';
+        bodyDiv.className = 'custom-scrollbar';
 
         // Render individual alerts inside body
         group.alerts.forEach((alert, aIdx) => {
@@ -371,25 +374,13 @@ function renderAlerts(alerts) {
             bodyDiv.appendChild(row);
         });
 
-        // Toggle Logic
-        let isExpanded = false;
-        headerDiv.onclick = (e) => {
-            // Prevent expansion if clicking the specific Nav icon
-            if (e.target.closest(`#nav-${idx}`)) return;
-
-            isExpanded = !isExpanded;
-            bodyDiv.style.display = isExpanded ? 'block' : 'none';
-            const chevron = headerDiv.querySelector(`#chevron-${idx}`);
-            if (chevron) chevron.style.transform = isExpanded ? 'rotate(180deg)' : 'rotate(0deg)';
-        };
-
         // Deep Link Click Logic
         const navBtn = headerDiv.querySelector(`#nav-${idx}`);
         if (navBtn) {
             navBtn.onmouseenter = () => navBtn.style.opacity = '1';
             navBtn.onmouseleave = () => navBtn.style.opacity = '0.4';
             navBtn.onclick = (e) => {
-                e.stopPropagation(); // Don't toggle accordion
+                e.stopPropagation();
                 if (window.applySuggestion && group.hostId) {
                     window.applySuggestion('host', group.hostId, group.source, group.tool);
                 }
