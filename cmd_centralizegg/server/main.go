@@ -1652,8 +1652,18 @@ func main() {
 		}
 	}).Methods("GET", "POST")
 
-	// Static Files
-	r.PathPrefix("/").Handler(http.FileServer(http.Dir("./web_centralizegg/static/")))
+	// Static Files with Cache-Control
+	fs := http.FileServer(http.Dir("./web_centralizegg/static/"))
+	r.PathPrefix("/").Handler(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		path := req.URL.Path
+		if strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".css") || strings.HasSuffix(path, ".png") || strings.HasSuffix(path, ".ico") || strings.HasSuffix(path, ".woff2") {
+			w.Header().Set("Cache-Control", "public, max-age=31536000") // 1 year cache
+		} else {
+			// For HTML and other dynamic structures, avoid aggressive caching
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		}
+		fs.ServeHTTP(w, req)
+	}))
 
 	// Start Server with Timeouts
 	srv := &http.Server{
