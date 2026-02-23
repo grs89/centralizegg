@@ -8023,34 +8023,68 @@ async function renderHistory() {
         `;
 
         // Update Map
-        if (!historyToolMap) {
-            historyToolMap = new NetworkMap('history-map');
+        try {
+            if (!historyToolMap) {
+                historyToolMap = new NetworkMap('history-map');
+            }
+
+            // Extract IPs from metadata or message for the map
+            const geoEvents = history.filter(e => {
+                try {
+                    const meta = JSON.parse(e.metadata || '{}');
+                    return meta.ip || meta.remote_ip;
+                } catch (ex) { return false; }
+            }).map(e => {
+                const meta = JSON.parse(e.metadata);
+                return {
+                    remote_ip: meta.ip || meta.remote_ip,
+                    message: e.message
+                };
+            });
+
+            if (geoEvents.length > 0) {
+                historyToolMap.render(JSON.stringify(geoEvents));
+            } else {
+                historyToolMap.render('[]');
+            }
+        } catch (mapError) {
+            console.warn('[History] Map render error (non-critical):', mapError);
         }
 
-        // Extract IPs from metadata or message for the map
-        const geoEvents = history.filter(e => {
-            try {
-                const meta = JSON.parse(e.metadata || '{}');
-                return meta.ip || meta.remote_ip;
-            } catch (ex) { return false; }
-        }).map(e => {
-            const meta = JSON.parse(e.metadata);
-            return {
-                remote_ip: meta.ip || meta.remote_ip,
-                message: e.message
+        // --- Render Event Timeline ---
+        const timelineContainer = document.getElementById('history-timeline-list');
+        if (timelineContainer) {
+            const severityIcon = (s) => {
+                s = (s || '').toLowerCase();
+                if (s.includes('crit') || s.includes('err') || s.includes('fail')) return { icon: 'fa-circle-exclamation', color: '#ef4444' };
+                if (s.includes('warn')) return { icon: 'fa-triangle-exclamation', color: '#f59e0b' };
+                return { icon: 'fa-circle-info', color: '#38bdf8' };
             };
-        });
 
-        if (geoEvents.length > 0) {
-            historyToolMap.render(JSON.stringify(geoEvents));
-        } else {
-            // Default render to show the map
-            historyToolMap.render('[]');
+            timelineContainer.innerHTML = history.map(e => {
+                const { icon, color } = severityIcon(e.severity);
+                const ts = new Date(e.timestamp).toLocaleString([], { month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+                return `
+                    <div style="display:flex; align-items:flex-start; gap: 14px; padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,0.06);">
+                        <div style="width:36px; height:36px; flex-shrink:0; border-radius:10px; background:${color}22; display:flex; align-items:center; justify-content:center; color:${color};">
+                            <i class="fa-solid ${icon}"></i>
+                        </div>
+                        <div style="flex:1; min-width:0;">
+                            <div style="font-size:0.9rem; font-weight:500; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${e.message}</div>
+                            <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:4px; display:flex; gap:12px; flex-wrap:wrap;">
+                                <span><i class="fa-solid fa-tag" style="margin-right:4px;"></i>${e.category} / ${e.event_type}</span>
+                                <span><i class="fa-regular fa-clock" style="margin-right:4px;"></i>${ts}</span>
+                            </div>
+                        </div>
+                        <div style="flex-shrink:0; font-size:0.7rem; font-weight:600; letter-spacing:0.5px; text-transform:uppercase; padding:3px 8px; border-radius:6px; background:${color}22; color:${color};">${e.severity}</div>
+                    </div>
+                `;
+            }).join('');
         }
 
     } catch (error) {
         console.error('[History] Error rendering history:', error);
-        timelineContainer.innerHTML = `<div class="error-msg">Error cargando historial: ${error.message}</div>`;
+        if (summaryGrid) summaryGrid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:40px; color:#ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Error cargando historial: ${error.message}</div>`;
     }
 }
 
