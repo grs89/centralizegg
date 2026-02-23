@@ -3968,37 +3968,57 @@ const LOGS_CONFIG = {
 
 let logsAutoRefreshInterval = null;
 let logsFilter = '';
+let logsPaused = false;
 
 function renderLogsSidebar() {
     const sidebar = document.getElementById('logs-sidebar');
     if (!sidebar) return;
 
     sidebar.innerHTML = `
-        <div class="logs-search-container" style="padding: 10px;">
-            <div class="search-box" style="background: rgba(255,255,255,0.05); border-radius: 8px; padding: 5px 10px; display: flex; align-items: center; border: 1px solid var(--glass-border);">
-                <i class="fa-solid fa-magnifying-glass" style="opacity: 0.5; margin-right: 10px;"></i>
-                <input type="text" id="logs-search-input" placeholder="Filtrar logs..." style="background: none; border: none; color: white; outline: none; width: 100%; font-size: 0.9rem;">
+        <div class="logs-search-container" style="padding: 15px 10px;">
+            <div class="logs-search-box-premium">
+                <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                <input type="text" id="logs-search-input" placeholder="Filtrar logs..." autocomplete="off">
+                <button id="logs-refresh-toggle" class="refresh-toggle-btn" title="${logsPaused ? 'Activar auto-refresco' : 'Pausar auto-refresco'}">
+                    <i class="fa-solid ${logsPaused ? 'fa-play' : 'fa-pause'}"></i>
+                </button>
             </div>
         </div>
-        <div style="margin-top: 10px;" id="logs-categories-list">
-            <div class="settings-menu-item active" data-category="all" onclick="selectLogCategory('all')">
-                <i class="fa-solid fa-list-ul"></i>
-                <span>App Logs (Centralizegg)</span>
+        <div style="margin-top: 15px; display: flex; flex-direction: column; gap: 12px; padding: 0 10px;" id="logs-categories-list">
+            <div class="settings-menu-item active" data-category="kvm" onclick="selectLogCategory('kvm')">
+                <i class="fa-solid fa-microchip"></i>
+                <span>KVM (Virtualización)</span>
             </div>
-            <div class="settings-menu-item" data-category="kvm" onclick="selectLogCategory('kvm')"><i class="fa-solid fa-server"></i><span>KVM Logs</span></div>
-            <div class="settings-menu-item" data-category="docker" onclick="selectLogCategory('docker')"><i class="fa-brands fa-docker"></i><span>Docker Logs</span></div>
-            <div class="settings-menu-item" data-category="podman" onclick="selectLogCategory('podman')"><i class="fa-solid fa-otter"></i><span>Podman Logs</span></div>
-            <div class="settings-menu-item" data-category="kubernetes" onclick="selectLogCategory('kubernetes')"><i class="fa-solid fa-dharmachakra"></i><span>Kubernetes Logs</span></div>
-            <div class="settings-menu-item" data-category="pfsense" onclick="selectLogCategory('pfsense')"><i class="fa-brands fa-freebsd"></i><span>pfSense Logs</span></div>
-            <div class="settings-menu-item" data-category="proxmox" onclick="selectLogCategory('proxmox')"><i class="fa-solid fa-cube"></i><span>Proxmox Logs</span></div>
-            <div class="settings-menu-item" data-category="nas" onclick="selectLogCategory('nas')"><i class="fa-solid fa-hdd"></i><span>NAS Logs</span></div>
-            <div class="settings-menu-item" data-category="ceph" onclick="selectLogCategory('ceph')"><i class="fa-solid fa-cubes"></i><span>Ceph Logs</span></div>
-            <div class="settings-menu-item" data-category="audit" onclick="switchTool('audit')">
-                <i class="fa-solid fa-clipboard-check"></i>
-                <span>Audit Logs (Acciones)</span>
+            <div class="settings-menu-item" data-category="proxmox" onclick="selectLogCategory('proxmox')">
+                <i class="fa-solid fa-server"></i>
+                <span>Proxmox (Virtualización)</span>
+            </div>
+            <div class="settings-menu-item" data-category="nas" onclick="selectLogCategory('nas')">
+                <i class="fa-solid fa-database"></i>
+                <span>NAS (Almacenamiento)</span>
+            </div>
+            <div class="settings-menu-item" data-category="ceph" onclick="selectLogCategory('ceph')">
+                <i class="fa-solid fa-cubes"></i>
+                <span>Ceph (Almacenamiento)</span>
+            </div>
+            <div class="settings-menu-item" data-category="pfsense" onclick="selectLogCategory('pfsense')">
+                <i class="fa-solid fa-shield-cat"></i>
+                <span>Firewall (pfSense)</span>
+            </div>
+            <div class="settings-menu-item" data-category="docker" onclick="selectLogCategory('docker')">
+                <i class="fa-brands fa-docker"></i>
+                <span>Docker (Contenedores)</span>
+            </div>
+            <div class="settings-menu-item" data-category="kubernetes" onclick="selectLogCategory('kubernetes')">
+                <i class="fa-solid fa-dharmachakra"></i>
+                <span>Kubernetes (Contenedores)</span>
+            </div>
+            <div class="settings-menu-item" data-category="podman" onclick="selectLogCategory('podman')">
+                <i class="fa-solid fa-otter"></i>
+                <span>Podman (Contenedores)</span>
             </div>
         </div>
-        <div id="logs-sidebar-content" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;"></div>
+        <div id="logs-sidebar-content" style="flex: 1; display: flex; flex-direction: column; overflow: hidden; margin-top: 15px;"></div>
     `;
 
     const searchInput = document.getElementById('logs-search-input');
@@ -4013,20 +4033,52 @@ function renderLogsSidebar() {
             }
         };
     }
+
+    const refreshToggle = document.getElementById('logs-refresh-toggle');
+    if (refreshToggle) {
+        refreshToggle.onclick = () => {
+            logsPaused = !logsPaused;
+            const icon = refreshToggle.querySelector('i');
+            if (logsPaused) {
+                icon.className = 'fa-solid fa-play';
+                refreshToggle.title = 'Activar auto-refresco';
+                refreshToggle.classList.add('paused');
+                stopLogsRefresh();
+            } else {
+                icon.className = 'fa-solid fa-pause';
+                refreshToggle.title = 'Pausar auto-refresco';
+                refreshToggle.classList.remove('paused');
+                startLogsRefresh();
+            }
+        };
+    }
 }
 
-let currentLogCategory = 'all';
+let currentLogCategory = 'kvm';
 
 window.selectLogCategory = function (cat) {
     currentLogCategory = cat;
     document.querySelectorAll('#logs-categories-list .settings-menu-item').forEach(el => el.classList.remove('active'));
     document.querySelector(`#logs-categories-list .settings-menu-item[data-category="${cat}"]`).classList.add('active');
 
+    const titles = {
+        'kvm': 'KVM (Virtualización)',
+        'proxmox': 'Proxmox (Virtualización)',
+        'nas': 'NAS (Almacenamiento)',
+        'ceph': 'Ceph (Almacenamiento)',
+        'pfsense': 'Firewall (pfSense)',
+        'docker': 'Docker (Contenedores)',
+        'kubernetes': 'Kubernetes (Contenedores)',
+        'podman': 'Podman (Contenedores)',
+        'all': 'Logs de Sistema (App)'
+    };
+
+    const title = titles[cat] || `Logs de Host (${cat.toUpperCase()})`;
+    document.getElementById('logs-category-title').innerText = title;
+
     if (cat === 'all') {
-        document.getElementById('logs-category-title').innerText = "Logs de Sistema (App)";
         fetchAppLogs();
     } else {
-        document.getElementById('logs-category-title').innerText = `Logs de Host (${cat.toUpperCase()})`;
         fetchHostLogsDB(cat);
     }
 }
@@ -4181,7 +4233,9 @@ function initLogs() {
 
 function startLogsRefresh() {
     stopLogsRefresh();
-    logsAutoRefreshInterval = setInterval(fetchAppLogs, 3000); // 3s refresh
+    if (!logsPaused) {
+        logsAutoRefreshInterval = setInterval(fetchAppLogs, 3000); // 3s refresh
+    }
 }
 
 function stopLogsRefresh() {
