@@ -61,20 +61,26 @@ export async function initSummaryDashboard() {
     // Initialize SortableJS for Dashboard Widgets
     const widgetsContainer = document.getElementById('summary-dashboard-widgets');
     if (widgetsContainer && typeof Sortable !== 'undefined') {
-        // Load saved order
+        // Load saved order (filter out widget IDs that no longer exist in the DOM)
         const savedOrder = localStorage.getItem('centralizegg_dashboard_order');
         if (savedOrder) {
             try {
                 const orderArray = JSON.parse(savedOrder);
+                const validIds = orderArray.filter(id => widgetsContainer.querySelector(`[data-widget-id="${id}"]`));
                 // Reorder DOM elements based on saved array
-                orderArray.forEach(id => {
+                validIds.forEach(id => {
                     const el = widgetsContainer.querySelector(`[data-widget-id="${id}"]`);
                     if (el) {
                         widgetsContainer.appendChild(el);
                     }
                 });
+                // If saved order is stale (contains removed widgets), clean it up
+                if (validIds.length !== orderArray.length) {
+                    localStorage.setItem('centralizegg_dashboard_order', JSON.stringify(validIds));
+                }
             } catch (e) {
                 console.error('Failed to parse dashboard order', e);
+                localStorage.removeItem('centralizegg_dashboard_order');
             }
         }
 
