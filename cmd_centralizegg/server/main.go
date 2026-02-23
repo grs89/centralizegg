@@ -24,6 +24,7 @@ import (
 	"github.com/grs/centralizegg/backend_internal_centralizegg/firewall"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/logger"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/notifications"
+	"github.com/grs/centralizegg/backend_internal_centralizegg/operations"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/storage"
 	"github.com/grs/centralizegg/backend_internal_centralizegg/virtualization"
 )
@@ -373,6 +374,14 @@ func main() {
 	cephCol := storage.NewCephCollector(db)
 	go cephCol.Start(5 * time.Second)
 
+	// Initialize Operations Executor (AI Proactive Actions)
+	opsExecutor := &operations.ActionExecutor{
+		DB:     db,
+		KVM:    col,
+		Docker: dockerCol,
+		Podman: podmanCol,
+	}
+
 	// Seed Admin User or Sync Password
 	adminUser, _ := db.GetUserByUsername("admin")
 	adminPass := os.Getenv("INITIAL_ADMIN_PASSWORD")
@@ -678,6 +687,28 @@ func main() {
 			"injectedMemory": memoryContextStr,
 		})
 	}).Methods("POST")
+
+	r.HandleFunc("/api/ai/execute", RequiresPermission("write", func(w http.ResponseWriter, r *http.Request) {
+		var req operations.AIActionRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		result, err := opsExecutor.Execute(req)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		AuditAction(r, db, "AI_EXECUTE_ACTION", "ai", req.Action, req.Params)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "ok",
+			"result": result,
+		})
+	})).Methods("POST")
 
 	r.HandleFunc("/api/app-logs", func(w http.ResponseWriter, r *http.Request) {
 		var logEntry struct {

@@ -27,7 +27,11 @@ window.fetch = async (...args) => {
     const [resource, config = {}] = args;
     const token = state.auth.token;
 
-    if (token) {
+    // Check if the URL is internal (relative or same-origin)
+    const url = typeof resource === 'string' ? resource : resource.url;
+    const isInternal = !url.startsWith('http') || url.includes(window.location.host);
+
+    if (token && isInternal) {
         config.headers = {
             ...config.headers,
             'Authorization': `Bearer ${token}`
@@ -36,7 +40,8 @@ window.fetch = async (...args) => {
 
     const response = await originalFetch(resource, config);
 
-    if (response.status === 401 && !resource.includes('/api/auth/login')) {
+    // Only trigger logout if the 401 error comes from our own backend
+    if (response.status === 401 && isInternal && !url.includes('/api/auth/login')) {
         logout();
     }
 
@@ -10563,7 +10568,7 @@ async function fetchInfrastructureContext() {
             hosts.forEach(h => {
                 const memGb = h.free_memory ? (h.free_memory / 1024 / 1024 / 1024).toFixed(1) : '?';
                 const cpu = h.cpu_usage !== undefined ? h.cpu_usage.toFixed(1) : '?';
-                contextMd += `- ${h.server_name} (IP: ${h.ip_address}): Estado ${h.status.toUpperCase()}, Uso CPU: ${cpu}%, RAM Libre: ${memGb}GB\n`;
+                contextMd += `- ${h.server_name} (ID: ${h.server_id}, IP: ${h.ip_address}): Estado ${h.status.toUpperCase()}, Uso CPU: ${cpu}%, RAM Libre: ${memGb}GB, OS: ${h.os_name || 'Generic'}, Parches: ${h.update_status || 'Up to date'}\n`;
             });
         } else {
             contextMd += "- *No se pudo obtener el estado de los servidores.*\n";
@@ -10621,6 +10626,113 @@ function simpleMarkdownParse(text) {
     html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
     return html.replace(/\n/g, '<br>');
+}
+
+// --- Nala IA Actions System ---
+
+window.executeNalaAction = async function (action, params, btnId) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+
+    try {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Ejecutando...';
+
+        const res = await fetch('/api/ai/execute', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action, params })
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+            btn.innerHTML = '<i class="fa-solid fa-check"></i> Completado';
+            btn.style.background = '#10b981';
+
+            if (data.result && action === "system.ssh.audit") {
+                renderSSHAuditReport(data.result);
+            } else if (data.result && action === "system.patch.apply") {
+                const history = document.getElementById('nala-chat-history');
+                history.innerHTML += `
+                    <div style="margin-top:10px; font-family:monospace; background:rgba(0,0,0,0.5); border:1px solid #10b981; color:#10b981; padding:10px; border-radius:5px; font-size:0.8rem; max-width:100%; overflow-x:auto;">
+                        <div style="margin-bottom:5px; border-bottom:1px solid rgba(16,185,129,0.2); padding-bottom:3px;">
+                            <i class="fa-solid fa-terminal"></i> Salida de Actualización
+                        </div>
+                        ${escapeHtml(data.result).replace(/\n/g, '<br>')}
+                    </div>`;
+                history.parentElement.scrollTop = history.parentElement.scrollHeight;
+            }
+        } else {
+            throw new Error(data.message || 'Error en ejecución');
+        }
+    } catch (e) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-rotate-right"></i> Reintentar';
+        btn.style.background = '#ef4444';
+        alert("Error al ejecutar acción: " + e.message);
+    }
+}
+
+function renderSSHAuditReport(report) {
+    const history = document.getElementById('nala-chat-history');
+    let issuesHtml = report.issues.map(i => `<li style="margin-bottom:5px;"><i class="fa-solid fa-triangle-exclamation" style="color:#fbbf24"></i> ${i}</li>`).join('');
+    if (!issuesHtml) issuesHtml = '<li><i class="fa-solid fa-check-circle" style="color:#10b981"></i> Sin problemas detectados.</li>';
+
+    history.innerHTML += `
+        <div class="nala-security-report" style="margin-top:15px; border-left: 4px solid ${report.score < 70 ? '#ef4444' : '#10b981'}; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; animation: fadeIn 0.5s;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <strong style="font-size:1rem;"><i class="fa-solid fa-shield-halved"></i> Auditoría SSH: ${report.hostname}</strong>
+                <span style="font-weight:bold; color:${report.score < 70 ? '#ef4444' : '#10b981'}">${report.score}/100</span>
+            </div>
+            <p style="font-size:0.85rem; margin:10px 0; color:#e2e8f0;">${report.summary}</p>
+            <ul style="font-size:0.85rem; padding-left:20px; color:#cbd5e1; list-style:none;">
+                ${issuesHtml}
+            </ul>
+        </div>
+    `;
+    history.parentElement.scrollTop = history.parentElement.scrollHeight;
+}
+
+function parseNalaActions(text) {
+    const actionRegex = /<nala_action>([\s\S]*?)<\/nala_action>/g;
+    let newText = text;
+    let match;
+
+    while ((match = actionRegex.exec(text)) !== null) {
+        try {
+            const actionData = JSON.parse(match[1]);
+            const actionId = 'action-' + Math.random().toString(36).substr(2, 9);
+
+            const buttonText = getActionButtonText(actionData.action);
+            const btnHtml = `
+                <div class="nala-action-card" style="margin-top: 15px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); padding: 12px; border-radius: 10px; display:flex; justify-content:space-between; align-items:center; backdrop-filter: blur(5px);">
+                    <div style="font-size:0.85rem;"><i class="fa-solid fa-bolt" style="color:#fbbf24"></i> Sugerencia: <strong>${buttonText}</strong></div>
+                    <button id="${actionId}" onclick='executeNalaAction("${actionData.action}", ${JSON.stringify(actionData.params)}, "${actionId}")' 
+                            style="background:rgba(168, 85, 247, 0.8); color:white; border:none; padding:6px 14px; border-radius:6px; font-size:0.8rem; cursor:pointer; font-weight:bold; transition:all 0.3s ease; box-shadow:0 0 15px rgba(168,85,247,0.2);">
+                        Ejecutar
+                    </button>
+                </div>
+            `;
+            newText = newText.replace(match[0], btnHtml);
+        } catch (e) {
+            console.error("Error parsing AI action JSON", e);
+        }
+    }
+    return newText;
+}
+
+function getActionButtonText(action) {
+    const map = {
+        'kvm.vm.start': 'Iniciar VM',
+        'kvm.vm.stop': 'Detener VM',
+        'docker.container.start': 'Iniciar Contenedor',
+        'docker.container.stop': 'Detener Contenedor',
+        'podman.container.start': 'Iniciar Contenedor',
+        'podman.container.stop': 'Detener Contenedor',
+        'system.ssh.audit': 'Auditar SSH',
+        'system.patch.apply': 'Aplicar Parches'
+    };
+    return map[action] || 'Ejecutar';
 }
 
 async function callNalaIA(provider, apiKey, baseUrl, systemPrompt, userMessage) {
@@ -10797,7 +10909,7 @@ window.submitNalaPrompt = async function (event) {
         history.innerHTML += `
             <div style="background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.2); left: 0; padding: 15px; border-radius: 12px; color: var(--text-primary); max-width: 90%;">
                 <strong style="color: #c084fc;"><i class="fa-solid fa-wand-magic-sparkles"></i> Nala IA</strong>
-                <div style="margin-top: 5px; font-size: 0.9rem; line-height: 1.5;">${simpleMarkdownParse(aiResponse)}</div>
+                <div style="margin-top: 5px; font-size: 0.9rem; line-height: 1.5;">${parseNalaActions(simpleMarkdownParse(aiResponse))}</div>
             </div>
         `;
     } catch (e) {
