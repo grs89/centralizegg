@@ -188,7 +188,6 @@ CREATE TABLE IF NOT EXISTS config.app_settings (
     value TEXT NOT NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-);
 
 -- Vector Memory Config (Nala IA)
 CREATE TABLE IF NOT EXISTS config.event_memory (
