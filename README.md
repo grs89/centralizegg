@@ -1,691 +1,366 @@
-# Centralizegg
+<!-- START_BADGES -->
+<div align="center">
+  <img src="https://img.shields.io/badge/Status-Active-success?style=for-the-badge" alt="Status">
+  <img src="https://img.shields.io/badge/Junior--Friendly-Yes-blue?style=for-the-badge&logo=opsgenie" alt="Junior Friendly">
+  <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License">
+  <img src="https://img.shields.io/github/actions/workflow/status/grs89/centralizegg/docker-publish.yml?style=for-the-badge&logo=github&label=Build" alt="GitHub Build">
+</div>
+<!-- END_BADGES -->
+
+# <img src="web_centralizegg/static/logo.png" width="45" height="45" align="center"> Centralizegg
 
 <div align="center">
-  <img src="web_centralizegg/static/logo.png" alt="Centralizegg Logo" width="120">
+  <p>
+    <a href="#español">🇨🇴 Español</a> | 
+    <a href="#english">🇺🇸 English</a> | 
+    <a href="#português">🇧🇷 Português</a>
+  </p>
 </div>
 
-<div align="center">
-  <img src="web_centralizegg/static/image/1.png" alt="Centralizegg Dashboard" width="800">
-</div>
-
-[🇨🇴 Español](#español) | [🇧🇷 Português](#português)
-
 ---
 
-<a name="español"></a>
-# 🇨🇴 Centralizegg
+<h2 id="español">🇨🇴 Español</h2>
 
-**Centralizegg** es una solución de monitoreo ligera y containerizada para múltiples servidores y servicios. Proporciona un dashboard premium en tiempo real para visualizar los recursos de tus hosts, contenedores y Cluster K8s, permitiendo ver el estado de los recursos de forma centralizada.
+**Centralizegg** es una solución de monitoreo ligera, modular y containerizada diseñada para entornos de múltiples servidores y servicios. Proporciona un panel de control (dashboard) interactivo premium en tiempo real con estética *glassmorphism* que centraliza la visualización de recursos de hosts KVM/Libvirt, contenedores Docker & Podman, clústeres Kubernetes, cortafuegos pfSense, nodos Proxmox VE, almacenamiento NAS y clústeres Ceph.
 
-[![Docker Build (GitHub)](https://github.com/grs89/Centralizegg/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/grs89/Centralizegg/actions/workflows/docker-publish.yml)
-[![Docker Hub](https://img.shields.io/docker/v/gersonofstone/centralizegg?label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/gersonofstone/centralizegg)
-[![Docker Pulls](https://img.shields.io/docker/pulls/gersonofstone/centralizegg?logo=docker)](https://hub.docker.com/r/gersonofstone/centralizegg)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+### 🌟 Características Principales
+*   **Monitoreo Multicloud y Multiplataforma**: Soporte nativo y sin agentes para KVM, Docker, Podman (representado con el icono `fa-otter`), pfSense, Proxmox VE, Kubernetes, NAS y Ceph.
+*   **Visualizaciones Premium en Tiempo Real**: Gráficos de red dinámicos con *Sparklines*, mapas de topología animados para contenedores y mapas interactivos de tráfico mundial con trayectorias Bezier.
+*   **Auditorías y Alertas Audibles**: Motor de alertas integrado que reproduce alertas sonoras ("ping") ante caídas de infraestructura crítica.
+*   **Asistente IA Hiper-Contextualizado (Nala IA)**: Asistente integrado que recopila el estado actual del clúster (CPU, RAM, estado) en su prompt de sistema para brindar soporte técnico inmediato.
+*   **Consola Web Segura**: Terminal web interactiva en vivo usando WebSockets y XTerm.js integrada directamente en el dashboard.
 
-> [!TIP]
-> **CI/CD Disponible**: Este proyecto incluye configuración para **GitHub Actions** y **GitLab CI**.
-> - GitHub: Ver [instrucciones](.github/DOCKER_HUB_SETUP.md)
-> - GitLab: Ver [instrucciones](.gitlab/DOCKER_HUB_SETUP.md)
-> 
-> Reemplaza `USUARIO/REPO` con tu usuario y repositorio en los badges anteriores.
+### 🏗️ Arquitectura Técnica de Alto Nivel
+```mermaid
+graph TD
+    subgraph Frontend["Frontend (Vanilla JS + HTML5 + CSS3)"]
+        UI[Dashboard Web Glassmorphism]
+        Map[Mapa Mundial de Tráfico]
+        Search[Búsqueda Global Unificada]
+        Nala[Nala IA Assistant]
+    end
 
+    subgraph Backend["Backend (Go 1.23)"]
+        API[API REST Gorilla Mux]
+        WS[WebSocket Tunnel Server]
+        Collector[Colector Autónomo Concurrente]
+    end
 
-## 📋 Tabla de Contenidos
+    subgraph Infra["Infraestructura de Destino (Sin Agentes)"]
+        KVM[KVM / Libvirt Hypervisor]
+        DKR[Docker Engine]
+        PDM[Podman Pods]
+        PVE[Proxmox VE Cluster]
+        K8S[Kubernetes Nodes/Pods]
+        PFS[pfSense Firewall]
+        NAS[NAS / Storage Servers]
+        CEPH[Ceph Cluster]
+    end
 
-- [Características Principales](#-características-principales)
-- [Estructura del Proyecto](#-estructura-del-proyecto)
-- [Instalación Rápida](#-instalación-rápida)
-- [Configuración](#-configuración)
-- [Troubleshooting](#-troubleshooting)
-
-## ✨ Características Principales
-
-*   **Detección de SO**: Identificación automática del Sistema Operativo de cada host mediante `/etc/os-release` con iconos representativos (Ubuntu, Debian, Fedora, CentOS, Windows, Red Hat, SUSE).
-*   **Métricas Premium**: Ventanas flotantes (popovers) interactivas para CPU y Memoria con barras de progreso en tiempo real.
-*   **Colector Automático**: Recopilación de métricas cada 5 segundos desde todos los servidores configurados.
-*   **Métricas Completas**: 
-    - CPU: Uso calculado basado en tiempo de CPU acumulado
-    - Memoria: Total, libre y utilizada
-    - **Almacenamiento (NAS)**: Monitoreo vía SSH de servidores Linux/NAS:
-        - Inventario de discos (`lsblk`) y particiones.
-        - Gráficos de barra para uso de volúmenes montados.
-        - Alertas de capacidad por volumen.
-    - Red: Tráfico RX/TX con **Sparklines** en tiempo real.
-    - **Interfaces Bridge**: Monitoreo dedicado de estados y tráfico para puentes de red (`br0`, `virbr0`, etc.) ubicado en la columna izquierda del layout de dos columnas.
-    - Estado de VMs: Running, Blocked, Paused, Shutdown, Shutoff, Crashed, Suspended
-*   **Monitoreo de Contenedores**: Soporte avanzado para **Docker & Podman**. El icono de Podman se ha actualizado a una foca (`fa-otter`) en todo el UI, incluyendo el menú, Host Nodes y el listado de contenedores.
-    - **Mapa de Topología**: Visualización interactiva animada de la red (Contenedores -> Redes -> Internet).
-    - **Control de Contenedores**: Start/Stop de contenedores Docker y Podman directamente desde la UI.
-- **Alertas Audibles**: Se reproduce un sonido de "ping" cuando aparecen nuevas notificaciones de servidores offline.
-- **Tamaños de Volúmenes Podman**: Se muestra el tamaño de cada volumen y se ordenan de mayor a menor.
-    - **Monitoreo de GPU**: Carga, temperatura y VRAM para GPUs NVIDIA mediante `nvidia-smi`.
-    - **Seguridad (CVE)**: Escaneo automático de vulnerabilidades en imágenes con `docker scout`.
-    - **Almacenamiento**: Detalle de `/var/lib/docker`, inodos y tamaños de volúmenes individuales.
-*   **Monitoreo de Firewall**: Soporte completo para **pfSense** vía SSH.
-    - Métricas de sistema (CPU, Memoria, Disco)
-    - Información de interfaces de red con estadísticas de tráfico
-    - Detección de arquitectura multi-plataforma (x86_64, ARM/AArch64) con insignias visuales.
-*   **QEMU Guest Agent**: Integración avanzada para obtener telemetría detallada del sistema invitado:
-    - Nombre y versión del Sistema Operativo
-    - Direcciones IP internas
-
-
-
-*   **Proxmox VE**: Integración nativa con clusters Proxmox.
-    - Monitoreo de nodos, VMs y Contenedores LXC.
-    - Métricas de almacenamiento ZFS y Ceph (vía API).
-*   **Control de VMs KVM**: Start/Stop de máquinas virtuales directamente desde la interfaz.
-    - **Consola Web Integrada**: Acceso a terminal en vivo usando WebSockets y XTerm.js para VMs y contenedores directamente desde el dashboard.
-    - **Gestión de Snapshots**: Creación, listado, reversión y eliminación de instantáneas de VMs impulsado por Libvirt.
-*   **Visualización Multi-Disco**: Barras de uso individuales para cada disco virtual adjunto a la VM.
-*   **Mapa de Tráfico Mundial**: Visualización geográfica premium con animaciones "Flight Path" (Bezier curvos).
-    - **GeoIP Proxy Integrado**: Resolución de IPs backend para privacidad y seguridad (evita Mixed Content).
-    - **Animaciones Fluidas**: Líneas curvas con pulso dinámico (Rojo: Entrante, Verde: Saliente).
-    - **Heatmap de Densidad**: Visualización de "puntos calientes" de tráfico con gradiente de colores.
-    - **Filtros Interactivos**: Botones All/In/Out para segmentar conexiones por dirección.
-    - **Líneas Dinámicas**: Velocidad de animación proporcional al volumen de tráfico.
-    - **Marcadores Pulsantes**: Indicadores animados rojo/verde con popup de país y ciudad.
-    - **Modo Depuración**: Overlay accesible desde la UI para diagnosticar la resolución de IPs.
-*   **Monitoreo de Gateways**: Estado en tiempo real de los gateways de pfSense (WAN/VPN).
-    - **Alertas Visuales**: 
-        - ⚠️ Advertencia (>0% Pérdida de paquetes): Resaltado ámbar.
-        - 🚨 Crítico (>10% Pérdida de paquetes): **Animación de pulso rojo** y sombras dinámicas para atención inmediata.
-    - Métricas precisas de RTT y Desviación estándar.
-*   **Historial de Logs del Host**: Real-time log viewer (`journalctl` / `clog`) integrado en la herramienta de Historial Global para todos los tipos de servidores (KVM, Docker, Podman, pfSense, Proxmox, NAS, Ceph, Kubernetes).
-*   **Monitoreo de Kubernetes (K8s)**:
-    - Visualización de Nodos y Pods en tiempo real.
-    - **Historial Detallado por Nodo**: Métricas históricas de CPU, Memoria, Red y Disco para cada nodo del cluster.
-    - Métricas de consumo de recursos por Namespace y estadísticas de red (RX/TX).
-    - Persistent Volumes (PVs) y Eventos del cluster.
-    - [Documentación Detallada](web_centralizegg/static/docs/kubernetes.html)
-*   **Almacenamiento & Disco**:
-    - **NAS**: Monitoreo vía SSH de servidores Linux/NAS:
-        - Inventario de discos (`lsblk`) y particiones.
-        - **Métricas de I/O**: Historial de tasas de Lectura/Escritura por cada disco individual del host.
-    - **Visualización Multi-Disco**: Barras de uso individuales para cada disco virtual adjunto a la VM.
-*   **Historial Global Mejorado**:
-    - Gráficos de Red con **Umbrales de Tráfico** basados en la velocidad de la interfaz.
-    - Unidades dinámicas (MB/GB) para una lectura clara de métricas de Memoria y Almacenamiento.
-*   **Búsqueda Global ("Search Everything")**:
-    - Barra de búsqueda unificada que indexa **KVM Hosts, VMs, Contenedores Docker/Podman y Volúmenes NAS**.
-    - Navegación inteligente: Al seleccionar un resultado, cambia automáticamente a la herramienta correspondiente.
-*   **Logs Unificados**: Panel lateral deslizable para ver logs de recolección de todos los sistemas en un solo lugar.
-*   **Notificaciones Audibles**: Sonido de "ping" para nuevas alertas de servidores offline.
-*   **Inyección de Contexto en Nala IA**: El asistente de IA (Nala) ahora recoge datos en tiempo real de la infraestructura (CPU, Memoria, estados) enviándolos invisibles en el prompt para dar respuestas hiper-contextualizadas.
-*   **Seguridad**: Escaneo CVE con `docker scout` y soporte para autenticación robusta (Clave/Contraseña).
-*   **Auto-refresh**: Actualización automática de datos cada 5 segundos en el frontend.
-*   **Gráficos Avanzados**:
-    - **Zoom Interactivo**: Selección de área para ampliar períodos específicos en gráficos de historial.
-    - **Umbrales Visuales**: Líneas de referencia configurables para CPU, Memoria y Red.
-    - **Tendencias y Proyecciones**: Análisis predictivo de uso de recursos.
-    - **Estimación de Días Restantes**: Cálculo automático de agotamiento de disco basado en tendencia.
-*   **Monitoreo de Ceph**: Soporte para clusters de almacenamiento distribuido Ceph vía SSH.
-    - Estado de salud del cluster, OSDs y pools.
-*   **Dashboard de Salud Global**: Panel resumen con visión general del estado de toda la infraestructura (`/api/health/summary`).
-
-
-### Flujo de Datos
-
-1. **Colector de Datos**: Se ejecuta cada 5 segundos en segundo plano
-   - Obtiene lista de servidores configurados desde la base de datos
-   - Para cada servidor, establece conexión SSH
-   - Crea túnel SSH hacia el socket de Libvirt (`/var/run/libvirt/libvirt-sock`)
-   - Recopila información del host (CPU, memoria, SO)
-   - Enumera todas las VMs y recopila sus métricas
-   - Calcula uso de CPU basado en tiempo acumulado
-   - Almacena/actualiza datos en PostgreSQL
-2. **Monitoreo de Docker/Podman**:
-   - Inspección de redes para generar el mapa de topología.
-   - Recopilación de estadísticas de contenedores (CPU, RAM, Red, I/O).
-   - Escaneo de vulnerabilidades y monitoreo de GPU.
-3. **API REST**: Procesa peticiones del frontend
-   - `GET /api/hosts` - Retorna hosts con información completa
-   - `GET /api/vms` - Retorna todas las VMs
-   - `GET/POST/PUT/DELETE /api/config/servers` - Gestión de servidores KVM
-
-#### Endpoints de Firewall
-
-- `GET/POST /api/firewall/servers` - Obtiene/agrega servidores pfSense.
-- `PUT/DELETE /api/firewall/servers/{id}` - Actualiza o elimina servidores pfSense.
-- `GET /api/firewall/hosts` - Hosts pfSense con métricas.
-
-### Otros Endpoints (NAS, Proxmox, Contenedores, K8s)
-
-Centralizegg expone endpoints estandarizados para el resto de herramientas:
-
-*   **NAS**: `/api/nas/hosts`, `/api/nas/volumes`, `/api/nas/disks`
-*   **Proxmox**: `/api/proxmox/hosts`, `/api/proxmox/vms`
-*   **Kubernetes**: `/api/kubernetes/nodes`, `/api/kubernetes/pods`, `/api/kubernetes/pvs`, `/api/kubernetes/events`
-*   **Docker**: `/api/containers/hosts`, `/api/containers/containers`
-*   **Podman**: `/api/podman/hosts`, `/api/podman/containers`
-*   **Ceph**: `/api/ceph/hosts`
-*   **Salud y Métricas**: `/api/health/summary`, `/api/metrics/{category}/{id}`, `/api/status`
-*   **Historial**: `/api/history`
-*   **Logs del Host**: `/api/hosts/{category}/{id}/logs` (categorías: kvm, docker, podman, kubernetes, pfsense, proxmox, nas, ceph)
-*   **Logs de Contenedores**: `/api/containers/{serverID}/{containerID}/logs`, `/api/podman/containers/{serverID}/{containerID}/logs`
-*   **Logs de Pods K8s**: `/api/kubernetes/pods/{serverID}/{namespace}/{name}/logs`
-*   **Control de Contenedores**: `POST /api/containers/{serverID}/{containerID}/start|stop`, `POST /api/podman/containers/{serverID}/{containerID}/start|stop`
-*   **Control de VMs KVM**: `POST /api/kvm/vms/{serverID}/{vmName}/start|stop`
-*   **Geolocalización**: `/api/geoip/{ip}` (Proxy a ip-api.com, soporta `self`)
-*   **Configuración Genérica**: `/api/config/{tool}` (donde tool = nas, proxmox, docker, podman, ceph, kubernetes)
-
-## 🗄️ Base de Datos
-
-Centralizegg utiliza PostgreSQL 15 con esquemas dedicados para cada módulo: `virtualization`, `firewall`, `storage`, `containers` y `kubernetes`.
-
-## 📁 Estructura del Proyecto
-
-```
-Centralizegg/
-├── cmd_centralizegg/
-│   └── server/
-│       └── main.go                 # Punto de entrada (882 líneas, rutas API, middlewares)
-├── backend_internal_centralizegg/
-│   ├── data_centralizegg/
-│   │   └── postgres.go            # Capa de acceso a datos (PostgreSQL, 2615 líneas)
-│   ├── virtualization/
-│   │   ├── kvm-collector.go       # Colector de métricas KVM/Libvirt
-│   │   └── proxmox-collector.go   # Colector de API Proxmox
-│   ├── firewall/
-│   │   └── pfsense-collector.go   # Colector de métricas pfSense (SSH)
-│   ├── container/
-│   │   ├── docker-collector.go    # Colector Docker
-│   │   ├── podman-collector.go    # Colector Podman
-│   │   └── kubernetes-collector.go # Colector K8s
-│   └── storage/
-│       ├── ceph-collector.go      # Colector Ceph (SSH)
-│       └── nas-collector.go       # Colector NAS (SSH)
-├── web_centralizegg/
-│   └── static/
-│       ├── index.html             # Interfaz principal
-│       ├── app.js                 # Lógica del frontend (monolito, 449KB)
-│       ├── style.css              # Estilos glassmorphism
-│       ├── history-map.js         # Módulo de mapa de historial
-│       ├── favicon.ico            # Icono del sitio
-│       ├── js/                    # Módulos ES modulares
-│       │   ├── api.js             # Funciones de fetch centralizadas
-│       │   ├── state.js           # Estado global (Single Source of Truth)
-│       │   ├── history.js         # Lógica de historial y gráficos
-│       │   ├── summary-dashboard.js # Dashboard de salud global
-│       │   ├── tool-kvm.js        # Renderizado y control KVM
-│       │   ├── terminal.js        # Consola Web (WebSockets/XTerm.js)
-│       │   ├── snapshots.js       # Gestión de Snapshots (Libvirt)
-│       │   ├── ui-components.js   # Componentes UI reutilizables
-│       │   └── utils.js           # Utilidades (formatBytes, etc.)
-│       ├── docs/                  # Documentación embebida (HTML)
-│       │   ├── virtualization.html
-│       │   ├── containers.html
-│       │   ├── firewall.html
-│       │   ├── kubernetes.html
-│       │   ├── storage.html
-│       │   └── performance.html
-│       ├── logo.png
-│       └── image/
-│           └── 1.png              # Screenshot del dashboard
-├── deploy_centralizegg/
-│   └── postgres/
-│       └── init.sql               # Script de inicialización de BD
-├── .github/
-│   ├── DOCKER_HUB_SETUP.md       # Instrucciones CI/CD GitHub
-│   └── workflows/
-│       └── docker-publish.yml     # Workflow reusable Docker Hub
-├── .gitlab/
-│   └── DOCKER_HUB_SETUP.md       # Instrucciones CI/CD GitLab
-├── .gitlab-ci.yml                 # Pipeline GitLab CI
-├── docker-compose.yml             # Configuración de servicios
-├── Dockerfile                     # Imagen multi-stage del contenedor
-├── go.mod                         # Dependencias Go 1.23.2
-├── go.sum                         # Checksums de dependencias
-├── CI_CD_COMPARISON.md            # Comparación GitHub Actions vs GitLab CI
-├── LICENSE                        # Licencia MIT
-├── ARCHITECTURE.MD                # Documentación de arquitectura detallada
-└── README.md
+    UI -->|HTTP / JSON| API
+    UI -->|WebSockets| WS
+    WS -->|SSH Interactive Terminal| Infra
+    Collector -->|SSH / API Polling| Infra
+    API -->|PostgreSQL Queries| DB[(PostgreSQL 15)]
+    Collector -->|Write Metrics| DB
 ```
 
-## 🚀 Instalación Rápida
+### 🔄 Diagrama de Secuencia de Recolección de Métricas
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Colector (Go Routine)
+    participant DB as PostgreSQL 15
+    participant PVE as Nodo Proxmox VE
+    participant PFS as pfSense Firewall
 
-### Requisitos Previos
+    rect rgb(20, 20, 30)
+        note right of C: Ciclo cada 5 segundos
+        C->>DB: Obtener servidores Proxmox y pfSense configurados
+        DB-->>C: Lista de credenciales y direcciones IP
+    end
 
-*   Docker y Docker Compose
-*   Acceso SSH (vía clave o contraseña) a los servidores KVM
-*   Los servidores KVM deben tener Libvirt configurado y accesible
-*   **Opcional**: Instalar `qemu-guest-agent` en las VMs para detección de SO e IPs.
+    par Proxmox Collection
+        C->>PVE: Conexión SSH y comando 'pvesh get /cluster/status'
+        PVE-->>C: JSON con nombres de nodos e IPs reales de clúster
+        C->>PVE: Comando 'pvesh get /nodes/{node}/status'
+        PVE-->>C: Telemetría de CPU, Memoria y discos
+        C->>DB: UpsertProxmoxHost con IP real e información de hardware
+    and pfSense Collection
+        C->>PFS: Conexión SSH y consulta de comando 'top / sysctl'
+        PFS-->>C: Estado de interfaces, gateways y hardware
+        C->>DB: UpdateGenericServerStats para pfSense
+    end
+```
 
-### Configuración de Seguridad (SSH)
-1. Asegúrate de que tu clave está en `~/.ssh/id_rsa`.
-2. El contenedor monta este directorio como solo lectura por defecto.
+### 💻 Stack Tecnológico
+| Capa / Layer | Tecnología / Technology | Descripción / Description |
+| :--- | :--- | :--- |
+| **Frontend** | Vanilla JS / CSS3 (Glassmorphism) | Interfaz web responsiva, optimizada para rendimiento y sin frameworks pesados. |
+| **Backend** | Go (Golang) 1.23.2 | Servidor API rápido, eficiente, con soporte nativo de concurrencia para el colector. |
+| **Base de Datos** | PostgreSQL 15 | Almacenamiento relacional de configuraciones e historial de métricas estructurado en esquemas. |
+| **Redes / Mapas** | Leaflet.js / D3.js | Motor de mapas interactivos para geolocalización de tráfico y diagramas de topología de red. |
 
-> [!IMPORTANT]
-> **Permisos de Archivo**: Asegúrate de que tu clave privada tenga permisos estrictos (chmod 600), o el cliente SSH rechazará usarla por seguridad.
-> ```bash
-> chmod 600 ~/.ssh/id_rsa
-> ```
+### 📋 Requisitos Previos
+*   Docker y Docker Compose instalados en tu sistema local.
+*   Credenciales SSH (llave privada RSA/Ed25519 o contraseña) para servidores remotos.
+*   Acceso a internet para la geolocalización IP en el Mapa Mundial.
 
-### Despliegue
+### 🛠️ Instrucciones de Despliegue
+1. Clone el repositorio:
+   ```bash
+   git clone https://github.com/grs89/centralizegg.git
+   cd centralizegg
+   ```
+2. Asegúrese de que sus claves SSH privadas en `~/.ssh/` posean permisos estrictos:
+   ```bash
+   chmod 600 ~/.ssh/id_rsa
+   ```
 
+### ⚡ Inicio Rápido (Quick Start)
+Para iniciar Centralizegg localmente usando Docker Compose:
 ```bash
-# Clonar el repositorio (si aplica)
-git clone <repository-url>
-cd Centralizegg
-
-# Iniciar servicios
 docker-compose up -d --build
-
-# Ver logs
-docker-compose logs -f centralizegg_app
 ```
+Una vez levantado, abra su navegador web en `http://localhost:8080`.
 
-Accede al dashboard en: `http://localhost:8080`
-
-> **Nota**: Durante el primer inicio, Centralizegg se conectará a PostgreSQL y automáticamente ejecutará las migraciones internas (ej., `InitConfigSchema()`) para inicializar las tablas necesarias de configuración y módulos.
-
-### Usar Imagen de Docker Hub (Alternativa)
-
-Si prefieres usar la imagen pre-construida desde Docker Hub en lugar de compilar localmente:
-
-```yaml
-# docker-compose.yml
-services:
-  centralizegg_app:
-    image: tuusuario/centralizegg:latest  # Reemplaza con tu usuario de Docker Hub
-    # ... resto de la configuración
-```
-
-O directamente con Docker:
-
+### 🧪 Ejecución de Pruebas
+Puedes ejecutar el conjunto de pruebas unitarias implementadas para el backend de Go con:
 ```bash
-docker pull tuusuario/centralizegg:latest
-docker run -d -p 8080:8080 \
-  -e DB_HOST=db \
-  -e DB_USER=centralizegg \
-  -e DB_PASS=centralizegg_secret \
-  -e DB_NAME=centralizegg_db \
-  -v ~/.ssh:/root/.ssh:ro \
-  tuusuario/centralizegg:latest
+go test ./...
 ```
 
-> [!NOTE]
-> La imagen de Docker Hub se construye automáticamente con GitHub Actions para arquitecturas `linux/amd64` y `linux/arm64`.
-> Ver [instrucciones de configuración](.github/DOCKER_HUB_SETUP.md) para publicar tu propia imagen.
-
-
-## ⚙️ Configuración
-
-### Variables de Entorno
-
-El servicio `centralizegg_app` en `docker-compose.yml` utiliza las siguientes variables de entorno:
-
-```yaml
-DB_HOST: centralizegg__trn_db     # Host de PostgreSQL (nombre del servicio)
-DB_PORT: 5432                     # Puerto de PostgreSQL
-DB_USER: centralizegg             # Usuario de la base de datos
-DB_PASS: centralizegg_secret      # Contraseña de la base de datos
-DB_NAME: centralizegg_db          # Nombre de la base de datos
-LIBVIRT_SOCK: /var/run/libvirt/libvirt-sock  # Socket de Libvirt (local)
-```
-
-### Volúmenes Montados
-
-- `/var/run/libvirt/libvirt-sock:/var/run/libvirt/libvirt-sock` - Socket de Libvirt (para conexiones locales)
-- `~/.ssh:/root/.ssh:ro` - Claves SSH (solo lectura)
-
-### Configuración de Servidores
-
-Los servidores KVM se configuran a través del dashboard web:
-
-1. Accede a `http://localhost:8080`
-2. Selecciona la herramienta "KVM" en el menú
-3. Haz clic en el botón de configuración (⚙️)
-4. Agrega un nuevo servidor con:
-   - **Nombre**: Nombre descriptivo
-   - **IP Address**: Dirección IP del servidor
-   - **SSH Port**: Puerto SSH (default: 22)
-   - **Username**: Usuario SSH
-   - **Autenticación**: Clave SSH o contraseña
-   - **SSH Key Path**: Ruta a la clave (default: `/root/.ssh/id_rsa`)
-
-### Configuración de Firewall (pfSense)
-
-1. Selecciona la herramienta "Firewall" en el menú
-2. Haz clic en el botón de configuración (⚙️)
-3. Agrega un nuevo servidor con credenciales SSH (similar a KVM).
-   - **Autenticación**: Soporta Clave SSH (RSA/Ed25519) o Contraseña.
-   - **Requisitos**: El usuario debe tener acceso al shell (`/bin/sh` o `/bin/tcsh`) y permisos para ejecutar `top`, `sysctl`, `netstat`, `pfctl`.
-   - **No requiere agentes**: Todo se recopila de forma remota y segura.
-
-### Configuración de Nala IA
-
-La configuración para el asistente Nala IA se almacena centralizadamente en la base de datos PostgreSQL, permitiendo que las credenciales (API Key) y el **System Prompt** se compartan entre todos los usuarios del dashboard.
-
-1. Abre el panel de **Nala IA** desde el menú principal.
-2. Haz clic en el icono de configuración (⚙️).
-3. Ingresa tu `Gemini API Key` y ajusta el `System Prompt` para definir el comportamiento de la IA.
-4. (Opcional) Ajusta el modelo usado, por ejemplo: `gemini-3-flash-preview`.
-
-
-## 🔧 Troubleshooting
-
-### Problemas de Conexión SSH
-
-**Error**: `ssh dial: connection refused`
-- Verifica que el servidor esté accesible desde el contenedor
-- Revisa el puerto SSH configurado
-- Verifica que el firewall permita conexiones SSH
-
-**Error**: `ssh dial: authentication failed`
-- Verifica que la clave SSH esté en `~/.ssh/id_rsa`
-- Asegúrate de que la clave tenga permisos correctos (`chmod 600 ~/.ssh/id_rsa`)
-- Si usas contraseña, verifica que sea correcta
-- Verifica que el usuario SSH tenga permisos para acceder a Libvirt
-
-### Problemas de Base de Datos
-
-**Error**: `Could not connect to DB`
-- Verifica que PostgreSQL esté corriendo: `docker-compose ps`
-- Revisa las variables de entorno en `docker-compose.yml`
-- Verifica los logs: `docker-compose logs centralizegg__trn_db`
-
-**Error**: `relation "virtualization.hosts" does not exist`
-- Ejecuta el script de inicialización: `psql -f deploy_centralizegg/postgres/init.sql`
-
-### Problemas de Libvirt
-
-**Error**: `remote libvirt socket: connection refused`
-- Verifica que Libvirt esté corriendo en el servidor remoto
-- Asegúrate de que el socket esté en `/var/run/libvirt/libvirt-sock`
-- Verifica permisos del usuario SSH para acceder al socket
-
-**Error**: `libvirt connect: authentication failed`
-- Verifica configuración de Libvirt en el servidor remoto
-- Revisa políticas de acceso en `/etc/libvirt/libvirt.conf`
-
-**Error al gestionar Snapshots**: `Snapshot not found` o fallos al revertir
-- Verifica que la VM soporte snapshots (ej. formato qcow2).
-- Asegúrate de que el usuario SSH tiene privilegios para ejecutar `virsh snapshot-create-as` y comandos relacionados en el hipervisor.
-
-### Problemas de Consola Web (WebSockets)
-
-**Error**: La terminal web se desconecta inmediatamente o muestra "Connection closed"
-- Asegúrate de que tu proxy inverso (Nginx, Traefik, etc.) esté configurado para permitir mejoras a `Upgrade: websocket`.
-- Verifica que el contenedor backend puede establecer sesiones PTY interactivas mediante SSH hacia el hipervisor objetivo.
+### 📄 Licencia
+Este proyecto está licenciado bajo la **Licencia MIT**. Ver el archivo [LICENSE](LICENSE) para más detalles.
 
 ---
 
-<a name="português"></a>
-# 🇧🇷 Centralizegg
+<h2 id="english">🇺🇸 English</h2>
 
-**Centralizegg** é uma solução de monitoramento leve e containerizada para múltiplos servidores e serviços. Fornece um painel premium em tempo real para visualizar os recursos de seus hosts, containers e Cluster K8s, permitindo ver o estado dos recursos de forma centralizada.
+**Centralizegg** is a lightweight, modular, and containerized monitoring solution designed for multi-server and multi-service environments. It provides a premium interactive real-time dashboard with *glassmorphism* aesthetics that centralizes resource visualization for KVM/Libvirt hosts, Docker & Podman containers, Kubernetes clusters, pfSense firewalls, Proxmox VE nodes, NAS storage, and Ceph clusters.
 
-[![Docker Build (GitHub)](https://github.com/USUARIO/REPO/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/USUARIO/REPO/actions/workflows/docker-publish.yml)
-[![Docker Build (GitLab)](https://gitlab.com/USUARIO/REPO/badges/main/pipeline.svg)](https://gitlab.com/USUARIO/REPO/-/pipelines)
-[![Docker Hub](https://img.shields.io/docker/v/USUARIO/centralizegg?label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/USUARIO/centralizegg)
-[![Docker Pulls](https://img.shields.io/docker/pulls/USUARIO/centralizegg?logo=docker)](https://hub.docker.com/r/USUARIO/centralizegg)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+### 🌟 Key Features
+*   **Automated Multicloud & Multiplatform Monitoring**: Agentless native support for KVM, Docker, Podman (represented with the `fa-otter` icon), pfSense, Proxmox VE, Kubernetes, NAS, and Ceph.
+*   **Premium Real-Time Visualizations**: Dynamic network graphs with *Sparklines*, animated container topology maps, and interactive world traffic maps with Bezier paths.
+*   **Audits & Audible Alerts**: Integrated alerting engine that plays audio signals ("ping") when critical infrastructure goes offline.
+*   **Hyper-Contextualized AI Assistant (Nala IA)**: Integrated chatbot assistant that reads current cluster statuses (CPU, RAM, states) inside its system prompt to deliver instant technical solutions.
+*   **Secure Web Console**: Live interactive web terminal powered by WebSockets and XTerm.js integrated directly into the dashboard.
 
-> [!TIP]
-> **CI/CD Disponível**: Este projeto inclui configuração para **GitHub Actions** e **GitLab CI**.
-> - GitHub: Ver [instruções](.github/DOCKER_HUB_SETUP.md)
-> - GitLab: Ver [instruções](.gitlab/DOCKER_HUB_SETUP.md)
-> 
-> Substitua `USUARIO/REPO` pelo seu usuário e repositório nos badges acima.
+### 🏗️ High-Level Technical Architecture
+```mermaid
+graph TD
+    subgraph Frontend["Frontend (Vanilla JS + HTML5 + CSS3)"]
+        UI[Glassmorphism Web Dashboard]
+        Map[World Traffic Map]
+        Search[Unified Global Search]
+        Nala[Nala IA Assistant]
+    end
 
-## 📋 Índice
+    subgraph Backend["Backend (Go 1.23)"]
+        API[Gorilla Mux REST API]
+        WS[WebSocket Tunnel Server]
+        Collector[Concurrent Background Collector]
+    end
 
-- [Características Principais](#-características-principais-1)
-- [Estrutura do Projeto](#-estrutura-do-projeto-1)
-- [Instalação Rápida](#-instalação-rápida-1)
-- [Configuração](#-configuração-1)
-- [Solução de Problemas](#-solução-de-problemas)
+    subgraph Infra["Target Infrastructure (Agentless)"]
+        KVM[KVM / Libvirt Hypervisor]
+        DKR[Docker Engine]
+        PDM[Podman Pods]
+        PVE[Proxmox VE Cluster]
+        K8S[Kubernetes Nodes/Pods]
+        PFS[pfSense Firewall]
+        NAS[NAS / Storage Servers]
+        CEPH[Ceph Cluster]
+    end
 
-## ✨ Características Principais
-
-*   **Detecção de SO**: Identificação automática do Sistema Operacional de cada host através de `/etc/os-release` com ícones representativos (Ubuntu, Debian, Fedora, CentOS, Windows, Red Hat, SUSE).
-*   **Métricas Premium**: Janelas flutuantes (popovers) interativas para CPU e Memória com barras de progresso em tempo real.
-*   **Coletor Automático**: Coleta de métricas a cada 5 segundos de todos os servidores configurados.
-*   **Métricas Completas**: 
-    - CPU: Uso calculado com base no tempo de CPU acumulado
-    - Memória: Total, livre e utilizada
-    - Disco: Alocação, capacidade e estatísticas de I/O
-    - Rede: Tráfico RX/TX em tempo real
-*   **Monitoramento de Containers**: Suporte avançado para **Docker & Podman**. O ícone do Podman foi atualizado para uma foca (`fa-otter`) em toda a interface.
-    - **Mapa de Topologia**: Visualização interativa animada da rede (Containers -> Redes -> Internet).
-    - **Controle de Containers**: Start/Stop de containers Docker e Podman diretamente da UI.
-*   **Monitoramento de Firewall**: Suporte completo para **pfSense** via SSH.
-    - Métricas de sistema (CPU, Memória, Disco)
-    - Informações de interfaces de rede com estatísticas de tráfego
-    - Detecção de arquitetura multiplataforma (x86_64, ARM/AArch64) com badges visuais.
-*   **QEMU Guest Agent**: Integração avançada para obter telemetria detalhada do sistema convidado:
-    - Nome e versão do Sistema Operacional
-    - Endereços IP internos
-*   **Proxmox VE**: Integração nativa com clusters Proxmox.
-    - Monitoramento de nós, VMs e Containers LXC.
-    - Métricas de armazenamento ZFS e Ceph (via API).
-*   **Controle de VMs KVM**: Start/Stop de máquinas virtuais diretamente da interface.
-*   **Mapa de Tráfego Mundial**: Visualização geográfica premium com animações "Flight Path" (curvas Bezier).
-    - **Proxy GeoIP Integrado**: Resolução de IPs no backend para privacidade e segurança (evita Mixed Content).
-    - **Animações Fluidas**: Linhas curvas com pulso dinâmico (Vermelho: Entrada, Verde: Saída).
-    - **Heatmap de Densidade**: Visualização de "pontos quentes" de tráfego com gradiente de cores.
-    - **Filtros Interativos**: Botões All/In/Out para segmentar conexões por direção.
-    - **Linhas Dinâmicas**: Velocidade de animação proporcional ao volume de tráfego.
-    - **Marcadores Pulsantes**: Indicadores animados vermelho/verde com popup de país e cidade.
-    - **Modo Debug**: Overlay acessível da UI para diagnosticar resolução de IPs.
-*   **Monitoramento de Gateways**: Estado em tempo real dos gateways pfSense (WAN/VPN).
-    - **Alertas Visuais**: 
-        - ⚠️ Aviso (>0% Perda de pacotes): Destaque âmbar.
-        - 🚨 Crítico (>10% Perda de pacotes): **Animação de pulso vermelho** e sombras dinâmicas para atenção imediata.
-    - Métricas precisas de RTT e Desvio padrão.
-*   **Histórico de Logs do Host**: Visualizador de logs em tempo real (`journalctl` / `clog`) integrado na ferramenta de Histórico Global para todos os tipos de servidores (KVM, Docker, Podman, pfSense, Proxmox, NAS, Ceph, Kubernetes).
-*   **Monitoramento de Kubernetes (K8s)**:
-    - Visualização de Nós e Pods em tempo real.
-    - **Histórico Detalhado por Nó**: Métricas históricas de CPU, Memória, Rede e Disco para cada nó do cluster.
-    - Métricas de consumo de recursos por Namespace e estatísticas de rede (RX/TX).
-    - Persistent Volumes (PVs) e Eventos do cluster.
-    - [Documentação Detalhada](web_centralizegg/static/docs/kubernetes.html)
-*   **Armazenamento & Disco**:
-    - **NAS**: Monitoramento via SSH de servidores Linux/NAS:
-        - Inventário de discos (`lsblk`) e partições.
-        - **Métricas de I/O**: Histórico de taxas de Leitura/Escrita para cada disco individual do host.
-    - **Visualização Multi-Disco**: Barras de uso individuais para cada disco virtual anexado à VM.
-*   **Histórico Global Melhorado**:
-    - Gráficos de Rede com **Limites de Tráfego** baseados na velocidade da interface.
-    - Unidades dinâmicas (MB/GB) para leitura clara de métricas de Memória e Armazenamento.
-*   **Busca Global ("Search Everything")**:
-    - Barra de busca unificada que indexa **Hosts KVM, VMs, Containers Docker/Podman e Volumes NAS**.
-    - Navegação inteligente: Ao selecionar um resultado, muda automaticamente para a ferramenta correspondente.
-*   **Logs Unificados**: Painel lateral deslizante para ver logs de coleta de todos os sistemas em um só lugar.
-*   **Notificações Audíveis**: Som de "ping" para novos alertas de servidores offline.
-*   **Segurança**: Escaneamento CVE com `docker scout` e suporte para autenticação robusta (Chave/Senha).
-*   **Auto-refresh**: Atualização automática de dados a cada 5 segundos no frontend.
-*   **Gráficos Avançados**:
-    - **Zoom Interativo**: Seleção de área para ampliar períodos específicos em gráficos de histórico.
-    - **Limites Visuais**: Linhas de referência configuráveis para CPU, Memória e Rede.
-    - **Tendências e Projeções**: Análise preditiva de uso de recursos.
-    - **Estimativa de Dias Restantes**: Cálculo automático de esgotamento de disco baseado em tendência.
-*   **Monitoramento de Ceph**: Suporte para clusters de armazenamento distribuído Ceph via SSH.
-    - Estado de saúde do cluster, OSDs e pools.
-*   **Dashboard de Saúde Global**: Painel resumo com visão geral do estado de toda a infraestrutura (`/api/health/summary`).
-
-## 📁 Estrutura do Projeto
-
-```
-Centralizegg/
-├── cmd_centralizegg/
-│   └── server/
-│       └── main.go                 # Ponto de entrada (882 linhas, rotas API, middlewares)
-├── backend_internal_centralizegg/
-│   ├── data_centralizegg/
-│   │   └── postgres.go            # Camada de acesso a dados (PostgreSQL, 2615 linhas)
-│   ├── virtualization/
-│   │   ├── kvm-collector.go       # Coletor de métricas KVM/Libvirt
-│   │   └── proxmox-collector.go   # Coletor de API Proxmox
-│   ├── firewall/
-│   │   └── pfsense-collector.go   # Coletor de métricas pfSense (SSH)
-│   ├── container/
-│   │   ├── docker-collector.go    # Coletor Docker
-│   │   ├── podman-collector.go    # Coletor Podman
-│   │   └── kubernetes-collector.go # Coletor K8s
-│   └── storage/
-│       ├── ceph-collector.go      # Coletor Ceph (SSH)
-│       └── nas-collector.go       # Coletor NAS (SSH)
-├── web_centralizegg/
-│   └── static/
-│       ├── index.html             # Interface principal
-│       ├── app.js                 # Lógica do frontend (monolito, 449KB)
-│       ├── style.css              # Estilos glassmorphism
-│       ├── history-map.js         # Módulo de mapa de histórico
-│       ├── favicon.ico            # Ícone do site
-│       ├── js/                    # Módulos ES modulares
-│       │   ├── api.js             # Funções de fetch centralizadas
-│       │   ├── state.js           # Estado global (Single Source of Truth)
-│       │   ├── history.js         # Lógica de histórico e gráficos
-│       │   ├── summary-dashboard.js # Dashboard de saúde global
-│       │   ├── tool-kvm.js        # Renderização e controle KVM
-│       │   ├── ui-components.js   # Componentes UI reutilizáveis
-│       │   └── utils.js           # Utilidades (formatBytes, etc.)
-│       ├── docs/                  # Documentação embebida (HTML)
-│       │   ├── virtualization.html
-│       │   ├── containers.html
-│       │   ├── firewall.html
-│       │   ├── kubernetes.html
-│       │   ├── storage.html
-│       │   └── performance.html
-│       ├── logo.png
-│       └── image/
-│           └── 1.png              # Screenshot do painel
-├── deploy_centralizegg/
-│   └── postgres/
-│       └── init.sql               # Script de inicialização do BD
-├── .github/
-│   ├── DOCKER_HUB_SETUP.md       # Instruções CI/CD GitHub
-│   └── workflows/
-│       └── docker-publish.yml     # Workflow reusável Docker Hub
-├── .gitlab/
-│   └── DOCKER_HUB_SETUP.md       # Instruções CI/CD GitLab
-├── .gitlab-ci.yml                 # Pipeline GitLab CI
-├── docker-compose.yml             # Configuração de serviços
-├── Dockerfile                     # Imagem multi-stage do container
-├── go.mod                         # Dependências Go 1.23.2
-├── go.sum                         # Checksums de dependências
-├── CI_CD_COMPARISON.md            # Comparação GitHub Actions vs GitLab CI
-├── LICENSE                        # Licença MIT
-├── ARCHITECTURE.MD                # Documentação de arquitetura detalhada
-└── README.md
+    UI -->|HTTP / JSON| API
+    UI -->|WebSockets| WS
+    WS -->|SSH Interactive Terminal| Infra
+    Collector -->|SSH / API Polling| Infra
+    API -->|PostgreSQL Queries| DB[(PostgreSQL 15)]
+    Collector -->|Write Metrics| DB
 ```
 
-## 🚀 Instalação Rápida
+### 🔄 Metrics Collection Sequence Diagram
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Collector (Go Routine)
+    participant DB as PostgreSQL 15
+    participant PVE as Proxmox VE Node
+    participant PFS as pfSense Firewall
 
-### Requisitos Prévios
+    rect rgb(20, 20, 30)
+        note right of C: Cycle every 5 seconds
+        C->>DB: Fetch configured Proxmox and pfSense servers
+        DB-->>C: List of credentials and IP addresses
+    end
 
-*   Docker e Docker Compose
-*   Acesso SSH (via chave ou senha) aos servidores KVM
-*   Os servidores KVM devem ter Libvirt configurado e acessível
-*   **Opcional**: Instalar `qemu-guest-agent` nas VMs para detecção de SO e IPs.
+    par Proxmox Collection
+        C->>PVE: SSH connection & 'pvesh get /cluster/status' command
+        PVE-->>C: JSON containing node names and real cluster IPs
+        C->>PVE: Command 'pvesh get /nodes/{node}/status'
+        PVE-->>C: CPU, Memory, and Disk telemetry
+        C->>DB: UpsertProxmoxHost with real IP and hardware info
+    and pfSense Collection
+        C->>PFS: SSH connection & 'top / sysctl' commands
+        PFS-->>C: Interfaces, Gateways, and Hardware status
+        C->>DB: UpdateGenericServerStats for pfSense
+    end
+```
 
-### Configuração de Segurança (SSH)
-1. Certifique-se de que sua chave esteja em `~/.ssh/id_rsa`.
-2. O container monta esse diretório como somente leitura por padrão.
+### 💻 Technology Stack
+| Layer | Technology / Tool | Description |
+| :--- | :--- | :--- |
+| **Frontend** | Vanilla JS / CSS3 (Glassmorphism) | Responsive web interface, optimized for fast performance without heavy frameworks. |
+| **Backend** | Go (Golang) 1.23.2 | Fast, efficient API server with native concurrency support for background metric gathering. |
+| **Database** | PostgreSQL 15 | Relational storage for configurations and metric history structured in modules. |
+| **Network / Maps** | Leaflet.js / D3.js | Interactive world map for traffic geolocation and network topology visualization. |
 
-> [!IMPORTANT]
-> **Permissões de Arquivo**: Certifique-se de que sua chave privada tenha permissões restritas (chmod 600), ou o cliente SSH recusará usá-la por segurança.
-> ```bash
-> chmod 600 ~/.ssh/id_rsa
-> ```
+### 📋 Prerequisites
+*   Docker and Docker Compose installed on your local host.
+*   SSH Credentials (RSA/Ed25519 private key or password) to access target hosts.
+*   Internet access for world map IP geolocations.
 
-### Implantação
+### 🛠️ Deployment Instructions
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/grs89/centralizegg.git
+   cd centralizegg
+   ```
+2. Ensure your private SSH keys in `~/.ssh/` have strict permissions set:
+   ```bash
+   chmod 600 ~/.ssh/id_rsa
+   ```
 
+### ⚡ Quick Start
+To spin up Centralizegg locally using Docker Compose:
 ```bash
-# Clonar o repositório (se aplicável)
-git clone <repository-url>
-cd Centralizegg
-
-# Iniciar serviços
 docker-compose up -d --build
+```
+Once initialized, visit the web dashboard at `http://localhost:8080`.
 
-# Ver logs
-docker-compose logs -f centralizegg_app
+### 🧪 Running Tests
+You can run the Go unit test suite configured for the backend with:
+```bash
+go test ./...
 ```
 
-Acesse o painel em: `http://localhost:8080`
-
-## ⚙️ Configuração
-
-### Variáveis de Ambiente
-
-O serviço `centralizegg_app` em `docker-compose.yml` utiliza as seguintes variáveis de ambiente:
-
-```yaml
-DB_HOST: centralizegg__trn_db     # Host do PostgreSQL (nome do serviço)
-DB_PORT: 5432                     # Porta do PostgreSQL
-DB_USER: centralizegg             # Usuário do banco de dados
-DB_PASS: centralizegg_secret      # Senha do banco de dados
-DB_NAME: centralizegg_db          # Nome do banco de dados
-LIBVIRT_SOCK: /var/run/libvirt/libvirt-sock  # Socket do Libvirt (local)
-```
-
-### Volumes Montados
-
-- `/var/run/libvirt/libvirt-sock:/var/run/libvirt/libvirt-sock` - Socket do Libvirt (para conexões locais)
-- `~/.ssh:/root/.ssh:ro` - Chaves SSH (somente leitura)
-
-### Configuração de Servidores
-
-Os servidores KVM são configurados através do painel web:
-
-1. Acesse `http://localhost:8080`
-2. Selecione a ferramenta "KVM" no menu
-3. Clique no botão de configuração (⚙️)
-4. Adicione um novo servidor com:
-   - **Nome**: Nome descritivo
-   - **IP Address**: Endereço IP do servidor
-   - **SSH Port**: Porta SSH (padrão: 22)
-   - **Username**: Usuário SSH
-   - **Autenticação**: Chave SSH ou senha
-   - **SSH Key Path**: Caminho para a chave (padrão: `/root/.ssh/id_rsa`)
-
-### Configuração de Firewall (pfSense)
-
-1. Selecione a ferramenta "Firewall" no menu
-2. Clique no botão de configuração (⚙️)
-3. Adicione um novo servidor com credenciais SSH (similar ao KVM).
-   - **Autenticação**: Suporta Chave SSH (RSA/Ed25519) ou Senha.
-   - **Requisitos**: O usuário deve ter acesso ao shell (`/bin/sh` ou `//bin/tcsh`) e permissões para executar `top`, `sysctl`, `netstat`, `pfctl`.
-   - **Não requer agentes**: Tudo é coletado remotamente e com segurança.
-
-## 🔧 Solução de Problemas
-
-### Problemas de Conexão SSH
-
-**Erro**: `ssh: handshake failed: ssh: unable to authenticate`
-- Verifique se a chave pública está em `~/.ssh/authorized_keys` no servidor remoto
-- Confirme permissões da chave privada: `chmod 600 ~/.ssh/id_rsa`
-- Teste conexão manual: `ssh -i ~/.ssh/id_rsa usuario@ip-servidor`
-
-**Erro**: `ssh: connect to host X.X.X.X port 22: Connection refused`
-- Verifique se o servidor SSH está rodando no host remoto
-- Confirme porta SSH (pode não ser a 22)
-- Verifique firewall/regras de segurança
-
-### Problemas de Banco de Dados
-
-**Erro**: `Could not connect to DB`
-- Verifique se o PostgreSQL está rodando: `docker-compose ps`
-- Revise as variáveis de ambiente em `docker-compose.yml`
-- Verifique os logs: `docker-compose logs centralizegg__trn_db`
-
-**Erro**: `relation "virtualization.hosts" does not exist`
-- Execute o script de inicialização: `psql -f deploy_centralizegg/postgres/init.sql`
-
-### Problemas de Libvirt
-
-**Erro**: `remote libvirt socket: connection refused`
-- Verifique se o Libvirt está rodando no servidor remoto
-- Certifique-se de que o socket esteja em `/var/run/libvirt/libvirt-sock`
-- Verifique permissões do usuário SSH para acessar o socket
-
-**Erro**: `libvirt connect: authentication failed`
-- Verifique configuração do Libvirt no servidor remoto
-- Revise políticas de acesso em `/etc/libvirt/libvirt.conf`
+### 📄 License
+This project is licensed under the **MIT License**. Check the [LICENSE](LICENSE) file for more details.
 
 ---
 
-© 2026 Centralizegg Contributors - MIT License
+<h2 id="português">🇧🇷 Português</h2>
+
+**Centralizegg** é uma solução de monitoramento leve, modular e containerizada projetada para ambientes de múltiplos servidores e serviços. Ele fornece um painel de controle interativo premium em tempo real com estética *glassmorphism* que centraliza a visualização de recursos de hosts KVM/Libvirt, containers Docker & Podman, clusters Kubernetes, firewalls pfSense, nós Proxmox VE, armazenamento NAS e clusters Ceph.
+
+### 🌟 Características Principais
+*   **Monitoramento Multicloud e Multiplataforma**: Suporte nativo e sem agentes para KVM, Docker, Podman (representado com o ícone `fa-otter`), pfSense, Proxmox VE, Kubernetes, NAS e Ceph.
+*   **Visualizações Premium Em Tempo Real**: Gráficos de rede dinâmicos com *Sparklines*, mapas de topologia animados para containers e mapas interativos de tráfego mundial com trajetórias Bezier.
+*   **Auditorias e Alertas Audíveis**: Motor de alertas integrado que reproduz sinais sonoros ("ping") quando a infraestrutura crítica fica offline.
+*   **Assistente IA Hiper-Contextualizado (Nala IA)**: Chatbot assistente integrado que lê o estado atual do cluster (CPU, RAM, estados) em seu prompt de sistema para oferecer soluções técnicas imediatas.
+*   **Console Web Seguro**: Terminal web interativo em tempo real via WebSockets e XTerm.js integrado diretamente no painel.
+
+### 🏗️ Arquitetura Técnica de Alto Nível
+```mermaid
+graph TD
+    subgraph Frontend["Frontend (Vanilla JS + HTML5 + CSS3)"]
+        UI[Painel Web Glassmorphism]
+        Map[Mapa de Tráfego Mundial]
+        Search[Busca Global Unificada]
+        Nala[Assistente Nala IA]
+    end
+
+    subgraph Backend["Backend (Go 1.23)"]
+        API[API REST Gorilla Mux]
+        WS[Servidor de Túnel WebSocket]
+        Collector[Coletor Concorrente em Segundo Plano]
+    end
+
+    subgraph Infra["Infraestrutura de Destino (Sem Agentes)"]
+        KVM[Hipervisor KVM / Libvirt]
+        DKR[Engine Docker]
+        PDM[Pods Podman]
+        PVE[Cluster Proxmox VE]
+        K8S[Nós/Pods Kubernetes]
+        PFS[Firewall pfSense]
+        NAS[Servidores NAS / Storage]
+        CEPH[Cluster Ceph]
+    end
+
+    UI -->|HTTP / JSON| API
+    UI -->|WebSockets| WS
+    WS -->|Terminal Interativo SSH| Infra
+    Collector -->|SSH / API Polling| Infra
+    API -->|Consultas PostgreSQL| DB[(PostgreSQL 15)]
+    Collector -->|Gravar Métricas| DB
+```
+
+### 🔄 Diagrama de Sequência de Coleta de Métricas
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Coletor (Go Routine)
+    participant DB as PostgreSQL 15
+    participant PVE as Nó Proxmox VE
+    participant PFS as Firewall pfSense
+
+    rect rgb(20, 20, 30)
+        note right of C: Ciclo a cada 5 segundos
+        C->>DB: Obter servidores Proxmox e pfSense configurados
+        DB-->>C: Lista de credenciais e endereços IP
+    end
+
+    par Coleta do Proxmox
+        C->>PVE: Conexão SSH e comando 'pvesh get /cluster/status'
+        PVE-->>C: JSON com nomes de nós e IPs reais do cluster
+        C->>PVE: Comando 'pvesh get /nodes/{node}/status'
+        PVE-->>C: Telemetria de CPU, Memória e discos
+        C->>DB: UpsertProxmoxHost com IP real e info de hardware
+    and Coleta do pfSense
+        C->>PFS: Conexão SSH e comandos 'top / sysctl'
+        PFS-->>C: Status de interfaces, gateways e hardware
+        C->>DB: UpdateGenericServerStats para pfSense
+    end
+```
+
+### 💻 Stack Tecnológico
+| Camada | Tecnologia / Ferramenta | Descrição |
+| :--- | :--- | :--- |
+| **Frontend** | Vanilla JS / CSS3 (Glassmorphism) | Interface web responsiva, otimizada para alto desempenho sem frameworks pesados. |
+| **Backend** | Go (Golang) 1.23.2 | Servidor API rápido e eficiente com suporte nativo à concorrência para coleta em background. |
+| **Banco de Dados** | PostgreSQL 15 | Armazenamento relacional de configurações e histórico de métricas estruturado em esquemas. |
+| **Redes / Mapas** | Leaflet.js / D3.js | Motor de mapas interativos para geolocalização de tráfego e mapa de topologia de rede. |
+
+### 📋 Requisitos Prévios
+*   Docker e Docker Compose instalados no sistema local.
+*   Credenciais SSH (chave privada RSA/Ed25519 ou senha) para acessar os hosts alvo.
+*   Acesso à internet para geolocalização de IP no Mapa Mundial.
+
+### 🛠️ Instruções de Implantação
+1. Clone o repositório:
+   ```bash
+   git clone https://github.com/grs89/centralizegg.git
+   cd centralizegg
+   ```
+2. Certifique-se de que suas chaves SSH privadas em `~/.ssh/` tenham permissões estritas:
+   ```bash
+   chmod 600 ~/.ssh/id_rsa
+   ```
+
+### ⚡ Início Rápido
+Para levantar o Centralizegg localmente usando o Docker Compose:
+```bash
+docker-compose up -d --build
+```
+Uma vez inicializado, acesse o painel web em `http://localhost:8080`.
+
+### 🧪 Executando Testes
+Você pode rodar os testes unitários em Go configurados no backend com:
+```bash
+go test ./...
+```
+
+### 📄 Licencia
+Este projeto é distribuído sob a **Licença MIT**. Veja o arquivo [LICENSE](LICENSE) para obter mais detalhes.
