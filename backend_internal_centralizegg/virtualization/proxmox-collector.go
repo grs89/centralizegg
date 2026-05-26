@@ -91,12 +91,41 @@ func (pc *ProxmoxCollector) collectOne(s data_centralizegg.GenericServer) error 
 		return fmt.Errorf("failed to unmarshal nodes: %w", err)
 	}
 
+	// Try to get cluster status to map node names to their real IP addresses
+	nodeIPMap := make(map[string]string)
+	if clusterJSON, err := pc.runCommand(client, "pvesh get /cluster/status --output-format json"); err == nil {
+		var clusterNodes []struct {
+			Name string `json:"name"`
+			Node string `json:"node"`
+			IP   string `json:"ip"`
+		}
+		if err := json.Unmarshal([]byte(clusterJSON), &clusterNodes); err == nil {
+			for _, cn := range clusterNodes {
+				ip := cn.IP
+				if ip == "" {
+					continue
+				}
+				if cn.Name != "" {
+					nodeIPMap[cn.Name] = ip
+				}
+				if cn.Node != "" {
+					nodeIPMap[cn.Node] = ip
+				}
+			}
+		}
+	}
+
 	var totalMem, totalFreeMem uint64
 	var avgCPU float64
 	var totalCores int
 	var lastOS, lastModel, lastUptime, lastArch string
 
 	for _, n := range nodes {
+		nodeIP := s.IPAddress
+		if ip, exists := nodeIPMap[n.Node]; exists && ip != "" {
+			nodeIP = ip
+		}
+
 		// Get detailed node status for PVE version and OS info
 		nodeStatusJSON, _ := pc.runCommand(client, fmt.Sprintf("pvesh get /nodes/%s/status --output-format json", n.Node))
 		var nodeStat struct {
@@ -164,6 +193,7 @@ func (pc *ProxmoxCollector) collectOne(s data_centralizegg.GenericServer) error 
 		hostID, err := pc.DB.UpsertProxmoxHost(data_centralizegg.ProxmoxHost{
 			ServerID:          s.ID,
 			Hostname:          n.Node,
+			IPAddress:         nodeIP,
 			Status:            n.Status,
 			CPUModel:          strings.TrimSpace(nodeStat.CPUInfo.Model),
 			CPUCores:          nodeStat.CPUInfo.CPUs,

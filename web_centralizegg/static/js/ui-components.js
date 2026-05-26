@@ -107,7 +107,7 @@ export function renderHostNodes(containerId = 'host-nodes-container', config = {
                         <i class="${customIcon}"></i>
                     </div>
                     <div class="host-title-group">
-                        <h3>${host.server_name || host.name || 'Unknown'}</h3>
+                        <h3>${host.tool_type === 'proxmox' ? (host.hostname || host.server_name || host.name || 'Unknown') : (host.server_name || host.name || 'Unknown')}</h3>
                         <div class="ip-badge">${host.ip_address || (host.tool_type === 'kubernetes' ? 'Cluster' : 'N/A')}</div>
                     </div>
                 </div>

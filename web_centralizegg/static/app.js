@@ -834,10 +834,12 @@ function updateSuggestions() {
 
     // Match Proxmox Hosts
     state.allProxmoxHostsCache.forEach(host => {
-        if (host.server_name.toLowerCase().includes(state.searchQuery) ||
-            host.hostname.toLowerCase().includes(state.searchQuery) ||
-            host.ip_address.toLowerCase().includes(state.searchQuery)) {
-            suggestions.push({ type: 'host', id: host.id, title: host.server_name, subtitle: `Proxmox: ${host.ip_address}`, icon: 'fa-solid fa-microchip', tool: 'proxmox' });
+        if ((host.server_name && host.server_name.toLowerCase().includes(state.searchQuery)) ||
+            (host.hostname && host.hostname.toLowerCase().includes(state.searchQuery)) ||
+            (host.ip_address && host.ip_address.toLowerCase().includes(state.searchQuery))) {
+            const title = host.hostname || host.server_name || 'Proxmox Node';
+            const subtitle = `Proxmox: ${host.ip_address || 'N/A'} (${host.server_name || ''})`;
+            suggestions.push({ type: 'host', id: host.id, title: title, subtitle: subtitle, icon: 'fa-solid fa-microchip', tool: 'proxmox' });
         }
     });
 

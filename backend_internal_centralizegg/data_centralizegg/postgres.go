@@ -533,6 +533,7 @@ func NewPostgresDB(connStr string) (*DB, error) {
 	_, _ = db.Exec("ALTER TABLE containers.hosts ADD COLUMN IF NOT EXISTS active_connections TEXT DEFAULT '[]'")
 	_, _ = db.Exec("ALTER TABLE containers.podman_hosts ADD COLUMN IF NOT EXISTS active_connections TEXT DEFAULT '[]'")
 	_, _ = db.Exec("ALTER TABLE virtualization.proxmox_hosts ADD COLUMN IF NOT EXISTS active_connections TEXT DEFAULT '[]'")
+	_, _ = db.Exec("ALTER TABLE virtualization.proxmox_hosts ADD COLUMN IF NOT EXISTS ip_address VARCHAR(255) DEFAULT ''")
 	_, _ = db.Exec("ALTER TABLE storage.nas_hosts ADD COLUMN IF NOT EXISTS active_connections TEXT DEFAULT '[]'")
 	_, _ = db.Exec("ALTER TABLE storage.ceph_hosts ADD COLUMN IF NOT EXISTS active_connections TEXT DEFAULT '[]'")
 
@@ -1107,6 +1108,7 @@ func ensureSchema(db *sql.DB) {
 			id SERIAL PRIMARY KEY,
 			server_id INT REFERENCES virtualization.proxmox_servers(id) ON DELETE CASCADE,
 			hostname VARCHAR(255) NOT NULL,
+			ip_address VARCHAR(255) DEFAULT '',
 			status VARCHAR(50) DEFAULT 'unknown',
 			cpu_model VARCHAR(255),
 			cpu_cores INT,
@@ -2881,14 +2883,14 @@ func (d *DB) UpsertProxmoxHost(h ProxmoxHost) (int64, error) {
 
 	if err == sql.ErrNoRows {
 		err = d.Conn.QueryRow(`
-			INSERT INTO virtualization.proxmox_hosts (server_id, hostname, status, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, kernel_version, pve_version, uptime, vms_count, containers_count, active_connections, architecture)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
-			h.ServerID, h.Hostname, h.Status, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.KernelVer, h.PVEVersion, h.Uptime, h.VMsCount, h.Containers, h.ActiveConnections, h.Architecture).Scan(&id)
+			INSERT INTO virtualization.proxmox_hosts (server_id, hostname, ip_address, status, cpu_model, cpu_cores, total_memory, free_memory, cpu_usage, os_name, kernel_version, pve_version, uptime, vms_count, containers_count, active_connections, architecture)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
+			h.ServerID, h.Hostname, h.IPAddress, h.Status, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.KernelVer, h.PVEVersion, h.Uptime, h.VMsCount, h.Containers, h.ActiveConnections, h.Architecture).Scan(&id)
 	} else if err == nil {
 		_, err = d.Conn.Exec(`
-			UPDATE virtualization.proxmox_hosts SET status=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, kernel_version=$8, pve_version=$9, uptime=$10, vms_count=$11, containers_count=$12, active_connections=$13, architecture=$14
-			WHERE id=$15`,
-			h.Status, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.KernelVer, h.PVEVersion, h.Uptime, h.VMsCount, h.Containers, h.ActiveConnections, h.Architecture, id)
+			UPDATE virtualization.proxmox_hosts SET status=$1, cpu_model=$2, cpu_cores=$3, total_memory=$4, free_memory=$5, cpu_usage=$6, os_name=$7, kernel_version=$8, pve_version=$9, uptime=$10, vms_count=$11, containers_count=$12, active_connections=$13, architecture=$14, ip_address=$15
+			WHERE id=$16`,
+			h.Status, h.CPUModel, h.CPUCores, h.TotalMemory, h.FreeMemory, h.CPUUsage, h.OSName, h.KernelVer, h.PVEVersion, h.Uptime, h.VMsCount, h.Containers, h.ActiveConnections, h.Architecture, h.IPAddress, id)
 	}
 
 	if err == nil {
@@ -2924,7 +2926,7 @@ func (d *DB) GetProxmoxHosts() ([]ProxmoxHost, error) {
 	}
 
 	rows, err := d.Conn.Query(`
-		SELECT ph.id, ph.server_id, ph.hostname, ps.name, ps.ip_address, ps.status, ph.cpu_model, ph.cpu_cores, ph.total_memory, ph.free_memory, ph.cpu_usage, ph.os_name, ph.kernel_version, ph.pve_version, ph.uptime, ph.vms_count, ph.containers_count, COALESCE(ph.active_connections, '[]'), ps.offline_since, ph.architecture
+		SELECT ph.id, ph.server_id, ph.hostname, ps.name, COALESCE(NULLIF(ph.ip_address, ''), ps.ip_address) AS ip_address, ps.status, ph.cpu_model, ph.cpu_cores, ph.total_memory, ph.free_memory, ph.cpu_usage, ph.os_name, ph.kernel_version, ph.pve_version, ph.uptime, ph.vms_count, ph.containers_count, COALESCE(ph.active_connections, '[]'), ps.offline_since, ph.architecture
 		FROM virtualization.proxmox_hosts ph
 		JOIN virtualization.proxmox_servers ps ON ph.server_id = ps.id`)
 	if err != nil {
