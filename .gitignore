@@ -22,3 +22,5 @@ vendor/
 *.exe
 *.test
 *.prof
+coverage.out
+*.out
