@@ -1,16 +1,17 @@
 services:
   centralizegg__trn_db:
     image: timescale/timescaledb-ha:pg15-all
+    container_name: centralizegg_db
     restart: always
     environment:
-      POSTGRES_USER: centralizegg
-      POSTGRES_PASSWORD: centralizegg_secret
-      POSTGRES_DB: centralizegg_db
+      POSTGRES_USER: ${DB_USER:-centralizegg}
+      POSTGRES_PASSWORD: ${DB_PASS:-centralizegg_secret}
+      POSTGRES_DB: ${DB_NAME:-centralizegg_db}
     volumes:
       - ./deploy_centralizegg/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
-      - ./postgres_data:/var/lib/postgresql/data
+      - centralizegg_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U centralizegg -d centralizegg_db" ]
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-centralizegg} -d $${POSTGRES_DB:-centralizegg_db}" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -19,19 +20,20 @@ services:
 
   centralizegg_app:
     build: .
+    container_name: centralizegg_app
     restart: always
     ports:
       - "8080:8080"
     volumes:
-      - /var/run/libvirt/libvirt-sock:/var/run/libvirt/libvirt-sock
+      - /var/run/libvirt/libvirt-sock:${LIBVIRT_SOCK:-/var/run/libvirt/libvirt-sock}
       - ~/.ssh:/root/.ssh:ro
     environment:
-      DB_HOST: centralizegg__trn_db
-      DB_PORT: 5432
-      DB_USER: centralizegg
-      DB_PASS: centralizegg_secret
-      DB_NAME: centralizegg_db
-      LIBVIRT_SOCK: /var/run/libvirt/libvirt-sock
+      DB_HOST: ${DB_HOST:-centralizegg__trn_db}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USER:-centralizegg}
+      DB_PASS: ${DB_PASS:-centralizegg_secret}
+      DB_NAME: ${DB_NAME:-centralizegg_db}
+      LIBVIRT_SOCK: ${LIBVIRT_SOCK:-/var/run/libvirt/libvirt-sock}
     depends_on:
       centralizegg__trn_db:
         condition: service_healthy
@@ -41,3 +43,6 @@ services:
 networks:
   centralizegg-net:
     driver: bridge
+
+volumes:
+  centralizegg_pgdata:
