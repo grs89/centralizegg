@@ -56,11 +56,12 @@ var (
 	}
 )
 
-type contextKey string
+type userContextKeyType struct{}
+type roleContextKeyType struct{}
 
-const (
-	userContextKey contextKey = "user"
-	roleContextKey contextKey = "role"
+var (
+	userContextKey userContextKeyType
+	roleContextKey roleContextKeyType
 )
 
 // Middlewares
@@ -69,12 +70,25 @@ type gzipResponseWriter struct {
 	http.ResponseWriter
 }
 
+// Flush implements http.Flusher to support streaming/chunked responses.
+func (grw gzipResponseWriter) Flush() {
+	if flusher, ok := grw.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
 func (w gzipResponseWriter) Write(b []byte) (int, error) {
 	return w.Writer.Write(b)
 }
 
 func GzipMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Bypass compression for WebSocket upgrades to prevent hijacking failures
+		if strings.ToLower(r.Header.Get("Connection")) == "upgrade" && strings.ToLower(r.Header.Get("Upgrade")) == "websocket" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		// Only compress if client supports it and it's a GET request (usually where big JSONs are)
 		if r.Method != "GET" || !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 			next.ServeHTTP(w, r)
@@ -86,7 +100,9 @@ func GzipMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		defer gz.Close()
+		defer func() {
+			_ = gz.Close()
+		}()
 		next.ServeHTTP(gzipResponseWriter{Writer: gz, ResponseWriter: w}, r)
 	})
 }
