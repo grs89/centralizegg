@@ -1,3 +1,5 @@
+name: centralizegg
+
 services:
   centralizegg__trn_db:
     image: timescale/timescaledb-ha:pg15-all
