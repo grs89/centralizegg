@@ -910,6 +910,9 @@ func (pc *PodmanCollector) parseNetBytes(s string, rx bool) uint64 {
 }
 
 func (pc *PodmanCollector) GetContainerLogs(serverID int64, containerID string) (string, error) {
+	if !isValidResourceName(containerID) {
+		return "", fmt.Errorf("invalid container ID format")
+	}
 	servers, err := pc.DB.GetGenericServers("podman")
 	if err != nil {
 		return "", err
@@ -944,6 +947,9 @@ func (pc *PodmanCollector) GetContainerLogs(serverID int64, containerID string) 
 }
 
 func (pc *PodmanCollector) StartContainer(serverID int64, containerID string) error {
+	if !isValidResourceName(containerID) {
+		return fmt.Errorf("invalid container ID format")
+	}
 	servers, err := pc.DB.GetGenericServers("podman")
 	if err != nil {
 		return err
@@ -973,6 +979,9 @@ func (pc *PodmanCollector) StartContainer(serverID int64, containerID string) er
 }
 
 func (pc *PodmanCollector) StopContainer(serverID int64, containerID string) error {
+	if !isValidResourceName(containerID) {
+		return fmt.Errorf("invalid container ID format")
+	}
 	servers, err := pc.DB.GetGenericServers("podman")
 	if err != nil {
 		return err
