@@ -3850,24 +3850,26 @@ function renderNasHostDetails(hostId) {
             <div style="display: flex; flex-direction: column; gap: 20px;">
                 <div style="margin-bottom: 0;">
                     <h4 style="margin-bottom: 15px;"><i class="fa-solid fa-hard-drive"></i> Volúmenes de Almacenamiento (${volumes.length})</h4>
-                    <div class="vm-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px;">
-                        ${volumes.map(v => {
-        const pct = (v.used_size / v.total_size * 100) || 0;
-        return `
-                            <div class="glass-panel" style="padding: 15px; border: 1px solid rgba(255,255,255,0.05);">
-                                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
-                                    <div style="font-weight: 700;">${v.name}</div>
-                                    <div style="font-size: 0.75rem; opacity: 0.6;">${v.type}</div>
+                    <div style="max-height: 400px; overflow-y: auto; padding-right: 8px; margin-bottom: 5px;">
+                        <div class="vm-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px;">
+                            ${volumes.map(v => {
+            const pct = (v.used_size / v.total_size * 100) || 0;
+            return `
+                                <div class="glass-panel" style="padding: 15px; border: 1px solid rgba(255,255,255,0.05);">
+                                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                                        <div style="font-weight: 700;">${v.name}</div>
+                                        <div style="font-size: 0.75rem; opacity: 0.6;">${v.type}</div>
+                                    </div>
+                                    <div class="progress-container" style="height: 8px; margin-bottom: 8px;">
+                                        <div class="progress-bar" style="width: ${pct}%; background: ${getStatusColor(pct)};"></div>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; font-size: 0.8rem;">
+                                        <span>${formatBytes(v.used_size)} / ${formatBytes(v.total_size)}</span>
+                                        <span style="font-weight: 600;">${pct.toFixed(1)}%</span>
+                                    </div>
                                 </div>
-                                <div class="progress-container" style="height: 8px; margin-bottom: 8px;">
-                                    <div class="progress-bar" style="width: ${pct}%; background: ${getStatusColor(pct)};"></div>
-                                </div>
-                                <div style="display: flex; justify-content: space-between; font-size: 0.8rem;">
-                                    <span>${formatBytes(v.used_size)} / ${formatBytes(v.total_size)}</span>
-                                    <span style="font-weight: 600;">${pct.toFixed(1)}%</span>
-                                </div>
-                            </div>
-                        `}).join('')}
+                            `}).join('')}
+                        </div>
                     </div>
                 </div>
 
