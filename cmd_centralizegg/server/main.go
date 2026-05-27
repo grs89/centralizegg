@@ -33,7 +33,7 @@ import (
 
 var systemLog *log.Logger
 
-const AppVersion = "1.0.3"
+const AppVersion = "1.0.4"
 
 var (
 	startTime      = time.Now()
