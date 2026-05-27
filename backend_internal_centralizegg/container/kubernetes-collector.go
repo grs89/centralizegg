@@ -1371,6 +1371,10 @@ func (kc *KubernetesCollector) checkAndLogAlerts(s data_centralizegg.GenericServ
 }
 
 func (kc *KubernetesCollector) GetPodLogs(serverID int64, namespace string, podName string) (string, error) {
+	if !isValidResourceName(namespace) || !isValidResourceName(podName) {
+		return "", fmt.Errorf("invalid namespace or pod name format")
+	}
+
 	servers, err := kc.DB.GetGenericServers("kubernetes")
 	if err != nil {
 		return "", err

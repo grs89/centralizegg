@@ -775,6 +775,9 @@ func (dc *DockerCollector) parseNetBytes(s string, rx bool) uint64 {
 }
 
 func (dc *DockerCollector) GetContainerLogs(serverID int64, containerID string) (string, error) {
+	if !isValidResourceName(containerID) {
+		return "", fmt.Errorf("invalid container ID format")
+	}
 	servers, err := dc.DB.GetGenericServers("docker")
 	if err != nil {
 		return "", err
@@ -809,6 +812,9 @@ func (dc *DockerCollector) GetContainerLogs(serverID int64, containerID string) 
 }
 
 func (dc *DockerCollector) StartContainer(serverID int64, containerID string) error {
+	if !isValidResourceName(containerID) {
+		return fmt.Errorf("invalid container ID format")
+	}
 	servers, err := dc.DB.GetGenericServers("docker")
 	if err != nil {
 		return err
@@ -838,6 +844,9 @@ func (dc *DockerCollector) StartContainer(serverID int64, containerID string) er
 }
 
 func (dc *DockerCollector) StopContainer(serverID int64, containerID string) error {
+	if !isValidResourceName(containerID) {
+		return fmt.Errorf("invalid container ID format")
+	}
 	servers, err := dc.DB.GetGenericServers("docker")
 	if err != nil {
 		return err
