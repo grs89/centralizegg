@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   deploy:
-    uses: grs89/github-template/.github/workflows/docker-publish.yml@v2
+    uses: grs89/github-template/.github/workflows/docker-publish.yml@main
     secrets:
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
